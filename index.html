@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>Harmonic Geometry • Generative Music Drawing</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Top Header & Controls Panel -->
+      <header class="top-bar">
+        <div class="brand">
+          <div class="logo-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 18V5l12-2v13"></path>
+              <circle cx="6" cy="18" r="3"></circle>
+              <circle cx="18" cy="16" r="3"></circle>
+            </svg>
+          </div>
+          <div class="title-group">
+            <h1>Harmonic Geometry</h1>
+            <span class="subtitle">Arc-Length Splines & Modal Pitch Quantization</span>
+          </div>
+        </div>
+
+        <div class="controls-cluster">
+          <!-- Scale Selector -->
+          <div class="control-item">
+            <label for="scaleSelect">Scale / Mode</label>
+            <select id="scaleSelect" class="styled-select">
+              <option value="dorian" selected>Dorian Mode</option>
+              <option value="lydian">Lydian Mode</option>
+              <option value="minorPentatonic">Minor Pentatonic</option>
+              <option value="majorPentatonic">Major Pentatonic</option>
+              <option value="aeolian">Aeolian (Minor)</option>
+            </select>
+          </div>
+
+          <!-- Root Tuning -->
+          <div class="control-item">
+            <label for="rootSelect">Root Pitch</label>
+            <select id="rootSelect" class="styled-select">
+              <option value="D2" selected>D2 (73.4 Hz)</option>
+              <option value="E2">E2 (82.4 Hz)</option>
+              <option value="F2">F2 (87.3 Hz)</option>
+              <option value="G2">G2 (98.0 Hz)</option>
+              <option value="A2">A2 (110.0 Hz)</option>
+              <option value="C3">C3 (130.8 Hz)</option>
+            </select>
+          </div>
+
+          <!-- Stroke Style Segmented Button -->
+          <div class="control-item">
+            <label>Stroke Texture</label>
+            <div class="segmented-control" id="strokeModeControl">
+              <button type="button" class="segment active" data-style="solid" title="Continuous Drone with Portamento & Hysteresis">
+                <span class="icon-dot solid"></span> Solid Drone
+              </button>
+              <button type="button" class="segment" data-style="dotted" title="Staccato Chimes snapped to scale intervals">
+                <span class="icon-dot dotted"></span> Dotted Chime
+              </button>
+              <button type="button" class="segment" data-style="striped" title="Rhythmic Pulse Bursts">
+                <span class="icon-dot striped"></span> Striped Pulse
+              </button>
+            </div>
+          </div>
+
+          <!-- Speed Slider -->
+          <div class="control-item slider-item">
+            <label for="speedSlider">Speed: <span id="speedVal">1.0x</span></label>
+            <input type="range" id="speedSlider" min="0.4" max="2.5" step="0.1" value="1.0" class="styled-slider" />
+          </div>
+
+          <!-- Deadband Width Slider -->
+          <div class="control-item slider-item">
+            <label for="deadbandSlider">Snap Deadband: <span id="deadbandVal">0.25</span></label>
+            <input type="range" id="deadbandSlider" min="0.05" max="0.45" step="0.05" value="0.25" class="styled-slider" />
+          </div>
+
+          <!-- Master Action Buttons -->
+          <div class="action-buttons">
+            <button id="playPauseBtn" class="btn btn-action" title="Play / Pause Audio & Playheads">
+              <span id="playPauseIcon">⏸</span> <span id="playPauseText">Pause</span>
+            </button>
+            <button id="clearBtn" class="btn btn-danger" title="Clear all strokes">
+              Clear
+            </button>
+            <button id="infoBtn" class="btn btn-secondary" title="View Algorithm & Math Info">
+              Math Info
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <!-- Drawing Canvas Area -->
+      <main class="canvas-container">
+        <canvas id="musicCanvas"></canvas>
+        <div id="audioUnlockPrompt" class="audio-prompt">
+          <div class="prompt-card">
+            <div class="prompt-icon">✨</div>
+            <h3>Click or Draw Anywhere to Begin</h3>
+            <p>Draw smooth strokes or closed loops. Your vertical position dictates pitch; horizontal arc length governs rhythm.</p>
+          </div>
+        </div>
+
+        <!-- Live Status Overlay -->
+        <div class="status-overlay">
+          <div class="stat-pill" id="statStrokes">Strokes: 0</div>
+          <div class="stat-pill" id="statVelocity">Traversing @ Const Velocity</div>
+          <div class="stat-pill" id="statAudio">Audio: Unlocked</div>
+        </div>
+      </main>
+
+      <!-- Math & Algorithm Modal -->
+      <div id="infoModal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2>Algorithm & Mathematical Foundations</h2>
+            <button id="closeModalBtn" class="btn-close">&times;</button>
+          </div>
+          <div class="modal-body">
+            <section>
+              <h3>1. Arc-Length Parameterization Lookup Table (LUT)</h3>
+              <p>Standard cubic Bézier parameterization $t \in [0, 1]$ causes acceleration along flat spans and deceleration around tight bends due to variable derivative magnitude $\|B'(t)\|$.</p>
+              <p>We construct a monotonic lookup table $S[m]$ via composite Simpson's 1/3 quadrature across sub-intervals:</p>
+              <code>Δs ≈ (Δt / 6) · (||B'(t₀)|| + 4||B'(t_mid)|| + ||B'(t₁)||)</code>
+              <p>Playheads advance at exact physical velocity $v$ (px/s). Distance $s^* = (v \cdot \Delta t) \pmod L$ is inverted via <strong>Binary Search</strong> + <strong>Newton-Raphson refinement</strong>:</p>
+              <code>t_refined = t* - [s_k(t*) - targetS] / ||B'_k(t*)||</code>
+            </section>
+
+            <section>
+              <h3>2. Coordinate-to-Pitch Scale Quantizer with Deadband Hysteresis</h3>
+              <p>Standard computer graphics places $(0, 0)$ top-left, while musical frequency increases upwards. Normalized pitch coordinate is inverted:</p>
+              <code>u = clamp(1 - y / H, 0, 1)</code>
+              <p>Continuous scale degree $d_{\text{cont}} = u \cdot (N_{\text{notes}} - 1)$ is mapped through a center snap deadband $w \in [0, 0.5]$:</p>
+              <ul>
+                <li><strong>Solid Strokes:</strong> Rest stably on scale degree centers when horizontal, yet glide smoothly with microtonal portamento during vertical moves.</li>
+                <li><strong>Dotted / Striped Strokes:</strong> Strictly snapped to discrete modal intervals at precise arc-length pulses.</li>
+              </ul>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

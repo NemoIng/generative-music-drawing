@@ -1,0 +1,26 @@
+import { SplinePath, ArcLengthLUT, Point2D, CurveEvaluation } from '../math/types';
+import { DroneVoice } from '../audio/synthVoice';
+import { PitchResult } from '../audio/scaleQuantizer';
+
+export type StrokeStyle = 'solid' | 'dotted' | 'striped';
+
+export interface StrokePlayhead {
+  currentDistance: number;
+  velocity: number; // pixels / second
+  direction: number; // 1 or -1 (for open ping-pong curves)
+  lastTriggerDistance: number;
+  lastEval: CurveEvaluation | null;
+  lastPitch: PitchResult | null;
+  trail: Point2D[];
+}
+
+export interface DrawnStroke {
+  id: string;
+  color: string;
+  style: StrokeStyle;
+  path: SplinePath;
+  lut: ArcLengthLUT;
+  playhead: StrokePlayhead;
+  droneVoice: DroneVoice | null;
+  active: boolean;
+}
