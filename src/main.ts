@@ -8,13 +8,13 @@ import { StrokeStyle } from './engine/types';
 import { soundEngine } from './audio/audioContext';
 import { SplinePath, Point2D } from './math/types';
 
-// DOM Element References
+// DOM Elements
 const canvasEl = document.getElementById('musicCanvas') as HTMLCanvasElement;
 const scaleSelect = document.getElementById('scaleSelect') as HTMLSelectElement;
 const rootSelect = document.getElementById('rootSelect') as HTMLSelectElement;
-const strokeModeButtons = document.querySelectorAll<HTMLButtonElement>('#strokeModeControl .segment');
-const speedSlider = document.getElementById('speedSlider') as HTMLInputElement;
-const speedVal = document.getElementById('speedVal') as HTMLSpanElement;
+const strokeModeButtons = document.querySelectorAll<HTMLButtonElement>('#strokeModeControl .seg-btn');
+const bpmSlider = document.getElementById('bpmSlider') as HTMLInputElement;
+const bpmVal = document.getElementById('bpmVal') as HTMLSpanElement;
 const deadbandSlider = document.getElementById('deadbandSlider') as HTMLInputElement;
 const deadbandVal = document.getElementById('deadbandVal') as HTMLSpanElement;
 const playPauseBtn = document.getElementById('playPauseBtn') as HTMLButtonElement;
@@ -25,8 +25,10 @@ const infoBtn = document.getElementById('infoBtn') as HTMLButtonElement;
 const infoModal = document.getElementById('infoModal') as HTMLDivElement;
 const closeModalBtn = document.getElementById('closeModalBtn') as HTMLButtonElement;
 const audioUnlockPrompt = document.getElementById('audioUnlockPrompt') as HTMLDivElement;
-const statStrokes = document.getElementById('statStrokes') as HTMLDivElement;
-const statAudio = document.getElementById('statAudio') as HTMLDivElement;
+const statStrokes = document.getElementById('statStrokes') as HTMLSpanElement;
+const statTempo = document.getElementById('statTempo') as HTMLSpanElement;
+const statAudio = document.getElementById('statAudio') as HTMLSpanElement;
+const contextHelp = document.getElementById('contextHelp') as HTMLSpanElement;
 
 // Engine State
 const quantizer = new ScaleQuantizer({
@@ -42,16 +44,16 @@ const renderer = new CanvasRenderer(canvasEl);
 let currentStyle: StrokeStyle = 'solid';
 let activeDrawingPoints: Point2D[] = [];
 
+// Refined natural ink color palette for off-white canvas
 const STYLE_COLORS: Record<StrokeStyle, string> = {
-  solid: '#00f2fe',
-  dotted: '#ffb703',
-  striped: '#f72585',
+  solid: '#1e293b',   // Deep slate indigo
+  dotted: '#c2410c',  // Warm terracotta
+  striped: '#0f766e', // Botanical spruce
 };
 
 // Input Handling
 const inputHandler = new InputHandler(canvasEl, {
   onStrokeComplete: (path: SplinePath) => {
-    // Hide initial prompt on first stroke
     audioUnlockPrompt.classList.add('hidden');
 
     const color = STYLE_COLORS[currentStyle];
@@ -64,7 +66,6 @@ const inputHandler = new InputHandler(canvasEl, {
       renderer.height
     );
 
-    // If audio engine just became ready, activate any pending voices
     strokeManager.activateAudioVoices();
     updateStats();
   },
@@ -73,6 +74,27 @@ const inputHandler = new InputHandler(canvasEl, {
   },
 });
 void inputHandler;
+
+// Contextual Hover Descriptions on Bottom Status Bar
+const DEFAULT_HELP = 'Hover over any setting for details • Draw loops or lines on the canvas';
+const tooltipElements = document.querySelectorAll<HTMLElement>('[data-tooltip]');
+
+tooltipElements.forEach((el) => {
+  el.addEventListener('mouseenter', () => {
+    const text = el.getAttribute('data-tooltip');
+    if (text && contextHelp) {
+      contextHelp.textContent = text;
+      contextHelp.style.color = '#1c1917';
+    }
+  });
+
+  el.addEventListener('mouseleave', () => {
+    if (contextHelp) {
+      contextHelp.textContent = DEFAULT_HELP;
+      contextHelp.style.color = 'var(--text-muted)';
+    }
+  });
+});
 
 // UI Event Listeners
 scaleSelect.addEventListener('change', () => {
@@ -100,18 +122,22 @@ strokeModeButtons.forEach((btn) => {
   });
 });
 
-speedSlider.addEventListener('input', () => {
-  const val = parseFloat(speedSlider.value);
-  speedVal.textContent = `${val.toFixed(1)}x`;
-  strokeManager.setVelocityMultiplier(val);
+// BPM Tempo Slider
+bpmSlider.addEventListener('input', () => {
+  const bpm = parseInt(bpmSlider.value, 10);
+  bpmVal.textContent = `${bpm} BPM`;
+  strokeManager.setBpm(bpm);
+  statTempo.textContent = `${bpm} BPM`;
 });
 
+// Deadband Snapping Width Slider
 deadbandSlider.addEventListener('input', () => {
   const val = parseFloat(deadbandSlider.value);
   deadbandVal.textContent = val.toFixed(2);
   quantizer.updateConfig({ deadbandWidth: val });
 });
 
+// Play / Pause Toggle
 playPauseBtn.addEventListener('click', () => {
   const isPaused = !strokeManager.paused;
   strokeManager.setPaused(isPaused);
@@ -142,13 +168,13 @@ infoModal.querySelector('.modal-backdrop')?.addEventListener('click', () => {
   infoModal.classList.add('hidden');
 });
 
-// Unlock audio on any document touch/click
+// Audio Unlock on First Touch/Click
 window.addEventListener('pointerdown', async () => {
   if (!soundEngine.isReady) {
     await soundEngine.init();
     strokeManager.activateAudioVoices();
     statAudio.textContent = 'Audio: Active';
-    statAudio.style.color = '#70a1ff';
+    statAudio.classList.add('chip-ready');
     audioUnlockPrompt.classList.add('hidden');
   }
 }, { once: false });
@@ -158,32 +184,33 @@ window.addEventListener('resize', () => {
 });
 
 function updateStats(): void {
-  statStrokes.textContent = `Strokes: ${strokeManager.activeStrokes.length}`;
+  const count = strokeManager.activeStrokes.length;
+  statStrokes.textContent = `${count} ${count === 1 ? 'stroke' : 'strokes'}`;
 }
 
-// Main Animation & Render Loop
+// Animation & Sequencer Loop
 let lastTimeMs = performance.now();
 
 function animationLoop(nowMs: number): void {
   const dt = Math.min(0.08, (nowMs - lastTimeMs) / 1000);
   lastTimeMs = nowMs;
 
-  // 1. Update Engine (Constant Velocity & Pitch evaluation)
+  // 1. Update constant-velocity playheads and audio
   strokeManager.update(dt, renderer.height, quantizer);
 
-  // 2. Clear canvas
+  // 2. Clear canvas to warm paper tone
   renderer.clear();
 
-  // 3. Render Pitch Grid Guidelines
+  // 3. Render modal scale guidelines
   renderer.drawGuidelines(quantizer.getGuidelines(renderer.height));
 
-  // 4. Render Active Strokes
+  // 4. Render active strokes & playheads
   for (const stroke of strokeManager.activeStrokes) {
     renderer.drawStroke(stroke);
     renderer.drawPlayhead(stroke, nowMs);
   }
 
-  // 5. Render In-Progress Drawing
+  // 5. Render user's active in-flight gesture
   if (activeDrawingPoints.length > 1) {
     renderer.drawActiveGesture(activeDrawingPoints, STYLE_COLORS[currentStyle]);
   }
@@ -191,6 +218,6 @@ function animationLoop(nowMs: number): void {
   requestAnimationFrame(animationLoop);
 }
 
-// Initial resize and start loop
+// Start
 renderer.resize();
 requestAnimationFrame(animationLoop);

@@ -35,14 +35,14 @@ export class CanvasRenderer {
     const w = this.width;
     const h = this.height;
 
-    // Deep modern dark background
-    this.ctx.fillStyle = '#0b0d14';
+    // Elegant light off-white / beige paper background
+    this.ctx.fillStyle = '#faf8f5';
     this.ctx.fillRect(0, 0, w, h);
 
-    // Subtle background ambient vignette
-    const radial = this.ctx.createRadialGradient(w * 0.5, h * 0.5, h * 0.1, w * 0.5, h * 0.5, w * 0.8);
-    radial.addColorStop(0, 'rgba(28, 33, 52, 0.45)');
-    radial.addColorStop(1, 'rgba(11, 13, 20, 0.95)');
+    // Subtle warm paper grain / radial gradient
+    const radial = this.ctx.createRadialGradient(w * 0.5, h * 0.45, h * 0.15, w * 0.5, h * 0.5, w * 0.85);
+    radial.addColorStop(0, '#ffffff');
+    radial.addColorStop(1, '#f4f0e6');
     this.ctx.fillStyle = radial;
     this.ctx.fillRect(0, 0, w, h);
   }
@@ -56,37 +56,39 @@ export class CanvasRenderer {
 
     for (const g of guidelines) {
       this.ctx.beginPath();
-      this.ctx.moveTo(48, g.y);
-      this.ctx.lineTo(w - 48, g.y);
+      this.ctx.moveTo(44, g.y);
+      this.ctx.lineTo(w - 44, g.y);
 
       if (g.isRoot) {
-        this.ctx.strokeStyle = 'rgba(120, 160, 255, 0.28)';
-        this.ctx.lineWidth = 1.5;
+        this.ctx.strokeStyle = 'rgba(68, 64, 60, 0.22)';
+        this.ctx.lineWidth = 1.2;
         this.ctx.setLineDash([]);
       } else {
-        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+        this.ctx.strokeStyle = 'rgba(120, 113, 108, 0.1)';
         this.ctx.lineWidth = 1;
-        this.ctx.setLineDash([4, 6]);
+        this.ctx.setLineDash([3, 5]);
       }
       this.ctx.stroke();
 
       // Note Name on margins
       this.ctx.setLineDash([]);
-      this.ctx.font = g.isRoot ? '600 11px system-ui, sans-serif' : '400 10px system-ui, sans-serif';
-      this.ctx.fillStyle = g.isRoot ? 'rgba(140, 180, 255, 0.9)' : 'rgba(180, 190, 215, 0.4)';
+      this.ctx.font = g.isRoot
+        ? '600 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+        : '400 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+      this.ctx.fillStyle = g.isRoot ? '#292524' : '#a8a29e';
       this.ctx.textAlign = 'right';
       this.ctx.textBaseline = 'middle';
-      this.ctx.fillText(g.noteName, 40, g.y);
+      this.ctx.fillText(g.noteName, 36, g.y);
 
       this.ctx.textAlign = 'left';
-      this.ctx.fillText(`${Math.round(g.frequency)}Hz`, w - 40, g.y);
+      this.ctx.fillText(`${Math.round(g.frequency)}Hz`, w - 36, g.y);
     }
 
     this.ctx.restore();
   }
 
   /**
-   * Renders completed strokes with neon glow and specialized stroke styles.
+   * Renders completed strokes with refined ink-on-paper aesthetics.
    */
   public drawStroke(stroke: DrawnStroke): void {
     const { path, color, style } = stroke;
@@ -105,9 +107,10 @@ export class CanvasRenderer {
       ctx.closePath();
     }
 
-    // Outer glow
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 14;
+    // Subtle natural ink shadow
+    ctx.shadowColor = 'rgba(40, 35, 30, 0.08)';
+    ctx.shadowBlur = 4;
+    ctx.shadowOffsetY = 2;
     ctx.strokeStyle = color;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -117,18 +120,19 @@ export class CanvasRenderer {
       ctx.setLineDash([]);
       ctx.stroke();
 
-      // Bright inner core
+      // Subtle core depth
       ctx.shadowBlur = 0;
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1.2;
+      ctx.shadowOffsetY = 0;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2.0;
       ctx.stroke();
     } else if (style === 'dotted') {
-      ctx.lineWidth = 4;
-      ctx.setLineDash([3, 16]);
+      ctx.lineWidth = 3.5;
+      ctx.setLineDash([2, 14]);
       ctx.stroke();
     } else if (style === 'striped') {
-      ctx.lineWidth = 3.5;
-      ctx.setLineDash([14, 10]);
+      ctx.lineWidth = 3.0;
+      ctx.setLineDash([12, 8]);
       ctx.stroke();
     }
 
@@ -136,7 +140,7 @@ export class CanvasRenderer {
   }
 
   /**
-   * Draws animated constant-velocity playhead with trail, acoustic glow ring, and HUD badge.
+   * Draws animated constant-velocity playhead with trail, acoustic pulse, and clean minimal HUD tag.
    */
   public drawPlayhead(stroke: DrawnStroke, nowMs: number): void {
     const ph = stroke.playhead;
@@ -146,67 +150,75 @@ export class CanvasRenderer {
     const ctx = this.ctx;
     ctx.save();
 
-    // 1. Motion Trail (Comet tail)
+    // 1. Motion Trail
     if (ph.trail.length > 1) {
       for (let i = 0; i < ph.trail.length - 1; i++) {
         const ptA = ph.trail[i];
         const ptB = ph.trail[i + 1];
-        const alpha = (1 - i / ph.trail.length) * 0.55;
+        const alpha = (1 - i / ph.trail.length) * 0.45;
 
         ctx.beginPath();
         ctx.moveTo(ptA.x, ptA.y);
         ctx.lineTo(ptB.x, ptB.y);
         ctx.strokeStyle = stroke.color;
         ctx.globalAlpha = alpha;
-        ctx.lineWidth = 3 * (1 - i / ph.trail.length);
+        ctx.lineWidth = 2.5 * (1 - i / ph.trail.length);
         ctx.lineCap = 'round';
         ctx.stroke();
       }
     }
     ctx.globalAlpha = 1.0;
 
-    // 2. Playhead Acoustic Pulse Halo
-    const pulsePhase = (nowMs % 1200) / 1200;
-    const pulseRadius = 7 + pulsePhase * 16;
-    const pulseAlpha = (1 - pulsePhase) * 0.6;
+    // 2. Playhead Acoustic Pulse Ring
+    const pulsePhase = (nowMs % 1400) / 1400;
+    const pulseRadius = 6 + pulsePhase * 14;
+    const pulseAlpha = (1 - pulsePhase) * 0.45;
 
     ctx.beginPath();
     ctx.arc(x, y, pulseRadius, 0, Math.PI * 2);
     ctx.strokeStyle = stroke.color;
     ctx.globalAlpha = pulseAlpha;
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 1.2;
     ctx.stroke();
     ctx.globalAlpha = 1.0;
 
-    // 3. Playhead Center Core
-    ctx.shadowColor = '#ffffff';
-    ctx.shadowBlur = 16;
-    ctx.beginPath();
-    ctx.arc(x, y, 6, 0, Math.PI * 2);
-    ctx.fillStyle = '#ffffff';
-    ctx.fill();
+    // 3. Playhead Center Bead
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.15)';
+    ctx.shadowBlur = 6;
+    ctx.shadowOffsetY = 1;
 
-    ctx.shadowBlur = 0;
     ctx.beginPath();
-    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.arc(x, y, 5.5, 0, Math.PI * 2);
     ctx.fillStyle = stroke.color;
     ctx.fill();
 
-    // 4. Floating HUD Badge (Pitch & Frequency)
-    if (ph.lastPitch) {
-      const badgeText = `${ph.lastPitch.noteName} • ${Math.round(ph.lastPitch.frequency)}Hz`;
-      const badgeX = x + 14;
-      const badgeY = y - 18;
+    // Clean white core dot
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
+    ctx.beginPath();
+    ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
 
-      ctx.font = '500 11px system-ui, -apple-system, sans-serif';
+    // 4. Clean Minimalist Note Tag
+    if (ph.lastPitch) {
+      const badgeText = `${ph.lastPitch.noteName} · ${Math.round(ph.lastPitch.frequency)}Hz`;
+      const badgeX = x + 12;
+      const badgeY = y - 16;
+
+      ctx.font = '500 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
       const textWidth = ctx.measureText(badgeText).width;
       const padding = 6;
       const boxW = textWidth + padding * 2;
       const boxH = 18;
 
-      // Badge Background
-      ctx.fillStyle = 'rgba(15, 20, 30, 0.85)';
-      ctx.strokeStyle = ph.lastPitch.isSnapped ? stroke.color : 'rgba(255, 255, 255, 0.4)';
+      // Paper card tag
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.08)';
+      ctx.shadowBlur = 6;
+      ctx.shadowOffsetY = 2;
+
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = ph.lastPitch.isSnapped ? stroke.color : '#d6d3cd';
       ctx.lineWidth = 1;
 
       ctx.beginPath();
@@ -214,8 +226,10 @@ export class CanvasRenderer {
       ctx.fill();
       ctx.stroke();
 
-      // Badge Text
-      ctx.fillStyle = '#f0f4ff';
+      // Clean typography
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetY = 0;
+      ctx.fillStyle = '#1c1917';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillText(badgeText, badgeX + padding, badgeY - 3);
@@ -225,7 +239,7 @@ export class CanvasRenderer {
   }
 
   /**
-   * Draws active drawing stroke while user holds down pointer.
+   * Draws active drawing stroke while user drags pointer.
    */
   public drawActiveGesture(points: Point2D[], color: string): void {
     if (points.length < 2) return;
@@ -239,17 +253,15 @@ export class CanvasRenderer {
     }
 
     ctx.strokeStyle = color;
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 2.0;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 8;
     ctx.setLineDash([4, 4]);
     ctx.stroke();
 
-    // Start anchor indicator
+    // Origin dot
     ctx.beginPath();
-    ctx.arc(points[0].x, points[0].y, 4, 0, Math.PI * 2);
+    ctx.arc(points[0].x, points[0].y, 3.5, 0, Math.PI * 2);
     ctx.fillStyle = color;
     ctx.fill();
 

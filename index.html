@@ -8,136 +8,169 @@
   </head>
   <body>
     <div id="app">
-      <!-- Top Header & Controls Panel -->
+      <!-- Minimalist Top Navigation & Controls -->
       <header class="top-bar">
         <div class="brand">
-          <div class="logo-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <div class="logo-mark">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
               <path d="M9 18V5l12-2v13"></path>
               <circle cx="6" cy="18" r="3"></circle>
               <circle cx="18" cy="16" r="3"></circle>
             </svg>
           </div>
-          <div class="title-group">
+          <div class="brand-text">
             <h1>Harmonic Geometry</h1>
-            <span class="subtitle">Arc-Length Splines & Modal Pitch Quantization</span>
+            <span class="brand-sub">generative music score</span>
           </div>
         </div>
 
-        <div class="controls-cluster">
+        <nav class="controls-bar">
           <!-- Scale Selector -->
-          <div class="control-item">
-            <label for="scaleSelect">Scale / Mode</label>
-            <select id="scaleSelect" class="styled-select">
-              <option value="dorian" selected>Dorian Mode</option>
-              <option value="lydian">Lydian Mode</option>
-              <option value="minorPentatonic">Minor Pentatonic</option>
-              <option value="majorPentatonic">Major Pentatonic</option>
-              <option value="aeolian">Aeolian (Minor)</option>
-            </select>
+          <div class="control-group has-tooltip" data-tooltip="Modal Scale: Sets the musical intervals. Dorian and Lydian evoke ambient warmth; Pentatonics guarantee consonant harmony.">
+            <label for="scaleSelect">Scale</label>
+            <div class="select-wrapper">
+              <select id="scaleSelect" class="minimal-select">
+                <option value="dorian" selected>Dorian</option>
+                <option value="lydian">Lydian</option>
+                <option value="minorPentatonic">Minor Pentatonic</option>
+                <option value="majorPentatonic">Major Pentatonic</option>
+                <option value="aeolian">Aeolian (Minor)</option>
+              </select>
+            </div>
           </div>
 
           <!-- Root Tuning -->
-          <div class="control-item">
-            <label for="rootSelect">Root Pitch</label>
-            <select id="rootSelect" class="styled-select">
-              <option value="D2" selected>D2 (73.4 Hz)</option>
-              <option value="E2">E2 (82.4 Hz)</option>
-              <option value="F2">F2 (87.3 Hz)</option>
-              <option value="G2">G2 (98.0 Hz)</option>
-              <option value="A2">A2 (110.0 Hz)</option>
-              <option value="C3">C3 (130.8 Hz)</option>
-            </select>
+          <div class="control-group has-tooltip" data-tooltip="Root Pitch: The fundamental base tuning frequency aligned with the bottom of the canvas (D2 ≈ 73.4 Hz).">
+            <label for="rootSelect">Root</label>
+            <div class="select-wrapper">
+              <select id="rootSelect" class="minimal-select">
+                <option value="D2" selected>D2 (73 Hz)</option>
+                <option value="E2">E2 (82 Hz)</option>
+                <option value="F2">F2 (87 Hz)</option>
+                <option value="G2">G2 (98 Hz)</option>
+                <option value="A2">A2 (110 Hz)</option>
+                <option value="C3">C3 (131 Hz)</option>
+              </select>
+            </div>
           </div>
 
-          <!-- Stroke Style Segmented Button -->
-          <div class="control-item">
+          <!-- Stroke Style Segmented Switch -->
+          <div class="control-group">
             <label>Stroke Texture</label>
-            <div class="segmented-control" id="strokeModeControl">
-              <button type="button" class="segment active" data-style="solid" title="Continuous Drone with Portamento & Hysteresis">
-                <span class="icon-dot solid"></span> Solid Drone
+            <div class="segmented-switch" id="strokeModeControl">
+              <button
+                type="button"
+                class="seg-btn active has-tooltip"
+                data-style="solid"
+                data-tooltip="Solid Drone: Continuous ambient voice with deadband pitch-locking and curvature-modulated filter cutoff."
+              >
+                <span class="texture-indicator solid"></span> Solid
               </button>
-              <button type="button" class="segment" data-style="dotted" title="Staccato Chimes snapped to scale intervals">
-                <span class="icon-dot dotted"></span> Dotted Chime
+              <button
+                type="button"
+                class="seg-btn has-tooltip"
+                data-style="dotted"
+                data-tooltip="Dotted Chime: Acoustic bell staccato pulses triggered at eighth-note intervals, snapped to discrete scale notes."
+              >
+                <span class="texture-indicator dotted"></span> Dotted
               </button>
-              <button type="button" class="segment" data-style="striped" title="Rhythmic Pulse Bursts">
-                <span class="icon-dot striped"></span> Striped Pulse
+              <button
+                type="button"
+                class="seg-btn has-tooltip"
+                data-style="striped"
+                data-tooltip="Striped Pulse: Rhythmic percussive bursts triggered at sixteenth-note subdivisions along the curve."
+              >
+                <span class="texture-indicator striped"></span> Striped
               </button>
             </div>
           </div>
 
-          <!-- Speed Slider -->
-          <div class="control-item slider-item">
-            <label for="speedSlider">Speed: <span id="speedVal">1.0x</span></label>
-            <input type="range" id="speedSlider" min="0.4" max="2.5" step="0.1" value="1.0" class="styled-slider" />
+          <!-- Tempo Slider (BPM) -->
+          <div class="control-group slider-group has-tooltip" data-tooltip="Tempo (BPM): Governs playhead traversal velocity. 1 beat (quarter note) = 80px arc-length distance.">
+            <div class="slider-header">
+              <label for="bpmSlider">Tempo</label>
+              <span id="bpmVal" class="value-badge">100 BPM</span>
+            </div>
+            <input type="range" id="bpmSlider" min="40" max="200" step="2" value="100" class="minimal-slider" />
           </div>
 
-          <!-- Deadband Width Slider -->
-          <div class="control-item slider-item">
-            <label for="deadbandSlider">Snap Deadband: <span id="deadbandVal">0.25</span></label>
-            <input type="range" id="deadbandSlider" min="0.05" max="0.45" step="0.05" value="0.25" class="styled-slider" />
+          <!-- Snap Deadband Width -->
+          <div class="control-group slider-group has-tooltip" data-tooltip="Snap Deadband (w): Pitch-lock tolerance. High values keep horizontal lines locked on-key; low values allow free microtonal glides.">
+            <div class="slider-header">
+              <label for="deadbandSlider">Deadband</label>
+              <span id="deadbandVal" class="value-badge">0.25</span>
+            </div>
+            <input type="range" id="deadbandSlider" min="0.05" max="0.45" step="0.05" value="0.25" class="minimal-slider" />
           </div>
 
-          <!-- Master Action Buttons -->
-          <div class="action-buttons">
-            <button id="playPauseBtn" class="btn btn-action" title="Play / Pause Audio & Playheads">
+          <!-- Action Buttons -->
+          <div class="actions-group">
+            <button id="playPauseBtn" class="action-btn has-tooltip" data-tooltip="Play / Pause: Toggle playhead motion and active audio voices.">
               <span id="playPauseIcon">⏸</span> <span id="playPauseText">Pause</span>
             </button>
-            <button id="clearBtn" class="btn btn-danger" title="Clear all strokes">
+            <button id="clearBtn" class="action-btn text-danger has-tooltip" data-tooltip="Clear Canvas: Remove all drawn curves and stop synthesizer voices.">
               Clear
             </button>
-            <button id="infoBtn" class="btn btn-secondary" title="View Algorithm & Math Info">
-              Math Info
+            <button id="infoBtn" class="action-btn text-muted has-tooltip" data-tooltip="Algorithm & Math: View equations for Arc-Length Simpson LUT and Scale Hysteresis.">
+              Math
             </button>
           </div>
-        </div>
+        </nav>
       </header>
 
       <!-- Drawing Canvas Area -->
       <main class="canvas-container">
         <canvas id="musicCanvas"></canvas>
-        <div id="audioUnlockPrompt" class="audio-prompt">
-          <div class="prompt-card">
-            <div class="prompt-icon">✨</div>
-            <h3>Click or Draw Anywhere to Begin</h3>
-            <p>Draw smooth strokes or closed loops. Your vertical position dictates pitch; horizontal arc length governs rhythm.</p>
+
+        <!-- Initial Gentle Invitation Banner -->
+        <div id="audioUnlockPrompt" class="welcome-banner">
+          <div class="welcome-card">
+            <h3>Draw on the canvas to begin</h3>
+            <p>Vertical height governs pitch • Arc-length governs rhythm</p>
+            <span class="hint-small">Close a loop or draw open curves</span>
           </div>
         </div>
 
-        <!-- Live Status Overlay -->
-        <div class="status-overlay">
-          <div class="stat-pill" id="statStrokes">Strokes: 0</div>
-          <div class="stat-pill" id="statVelocity">Traversing @ Const Velocity</div>
-          <div class="stat-pill" id="statAudio">Audio: Unlocked</div>
-        </div>
+        <!-- Minimal Bottom Status Bar with Contextual Hover Description -->
+        <footer class="bottom-bar">
+          <div class="status-left">
+            <span id="statStrokes" class="status-chip">0 strokes</span>
+            <span id="statTempo" class="status-chip">100 BPM</span>
+            <span id="statVelocity" class="status-chip">Constant velocity</span>
+            <span id="statAudio" class="status-chip chip-ready">Audio ready</span>
+          </div>
+          <div class="status-right">
+            <span id="contextHelp" class="context-help">Hover over any setting for details • Draw loops or lines</span>
+          </div>
+        </footer>
       </main>
 
       <!-- Math & Algorithm Modal -->
       <div id="infoModal" class="modal hidden">
         <div class="modal-backdrop"></div>
-        <div class="modal-content">
-          <div class="modal-header">
-            <h2>Algorithm & Mathematical Foundations</h2>
-            <button id="closeModalBtn" class="btn-close">&times;</button>
+        <div class="modal-card">
+          <div class="modal-head">
+            <h2>Mathematical Specifications</h2>
+            <button id="closeModalBtn" class="close-btn" aria-label="Close modal">&times;</button>
           </div>
-          <div class="modal-body">
+          <div class="modal-content">
             <section>
               <h3>1. Arc-Length Parameterization Lookup Table (LUT)</h3>
-              <p>Standard cubic Bézier parameterization $t \in [0, 1]$ causes acceleration along flat spans and deceleration around tight bends due to variable derivative magnitude $\|B'(t)\|$.</p>
-              <p>We construct a monotonic lookup table $S[m]$ via composite Simpson's 1/3 quadrature across sub-intervals:</p>
-              <code>Δs ≈ (Δt / 6) · (||B'(t₀)|| + 4||B'(t_mid)|| + ||B'(t₁)||)</code>
-              <p>Playheads advance at exact physical velocity $v$ (px/s). Distance $s^* = (v \cdot \Delta t) \pmod L$ is inverted via <strong>Binary Search</strong> + <strong>Newton-Raphson refinement</strong>:</p>
-              <code>t_refined = t* - [s_k(t*) - targetS] / ||B'_k(t*)||</code>
+              <p>Bézier splines parameterized by naive $t \in [0, 1]$ accelerate on flat sections and decelerate in tight bends because the first derivative magnitude $\|B'(t)\|$ varies along the curve.</p>
+              <p>To achieve uniform velocity traversal at a given musical tempo ($v = \text{BPM} \cdot \frac{80\text{px}}{60\text{s}}$), we construct a monotonic cumulative arc-length table $S[m]$ using <strong>composite Simpson's 1/3 quadrature</strong>:</p>
+              <pre><code>Δs ≈ (Δt / 6) · (||B'(t₀)|| + 4||B'(t_mid)|| + ||B'(t₁)||)</code></pre>
+              <p>Target distance $s^* = (v \cdot \Delta t) \pmod L$ is inverted using binary search, linear parameter interpolation, and a <strong>Newton-Raphson refinement step</strong>:</p>
+              <pre><code>t_refined = t* - [s_k(t*) - targetS] / ||B'_k(t*)||</code></pre>
             </section>
 
             <section>
               <h3>2. Coordinate-to-Pitch Scale Quantizer with Deadband Hysteresis</h3>
-              <p>Standard computer graphics places $(0, 0)$ top-left, while musical frequency increases upwards. Normalized pitch coordinate is inverted:</p>
-              <code>u = clamp(1 - y / H, 0, 1)</code>
-              <p>Continuous scale degree $d_{\text{cont}} = u \cdot (N_{\text{notes}} - 1)$ is mapped through a center snap deadband $w \in [0, 0.5]$:</p>
+              <p>Standard graphics places $(0, 0)$ top-left, while musical frequency increases upwards. Normalized pitch coordinate is inverted:</p>
+              <pre><code>u = clamp(1 - y / H, 0, 1),   d_cont = u · (N_notes - 1)</code></pre>
+              <p>Continuous scale degree $d_{\text{cont}}$ passes through center-locking deadband hysteresis ($w \in [0, 0.5]$):</p>
               <ul>
-                <li><strong>Solid Strokes:</strong> Rest stably on scale degree centers when horizontal, yet glide smoothly with microtonal portamento during vertical moves.</li>
-                <li><strong>Dotted / Striped Strokes:</strong> Strictly snapped to discrete modal intervals at precise arc-length pulses.</li>
+                <li><strong>Solid Strokes:</strong> Rest comfortably in-tune on horizontal lines, while gliding with smooth microtonal portamento during vertical moves.</li>
+                <li><strong>Dotted / Striped Strokes:</strong> Strictly snapped to discrete modal scale intervals at synchronized eighth- and sixteenth-note pulses.</li>
               </ul>
             </section>
           </div>

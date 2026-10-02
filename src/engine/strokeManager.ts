@@ -9,10 +9,16 @@ import { DrawnStroke, StrokeStyle } from './types';
 export class StrokeManager {
   private strokes: DrawnStroke[] = [];
   private isPaused = false;
-  private velocityMultiplier = 1.0;
+  private bpm = 100;
+  /** Pixel distance representing one quarter note beat */
+  public static readonly BEAT_DISTANCE = 80;
 
   public get activeStrokes(): ReadonlyArray<DrawnStroke> {
     return this.strokes;
+  }
+
+  public get currentBpm(): number {
+    return this.bpm;
   }
 
   public get paused(): boolean {
@@ -38,8 +44,12 @@ export class StrokeManager {
     }
   }
 
+  public setBpm(bpm: number): void {
+    this.bpm = Math.max(30, Math.min(240, bpm));
+  }
+
   public setVelocityMultiplier(mult: number): void {
-    this.velocityMultiplier = Math.max(0.1, Math.min(4.0, mult));
+    this.bpm = Math.round(100 * mult);
   }
 
   public addStroke(
@@ -112,9 +122,12 @@ export class StrokeManager {
   public update(dt: number, canvasHeight: number, quantizer: ScaleQuantizer): void {
     if (this.isPaused || dt <= 0) return;
 
-    // Dot and stripe spacing intervals along arc length in pixels
-    const DOT_SPACING = 38;
-    const STRIPE_SPACING = 20;
+    // Synchronized rhythmic subdivisions (80px = quarter note)
+    const DOT_SPACING = 40;   // 1/8th note (2 triggers per beat)
+    const STRIPE_SPACING = 20; // 1/16th note (4 triggers per beat)
+
+    // Constant traversal velocity in pixels/second
+    const speed = (this.bpm / 60) * StrokeManager.BEAT_DISTANCE;
 
     for (const stroke of this.strokes) {
       if (!stroke.active) continue;
@@ -123,7 +136,6 @@ export class StrokeManager {
       if (L <= 1) continue;
 
       const ph = stroke.playhead;
-      const speed = ph.velocity * this.velocityMultiplier;
       const deltaDist = ph.direction * speed * dt;
       const prevDist = ph.currentDistance;
       let nextDist = prevDist + deltaDist;
