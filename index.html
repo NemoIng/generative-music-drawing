@@ -25,6 +25,66 @@
         </div>
 
         <nav class="controls-bar">
+          <!-- Interaction Tool Mode: Draw vs Edit -->
+          <div class="control-group">
+            <label>Mode</label>
+            <div class="segmented-switch" id="toolModeControl">
+              <button
+                type="button"
+                class="seg-btn active has-tooltip"
+                data-mode="draw"
+                data-tooltip="Draw Mode (D): Click and drag on the canvas to draw new musical spline curves."
+              >
+                Draw
+              </button>
+              <button
+                type="button"
+                class="seg-btn has-tooltip"
+                data-mode="edit"
+                data-tooltip="Edit Mode (V): Click any line to select it; drag to reposition across the canvas. Press Backspace to delete."
+              >
+                Select / Move
+              </button>
+            </div>
+          </div>
+
+          <!-- Sound Palette Selector -->
+          <div class="control-group has-tooltip" data-tooltip="Sound Palette: Selects acoustic and synthesizer models for drone, chime, and pulse textures.">
+            <label for="paletteSelect">Sound</label>
+            <div class="select-wrapper">
+              <select id="paletteSelect" class="minimal-select">
+                <option value="celestial" selected>Celestial Glass</option>
+                <option value="zen">Zen Acoustic</option>
+                <option value="analog">Analog Modular</option>
+                <option value="strings">Physical Strings</option>
+                <option value="deepspace">Deep Space</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Traversal Setting: Restart vs Ping-Pong -->
+          <div class="control-group">
+            <label>Traversal</label>
+            <div class="segmented-switch" id="traversalControl">
+              <button
+                type="button"
+                class="seg-btn active has-tooltip"
+                data-traversal="restart"
+                data-tooltip="Restart (One-Way): Curves always start at the beginning and end at the destination, then restart from the start point without reversing."
+              >
+                Restart ↻
+              </button>
+              <button
+                type="button"
+                class="seg-btn has-tooltip"
+                data-traversal="pingpong"
+                data-tooltip="Ping-Pong (Bounce): Playhead bounces back and forth between the start and end points."
+              >
+                Ping-Pong ⇄
+              </button>
+            </div>
+          </div>
+
           <!-- Scale Selector -->
           <div class="control-group has-tooltip" data-tooltip="Modal Scale: Sets the musical intervals. Dorian and Lydian evoke ambient warmth; Pentatonics guarantee consonant harmony.">
             <label for="scaleSelect">Scale</label>
@@ -56,13 +116,13 @@
 
           <!-- Stroke Style Segmented Switch -->
           <div class="control-group">
-            <label>Stroke Texture</label>
+            <label>Texture</label>
             <div class="segmented-switch" id="strokeModeControl">
               <button
                 type="button"
                 class="seg-btn active has-tooltip"
                 data-style="solid"
-                data-tooltip="Solid Drone: Continuous ambient voice with deadband pitch-locking and curvature-modulated filter cutoff."
+                data-tooltip="Solid Drone: Continuous voice with deadband pitch-locking and curvature-modulated filter cutoff."
               >
                 <span class="texture-indicator solid"></span> Solid
               </button>
@@ -70,7 +130,7 @@
                 type="button"
                 class="seg-btn has-tooltip"
                 data-style="dotted"
-                data-tooltip="Dotted Chime: Acoustic bell staccato pulses triggered at eighth-note intervals, snapped to discrete scale notes."
+                data-tooltip="Dotted Chime: Acoustic bell staccato pulses triggered at eighth-note intervals, snapped to scale notes."
               >
                 <span class="texture-indicator dotted"></span> Dotted
               </button>
@@ -105,7 +165,10 @@
 
           <!-- Action Buttons -->
           <div class="actions-group">
-            <button id="playPauseBtn" class="action-btn has-tooltip" data-tooltip="Play / Pause: Toggle playhead motion and active audio voices.">
+            <button id="undoBtn" class="action-btn has-tooltip" data-tooltip="Undo (⌘Z / Ctrl+Z): Undo last drawn stroke or line translation.">
+              Undo
+            </button>
+            <button id="playPauseBtn" class="action-btn has-tooltip" data-tooltip="Play / Pause (Spacebar): Toggle playhead motion and active audio voices.">
               <span id="playPauseIcon">⏸</span> <span id="playPauseText">Pause</span>
             </button>
             <button id="clearBtn" class="action-btn text-danger has-tooltip" data-tooltip="Clear Canvas: Remove all drawn curves and stop synthesizer voices.">
@@ -127,20 +190,21 @@
           <div class="welcome-card">
             <h3>Draw on the canvas to begin</h3>
             <p>Vertical height governs pitch • Arc-length governs rhythm</p>
-            <span class="hint-small">Close a loop or draw open curves</span>
+            <span class="hint-small">Close loops or draw open lines • Switch to Select to move lines</span>
           </div>
         </div>
 
-        <!-- Minimal Bottom Status Bar with Contextual Hover Description -->
+        <!-- Minimal Bottom Status Bar with Contextual Hover Description & Shortcuts -->
         <footer class="bottom-bar">
           <div class="status-left">
             <span id="statStrokes" class="status-chip">0 strokes</span>
+            <span id="statMode" class="status-chip">Draw Mode</span>
             <span id="statTempo" class="status-chip">100 BPM</span>
-            <span id="statVelocity" class="status-chip">Constant velocity</span>
+            <span id="statPalette" class="status-chip">Celestial Glass</span>
             <span id="statAudio" class="status-chip chip-ready">Audio ready</span>
           </div>
           <div class="status-right">
-            <span id="contextHelp" class="context-help">Hover over any setting for details • Draw loops or lines</span>
+            <span id="contextHelp" class="context-help">Hover over any setting for details • Space: Pause • ⌘Z: Undo • V: Select/Move</span>
           </div>
         </footer>
       </main>

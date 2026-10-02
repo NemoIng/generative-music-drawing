@@ -107,16 +107,27 @@ export class CanvasRenderer {
       ctx.closePath();
     }
 
-    // Subtle natural ink shadow
-    ctx.shadowColor = 'rgba(40, 35, 30, 0.08)';
-    ctx.shadowBlur = 4;
-    ctx.shadowOffsetY = 2;
+    // Outer glow / ink depth
+    if (stroke.selected) {
+      ctx.shadowColor = 'rgba(37, 99, 235, 0.35)';
+      ctx.shadowBlur = 12;
+      ctx.shadowOffsetY = 0;
+    } else if (stroke.hovered) {
+      ctx.shadowColor = 'rgba(37, 99, 235, 0.2)';
+      ctx.shadowBlur = 8;
+      ctx.shadowOffsetY = 0;
+    } else {
+      ctx.shadowColor = 'rgba(40, 35, 30, 0.08)';
+      ctx.shadowBlur = 4;
+      ctx.shadowOffsetY = 2;
+    }
+
     ctx.strokeStyle = color;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
     if (style === 'solid') {
-      ctx.lineWidth = 3.5;
+      ctx.lineWidth = stroke.selected ? 4.5 : 3.5;
       ctx.setLineDash([]);
       ctx.stroke();
 
@@ -124,16 +135,43 @@ export class CanvasRenderer {
       ctx.shadowBlur = 0;
       ctx.shadowOffsetY = 0;
       ctx.strokeStyle = color;
-      ctx.lineWidth = 2.0;
+      ctx.lineWidth = stroke.selected ? 2.5 : 2.0;
       ctx.stroke();
     } else if (style === 'dotted') {
-      ctx.lineWidth = 3.5;
+      ctx.lineWidth = stroke.selected ? 4.5 : 3.5;
       ctx.setLineDash([2, 14]);
       ctx.stroke();
     } else if (style === 'striped') {
-      ctx.lineWidth = 3.0;
+      ctx.lineWidth = stroke.selected ? 4.0 : 3.0;
       ctx.setLineDash([12, 8]);
       ctx.stroke();
+    }
+
+    // Selection Anchor Rings
+    if (stroke.selected && path.segments.length > 0) {
+      ctx.shadowBlur = 0;
+      const startPt = path.segments[0].p0;
+      const endPt = path.segments[path.segments.length - 1].p3;
+
+      // Start Handle
+      ctx.beginPath();
+      ctx.arc(startPt.x, startPt.y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#2563eb';
+      ctx.stroke();
+
+      // End Handle (if not closed)
+      if (!path.isClosed) {
+        ctx.beginPath();
+        ctx.arc(endPt.x, endPt.y, 5, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#2563eb';
+        ctx.stroke();
+      }
     }
 
     ctx.restore();

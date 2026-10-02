@@ -3,13 +3,17 @@ import { ScaleQuantizer } from './audio/scaleQuantizer';
 import { SCALES, ROOT_NOTES } from './audio/scales';
 import { StrokeManager } from './engine/strokeManager';
 import { CanvasRenderer } from './canvas/renderer';
-import { InputHandler } from './canvas/inputHandler';
-import { StrokeStyle } from './engine/types';
+import { InputHandler, InteractionMode } from './canvas/inputHandler';
+import { StrokeStyle, TraversalMode } from './engine/types';
+import { SOUND_PALETTES, SoundPaletteId } from './audio/soundPalettes';
 import { soundEngine } from './audio/audioContext';
 import { SplinePath, Point2D } from './math/types';
 
 // DOM Elements
 const canvasEl = document.getElementById('musicCanvas') as HTMLCanvasElement;
+const toolModeButtons = document.querySelectorAll<HTMLButtonElement>('#toolModeControl .seg-btn');
+const paletteSelect = document.getElementById('paletteSelect') as HTMLSelectElement;
+const traversalButtons = document.querySelectorAll<HTMLButtonElement>('#traversalControl .seg-btn');
 const scaleSelect = document.getElementById('scaleSelect') as HTMLSelectElement;
 const rootSelect = document.getElementById('rootSelect') as HTMLSelectElement;
 const strokeModeButtons = document.querySelectorAll<HTMLButtonElement>('#strokeModeControl .seg-btn');
@@ -17,6 +21,7 @@ const bpmSlider = document.getElementById('bpmSlider') as HTMLInputElement;
 const bpmVal = document.getElementById('bpmVal') as HTMLSpanElement;
 const deadbandSlider = document.getElementById('deadbandSlider') as HTMLInputElement;
 const deadbandVal = document.getElementById('deadbandVal') as HTMLSpanElement;
+const undoBtn = document.getElementById('undoBtn') as HTMLButtonElement;
 const playPauseBtn = document.getElementById('playPauseBtn') as HTMLButtonElement;
 const playPauseIcon = document.getElementById('playPauseIcon') as HTMLSpanElement;
 const playPauseText = document.getElementById('playPauseText') as HTMLSpanElement;
@@ -26,7 +31,9 @@ const infoModal = document.getElementById('infoModal') as HTMLDivElement;
 const closeModalBtn = document.getElementById('closeModalBtn') as HTMLButtonElement;
 const audioUnlockPrompt = document.getElementById('audioUnlockPrompt') as HTMLDivElement;
 const statStrokes = document.getElementById('statStrokes') as HTMLSpanElement;
+const statMode = document.getElementById('statMode') as HTMLSpanElement;
 const statTempo = document.getElementById('statTempo') as HTMLSpanElement;
+const statPalette = document.getElementById('statPalette') as HTMLSpanElement;
 const statAudio = document.getElementById('statAudio') as HTMLSpanElement;
 const contextHelp = document.getElementById('contextHelp') as HTMLSpanElement;
 
@@ -51,8 +58,9 @@ const STYLE_COLORS: Record<StrokeStyle, string> = {
   striped: '#0f766e', // Botanical spruce
 };
 
-// Input Handling
+// Input Handling with Draw / Edit modes
 const inputHandler = new InputHandler(canvasEl, {
+  strokeManager,
   onStrokeComplete: (path: SplinePath) => {
     audioUnlockPrompt.classList.add('hidden');
 
@@ -73,10 +81,47 @@ const inputHandler = new InputHandler(canvasEl, {
     activeDrawingPoints = points;
   },
 });
-void inputHandler;
 
-// Contextual Hover Descriptions on Bottom Status Bar
-const DEFAULT_HELP = 'Hover over any setting for details • Draw loops or lines on the canvas';
+// Tool Mode Switching (Draw vs Select/Move)
+function setToolMode(mode: InteractionMode): void {
+  inputHandler.setMode(mode);
+  toolModeButtons.forEach((b) => {
+    b.classList.toggle('active', b.getAttribute('data-mode') === mode);
+  });
+  statMode.textContent = mode === 'edit' ? 'Select / Move' : 'Draw Mode';
+}
+
+toolModeButtons.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const mode = btn.getAttribute('data-mode') as InteractionMode;
+    if (mode) setToolMode(mode);
+  });
+});
+
+// Sound Palette Selection
+paletteSelect.addEventListener('change', () => {
+  const pId = paletteSelect.value as SoundPaletteId;
+  const palette = SOUND_PALETTES[pId];
+  if (palette) {
+    strokeManager.setSoundPalette(palette);
+    statPalette.textContent = palette.name;
+  }
+});
+
+// Traversal Mode Switching (Restart vs Ping-Pong)
+traversalButtons.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    traversalButtons.forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    const mode = btn.getAttribute('data-traversal') as TraversalMode;
+    if (mode) {
+      strokeManager.setTraversalMode(mode);
+    }
+  });
+});
+
+// Contextual Hover Descriptions
+const DEFAULT_HELP = 'Hover over any setting for details • Space: Pause • ⌘Z: Undo • V: Select/Move • D: Draw';
 const tooltipElements = document.querySelectorAll<HTMLElement>('[data-tooltip]');
 
 tooltipElements.forEach((el) => {
@@ -96,7 +141,7 @@ tooltipElements.forEach((el) => {
   });
 });
 
-// UI Event Listeners
+// Musical Scale and Root Listeners
 scaleSelect.addEventListener('change', () => {
   const scale = SCALES[scaleSelect.value];
   if (scale) {
@@ -138,7 +183,7 @@ deadbandSlider.addEventListener('input', () => {
 });
 
 // Play / Pause Toggle
-playPauseBtn.addEventListener('click', () => {
+function togglePlayPause(): void {
   const isPaused = !strokeManager.paused;
   strokeManager.setPaused(isPaused);
 
@@ -149,6 +194,14 @@ playPauseBtn.addEventListener('click', () => {
     playPauseIcon.textContent = '⏸';
     playPauseText.textContent = 'Pause';
   }
+}
+
+playPauseBtn.addEventListener('click', togglePlayPause);
+
+// Undo Action
+undoBtn.addEventListener('click', () => {
+  strokeManager.undo();
+  updateStats();
 });
 
 clearBtn.addEventListener('click', () => {
@@ -168,7 +221,59 @@ infoModal.querySelector('.modal-backdrop')?.addEventListener('click', () => {
   infoModal.classList.add('hidden');
 });
 
-// Audio Unlock on First Touch/Click
+// Global Keyboard Shortcuts
+window.addEventListener('keydown', (e: KeyboardEvent) => {
+  // Ignore shortcuts if focusing a select or modal text
+  const targetTag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+  if (targetTag === 'input' || targetTag === 'select' || targetTag === 'textarea') {
+    return;
+  }
+
+  // 1. Spacebar: Play / Pause
+  if (e.code === 'Space') {
+    e.preventDefault();
+    togglePlayPause();
+    return;
+  }
+
+  // 2. Undo / Redo: Cmd+Z, Ctrl+Z, Cmd+Shift+Z, Ctrl+Y
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+    e.preventDefault();
+    if (e.shiftKey) {
+      strokeManager.redo();
+    } else {
+      strokeManager.undo();
+    }
+    updateStats();
+    return;
+  }
+
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y') {
+    e.preventDefault();
+    strokeManager.redo();
+    updateStats();
+    return;
+  }
+
+  // 3. Delete / Backspace: delete selected stroke
+  if (e.key === 'Backspace' || e.key === 'Delete') {
+    if (strokeManager.selectedStrokeId) {
+      e.preventDefault();
+      strokeManager.deleteSelected();
+      updateStats();
+      return;
+    }
+  }
+
+  // 4. Quick Mode toggles: D = Draw, V = Select/Edit
+  if (e.key.toLowerCase() === 'd') {
+    setToolMode('draw');
+  } else if (e.key.toLowerCase() === 'v') {
+    setToolMode('edit');
+  }
+});
+
+// Audio Unlock on First Pointer Down
 window.addEventListener('pointerdown', async () => {
   if (!soundEngine.isReady) {
     await soundEngine.init();
@@ -210,8 +315,8 @@ function animationLoop(nowMs: number): void {
     renderer.drawPlayhead(stroke, nowMs);
   }
 
-  // 5. Render user's active in-flight gesture
-  if (activeDrawingPoints.length > 1) {
+  // 5. Render user's active in-flight gesture (in Draw mode)
+  if (inputHandler.currentMode === 'draw' && activeDrawingPoints.length > 1) {
     renderer.drawActiveGesture(activeDrawingPoints, STYLE_COLORS[currentStyle]);
   }
 

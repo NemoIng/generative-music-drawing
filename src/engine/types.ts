@@ -3,11 +3,12 @@ import { DroneVoice } from '../audio/synthVoice';
 import { PitchResult } from '../audio/scaleQuantizer';
 
 export type StrokeStyle = 'solid' | 'dotted' | 'striped';
+export type TraversalMode = 'restart' | 'pingpong';
 
 export interface StrokePlayhead {
   currentDistance: number;
   velocity: number; // pixels / second
-  direction: number; // 1 or -1 (for open ping-pong curves)
+  direction: number; // 1 or -1
   lastTriggerDistance: number;
   lastEval: CurveEvaluation | null;
   lastPitch: PitchResult | null;
@@ -23,4 +24,6 @@ export interface DrawnStroke {
   playhead: StrokePlayhead;
   droneVoice: DroneVoice | null;
   active: boolean;
+  selected?: boolean;
+  hovered?: boolean;
 }
