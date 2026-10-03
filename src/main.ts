@@ -31,6 +31,11 @@ const trackActionsGroup = document.getElementById('trackActionsGroup') as HTMLDi
 const trackLabel = document.getElementById('trackLabel') as HTMLSpanElement;
 const trackVolSlider = document.getElementById('trackVolSlider') as HTMLInputElement;
 const trackVolVal = document.getElementById('trackVolVal') as HTMLSpanElement;
+const waveSineBtn = document.getElementById('waveSineBtn') as HTMLButtonElement;
+const waveAmpSlider = document.getElementById('waveAmpSlider') as HTMLInputElement;
+const waveAmpVal = document.getElementById('waveAmpVal') as HTMLSpanElement;
+const wavePeriodSlider = document.getElementById('wavePeriodSlider') as HTMLInputElement;
+const wavePeriodVal = document.getElementById('wavePeriodVal') as HTMLSpanElement;
 const muteBtn = document.getElementById('muteBtn') as HTMLButtonElement;
 const soloBtn = document.getElementById('soloBtn') as HTMLButtonElement;
 const deleteTrackBtn = document.getElementById('deleteTrackBtn') as HTMLButtonElement;
@@ -180,7 +185,6 @@ templateSelect.addEventListener('change', async () => {
 
   strokeManager.activateAudioVoices();
   updateStats();
-  templateSelect.value = ''; // Reset select to placeholder
 });
 
 // Color-Sound Instrument Swatch Selection
@@ -300,7 +304,7 @@ deadbandSlider.addEventListener('input', () => {
   quantizer.updateConfig({ deadbandWidth: val });
 });
 
-// Track Inspector Volume / Mute / Solo / Delete Controls
+// Track Inspector Volume / Wave Reshape / Mute / Solo / Delete Controls
 function updateTrackActionsVisibility(): void {
   const selectedId = strokeManager.selectedStrokeId;
   if (inputHandler.currentMode === 'edit' && selectedId) {
@@ -312,6 +316,22 @@ function updateTrackActionsVisibility(): void {
       const vol = typeof stroke.volume === 'number' ? stroke.volume : 1.0;
       trackVolSlider.value = Math.round(vol * 100).toString();
       trackVolVal.textContent = `${Math.round(vol * 100)}%`;
+
+      // Wave parameters sync
+      if (stroke.waveParams) {
+        waveSineBtn.classList.toggle('active', stroke.waveParams.amplitude > 0);
+        waveAmpSlider.value = stroke.waveParams.amplitude.toString();
+        waveAmpVal.textContent = `${Math.round(stroke.waveParams.amplitude)}px`;
+        wavePeriodSlider.value = stroke.waveParams.periods.toString();
+        wavePeriodVal.textContent = `${stroke.waveParams.periods.toFixed(1)}x`;
+      } else {
+        waveSineBtn.classList.remove('active');
+        waveAmpSlider.value = '0';
+        waveAmpVal.textContent = '0px';
+        wavePeriodSlider.value = '2';
+        wavePeriodVal.textContent = '2.0x';
+      }
+
       muteBtn.classList.toggle('active-mute', !!stroke.muted);
       muteBtn.textContent = stroke.muted ? 'Unmute' : 'Mute';
       soloBtn.classList.toggle('active-solo', !!stroke.soloed);
@@ -335,6 +355,61 @@ trackVolSlider.addEventListener('change', () => {
   if (strokeManager.selectedStrokeId) {
     const vol = parseFloat(trackVolSlider.value) / 100;
     strokeManager.setStrokeVolume(strokeManager.selectedStrokeId, vol, true);
+  }
+});
+
+// Wave Restructuring Event Listeners
+waveSineBtn.addEventListener('click', () => {
+  const selectedId = strokeManager.selectedStrokeId;
+  if (!selectedId) return;
+
+  const stroke = strokeManager.activeStrokes.find((s) => s.id === selectedId);
+  if (!stroke) return;
+
+  const isCurrentlyWavy = stroke.waveParams && stroke.waveParams.amplitude > 0;
+  const targetAmp = isCurrentlyWavy ? 0 : 35;
+  const targetPeriods = stroke.waveParams ? stroke.waveParams.periods : 2.0;
+
+  strokeManager.restructureStrokeWave(selectedId, targetAmp, targetPeriods, true);
+  updateTrackActionsVisibility();
+});
+
+waveAmpSlider.addEventListener('input', () => {
+  const selectedId = strokeManager.selectedStrokeId;
+  if (selectedId) {
+    const amp = parseFloat(waveAmpSlider.value);
+    const periods = parseFloat(wavePeriodSlider.value);
+    waveAmpVal.textContent = `${Math.round(amp)}px`;
+    waveSineBtn.classList.toggle('active', amp > 0);
+    strokeManager.restructureStrokeWave(selectedId, amp, periods, false);
+  }
+});
+
+waveAmpSlider.addEventListener('change', () => {
+  const selectedId = strokeManager.selectedStrokeId;
+  if (selectedId) {
+    const amp = parseFloat(waveAmpSlider.value);
+    const periods = parseFloat(wavePeriodSlider.value);
+    strokeManager.restructureStrokeWave(selectedId, amp, periods, true);
+  }
+});
+
+wavePeriodSlider.addEventListener('input', () => {
+  const selectedId = strokeManager.selectedStrokeId;
+  if (selectedId) {
+    const amp = parseFloat(waveAmpSlider.value);
+    const periods = parseFloat(wavePeriodSlider.value);
+    wavePeriodVal.textContent = `${periods.toFixed(1)}x`;
+    strokeManager.restructureStrokeWave(selectedId, amp, periods, false);
+  }
+});
+
+wavePeriodSlider.addEventListener('change', () => {
+  const selectedId = strokeManager.selectedStrokeId;
+  if (selectedId) {
+    const amp = parseFloat(waveAmpSlider.value);
+    const periods = parseFloat(wavePeriodSlider.value);
+    strokeManager.restructureStrokeWave(selectedId, amp, periods, true);
   }
 });
 
@@ -385,6 +460,7 @@ undoBtn.addEventListener('click', () => {
 
 clearBtn.addEventListener('click', () => {
   strokeManager.clearAll();
+  templateSelect.value = '';
   updateStats();
   updateTrackActionsVisibility();
 });

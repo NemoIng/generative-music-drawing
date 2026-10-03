@@ -234,16 +234,20 @@ export class CanvasRenderer {
         ctx.stroke();
       }
 
-      // Floating volume pill badge above start point
+      // Floating pill badge above start point with Volume & Wave info
       const volPercent = Math.round(vol * 100);
-      const tagText = `${volPercent}% vol`;
+      let tagText = `${volPercent}% vol`;
+      if (stroke.waveParams && stroke.waveParams.amplitude > 0) {
+        tagText = `${volPercent}% vol • ~Sine ${Math.round(stroke.waveParams.amplitude)}px (${stroke.waveParams.periods}x)`;
+      }
+
       ctx.font = '600 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
       const textMetrics = ctx.measureText(tagText);
-      const padX = 6;
+      const padX = 7;
       const tagW = textMetrics.width + padX * 2;
-      const tagH = 16;
+      const tagH = 17;
       const tagX = startPt.x - tagW / 2;
-      const tagY = startPt.y - 20;
+      const tagY = startPt.y - 22;
 
       ctx.fillStyle = '#1c1917';
       ctx.beginPath();

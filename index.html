@@ -284,7 +284,7 @@
             <input type="range" id="deadbandSlider" min="0.05" max="0.45" step="0.05" value="0.25" class="minimal-slider" />
           </div>
 
-          <!-- Track Inspector Actions (Volume / Mute / Solo / Delete) -->
+          <!-- Track Inspector Actions (Volume / Wave Reshape / Mute / Solo / Delete) -->
           <div class="track-actions-group" id="trackActionsGroup" style="display: none;">
             <span id="trackLabel" class="track-inspector-label">Track</span>
             <div class="track-vol-control has-tooltip" data-tooltip="Line Volume: Drag to adjust volume of this line (0% - 100%). Shortcut: [ / ] or ↑ / ↓.">
@@ -292,6 +292,29 @@
               <input type="range" id="trackVolSlider" min="0" max="100" step="1" value="100" class="track-vol-slider" />
               <span id="trackVolVal" class="track-vol-val">100%</span>
             </div>
+
+            <!-- Wave Restructuring (Sine Wave, Amplitude, Period) -->
+            <div class="track-wave-control" id="trackWaveControl">
+              <button
+                type="button"
+                id="waveSineBtn"
+                class="wave-toggle-btn has-tooltip"
+                data-tooltip="Restructure into Sine Wave (~): Converts this stroke into a mathematically smooth oscillating sine wave."
+              >
+                ~ Sine
+              </button>
+              <div class="wave-slider-group has-tooltip" data-tooltip="Sine Amplitude: Adjusts the vertical wave height / pitch modulation depth (0px = straight, up to 100px).">
+                <label for="waveAmpSlider">Amp</label>
+                <input type="range" id="waveAmpSlider" min="0" max="100" step="1" value="0" class="track-mini-slider" />
+                <span id="waveAmpVal" class="track-mini-val">0px</span>
+              </div>
+              <div class="wave-slider-group has-tooltip" data-tooltip="Sine Period / Frequency: Number of complete wave cycles along the stroke length (0.5 to 8.0 cycles).">
+                <label for="wavePeriodSlider">Period</label>
+                <input type="range" id="wavePeriodSlider" min="0.5" max="8" step="0.5" value="2" class="track-mini-slider" />
+                <span id="wavePeriodVal" class="track-mini-val">2.0x</span>
+              </div>
+            </div>
+
             <button id="muteBtn" class="action-btn has-tooltip" data-tooltip="Mute selected line (M)">Mute</button>
             <button id="soloBtn" class="action-btn has-tooltip" data-tooltip="Solo selected line (S)">Solo</button>
             <button id="deleteTrackBtn" class="action-btn text-danger has-tooltip" data-tooltip="Delete selected line (Backspace / Delete)">Delete</button>

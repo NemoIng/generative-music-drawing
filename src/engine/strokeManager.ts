@@ -1,7 +1,8 @@
-import { SplinePath, Point2D } from '../math/types';
+import { SplinePath, Point2D, ArcLengthLUT } from '../math/types';
 import { buildArcLengthLUT } from '../math/arcLengthTable';
 import { evaluateAtDistance } from '../math/arcLengthInverter';
 import { evaluateBezier } from '../math/bezier';
+import { generateSineSpline, WaveParams } from '../math/waveShape';
 import { ScaleQuantizer } from '../audio/scaleQuantizer';
 import { DroneVoice, PulseVoice, XAxisModulationMode } from '../audio/synthVoice';
 import { getInstrument, DEFAULT_INSTRUMENT } from '../audio/instruments';
@@ -13,7 +14,17 @@ type UndoAction =
   | { type: 'remove'; stroke: DrawnStroke; index: number }
   | { type: 'move'; strokeId: string; dx: number; dy: number }
   | { type: 'revoice'; strokeId: string; oldInstrumentId: string; newInstrumentId: string }
-  | { type: 'volume'; strokeId: string; oldVolume: number; newVolume: number };
+  | { type: 'volume'; strokeId: string; oldVolume: number; newVolume: number }
+  | {
+      type: 'reshape';
+      strokeId: string;
+      oldPath: SplinePath;
+      oldLut: ArcLengthLUT;
+      oldWaveParams?: WaveParams;
+      newPath: SplinePath;
+      newLut: ArcLengthLUT;
+      newWaveParams: WaveParams;
+    };
 
 export class StrokeManager {
   private strokes: DrawnStroke[] = [];
@@ -329,8 +340,76 @@ export class StrokeManager {
       stroke.playhead.lastEval.point.y += dy;
     }
 
+    if (stroke.waveParams) {
+      stroke.waveParams.baseP0.x += dx;
+      stroke.waveParams.baseP0.y += dy;
+      stroke.waveParams.baseP1.x += dx;
+      stroke.waveParams.baseP1.y += dy;
+    }
+
     if (recordUndo) {
       this.undoStack.push({ type: 'move', strokeId: id, dx, dy });
+      this.redoStack = [];
+    }
+
+    return true;
+  }
+
+  /**
+   * Restructures an existing stroke into a smooth, mathematically exact sine wave curve.
+   *
+   * @param strokeId ID of the stroke to restructure
+   * @param amplitude Peak sine wave displacement in pixels (0 = straight line)
+   * @param periods Number of full sine cycles along baseline
+   * @param recordUndo Whether to record an entry in the undo stack
+   */
+  public restructureStrokeWave(strokeId: string, amplitude: number, periods: number, recordUndo = true): boolean {
+    const stroke = this.strokes.find((s) => s.id === strokeId);
+    if (!stroke || stroke.path.segments.length === 0) return false;
+
+    const oldPath = stroke.path;
+    const oldLut = stroke.lut;
+    const oldWaveParams = stroke.waveParams;
+
+    // Retain baseline endpoints across continuous slider adjustments
+    const baseP0 = stroke.waveParams
+      ? { ...stroke.waveParams.baseP0 }
+      : { ...stroke.path.segments[0].p0 };
+    const lastSeg = stroke.path.segments[stroke.path.segments.length - 1];
+    const baseP1 = stroke.waveParams
+      ? { ...stroke.waveParams.baseP1 }
+      : { ...lastSeg.p3 };
+
+    const newWaveParams: WaveParams = {
+      amplitude: Math.max(0, Math.min(150, amplitude)),
+      periods: Math.max(0.5, Math.min(12, periods)),
+      baseP0,
+      baseP1,
+    };
+
+    const newPath = generateSineSpline(baseP0, baseP1, newWaveParams.amplitude, newWaveParams.periods);
+    const newLut = buildArcLengthLUT(newPath, 64);
+
+    stroke.path = newPath;
+    stroke.lut = newLut;
+    stroke.waveParams = newWaveParams;
+
+    // Phase wrap current playhead distance to new total length
+    if (stroke.playhead.currentDistance >= newLut.totalLength) {
+      stroke.playhead.currentDistance = newLut.totalLength > 1 ? stroke.playhead.currentDistance % newLut.totalLength : 0;
+    }
+
+    if (recordUndo) {
+      this.undoStack.push({
+        type: 'reshape',
+        strokeId,
+        oldPath,
+        oldLut,
+        oldWaveParams,
+        newPath,
+        newLut,
+        newWaveParams,
+      });
       this.redoStack = [];
     }
 
@@ -534,6 +613,17 @@ export class StrokeManager {
         stroke.droneVoice?.setVolume(action.oldVolume);
       }
       this.redoStack.push(action);
+    } else if (action.type === 'reshape') {
+      const stroke = this.strokes.find((s) => s.id === action.strokeId);
+      if (stroke) {
+        stroke.path = action.oldPath;
+        stroke.lut = action.oldLut;
+        stroke.waveParams = action.oldWaveParams;
+        if (stroke.playhead.currentDistance >= stroke.lut.totalLength) {
+          stroke.playhead.currentDistance = stroke.lut.totalLength > 1 ? stroke.playhead.currentDistance % stroke.lut.totalLength : 0;
+        }
+      }
+      this.redoStack.push(action);
     }
 
     return true;
@@ -570,6 +660,17 @@ export class StrokeManager {
       if (stroke) {
         stroke.volume = action.newVolume;
         stroke.droneVoice?.setVolume(action.newVolume);
+      }
+      this.undoStack.push(action);
+    } else if (action.type === 'reshape') {
+      const stroke = this.strokes.find((s) => s.id === action.strokeId);
+      if (stroke) {
+        stroke.path = action.newPath;
+        stroke.lut = action.newLut;
+        stroke.waveParams = action.newWaveParams;
+        if (stroke.playhead.currentDistance >= stroke.lut.totalLength) {
+          stroke.playhead.currentDistance = stroke.lut.totalLength > 1 ? stroke.playhead.currentDistance % stroke.lut.totalLength : 0;
+        }
       }
       this.undoStack.push(action);
     }

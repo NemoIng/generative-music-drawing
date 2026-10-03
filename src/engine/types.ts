@@ -1,6 +1,7 @@
 import { SplinePath, ArcLengthLUT, Point2D, CurveEvaluation } from '../math/types';
 import { DroneVoice, XAxisModulationMode } from '../audio/synthVoice';
 import { PitchResult } from '../audio/scaleQuantizer';
+import { WaveParams } from '../math/waveShape';
 
 export type StrokeStyle = 'solid' | 'dotted' | 'striped';
 export type TraversalMode = 'restart' | 'pingpong';
@@ -32,4 +33,5 @@ export interface DrawnStroke {
   muted?: boolean;
   soloed?: boolean;
   volume?: number; // 0.0 to 1.0 (default 1.0)
+  waveParams?: WaveParams;
 }

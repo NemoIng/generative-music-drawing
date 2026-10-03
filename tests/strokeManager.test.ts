@@ -172,4 +172,38 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
     sm.redo();
     expect(s1.volume).toBe(0.0);
   });
+
+  it('supports restructuring a stroke into a smooth sine wave with amplitude, period, and undo/redo', () => {
+    const sm = new StrokeManager();
+    const stroke = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+
+    const initialLength = stroke.lut.totalLength;
+    expect(initialLength).toBeCloseTo(100, 1);
+
+    // Restructure into sine wave with Amp=30, Periods=2
+    sm.restructureStrokeWave(stroke.id, 30, 2);
+    expect(stroke.waveParams).toBeDefined();
+    expect(stroke.waveParams?.amplitude).toBe(30);
+    expect(stroke.waveParams?.periods).toBe(2);
+    // Arc length should increase due to sinusoidal undulations
+    expect(stroke.lut.totalLength).toBeGreaterThan(initialLength);
+
+    // Flatten back to straight line with Amp=0
+    sm.restructureStrokeWave(stroke.id, 0, 2);
+    expect(stroke.waveParams?.amplitude).toBe(0);
+    expect(stroke.lut.totalLength).toBeCloseTo(100, 1);
+
+    // Undo reverts back to Amp=30 wave
+    sm.undo();
+    expect(stroke.waveParams?.amplitude).toBe(30);
+
+    // Undo again reverts back to initial dummyPath
+    sm.undo();
+    expect(stroke.waveParams).toBeUndefined();
+    expect(stroke.lut.totalLength).toBeCloseTo(initialLength, 1);
+
+    // Redo brings back the wave
+    sm.redo();
+    expect(stroke.waveParams?.amplitude).toBe(30);
+  });
 });
