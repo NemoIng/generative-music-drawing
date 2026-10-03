@@ -231,7 +231,7 @@ xAxisSelect.addEventListener('change', () => {
 });
 
 // Contextual Hover Descriptions
-const DEFAULT_HELP = 'Hover over any setting for details • Space: Pause • ⌘Z: Undo • Shift: Straight Note • M: Mute • S: Solo • 1-6: Inks';
+const DEFAULT_HELP = 'Hover over any setting for details • Space: Pause • ⌘Z: Undo • Shift: Straight Note • M: Mute • S: Solo • 1-7: Inks';
 const tooltipElements = document.querySelectorAll<HTMLElement>('[data-tooltip]');
 
 tooltipElements.forEach((el) => {
@@ -641,8 +641,8 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     updateTrackActionsVisibility();
   }
 
-  // 6. Number Keys 1 - 6: Quick select instruments
-  const instKeys = ['1', '2', '3', '4', '5', '6'];
+  // 6. Number Keys 1 - 7: Quick select instruments
+  const instKeys = ['1', '2', '3', '4', '5', '6', '7'];
   const instIds = Object.keys(INSTRUMENTS);
   const keyIdx = instKeys.indexOf(e.key);
   if (keyIdx !== -1 && instIds[keyIdx]) {
@@ -699,6 +699,10 @@ function animationLoop(nowMs: number): void {
 
   // 3. Render modal scale guidelines (Root and 5th highlighted)
   renderer.drawGuidelines(quantizer.getGuidelines(renderer.height));
+
+  // 3b. Render drum tier zone guides when Onyx is active or selected
+  const showDrumZones = currentInstrumentId === 'onyx' || strokeManager.activeStrokes.some((s) => s.instrumentId === 'onyx' && (s.selected || s.hovered));
+  renderer.drawDrumZones(showDrumZones);
 
   // 4. Render 4-beat visual measure tracker along the top
   renderer.drawBeatTracker(strokeManager.measureProgress, strokeManager.measureBeatIndex);

@@ -5,6 +5,7 @@ import { evaluateBezier } from '../math/bezier';
 import { generateWaveSpline, WaveParams, WaveShapeType } from '../math/waveShape';
 import { ScaleQuantizer } from '../audio/scaleQuantizer';
 import { DroneVoice, PulseVoice, XAxisModulationMode } from '../audio/synthVoice';
+import { DrumSynth } from '../audio/drumSynth';
 import { getInstrument, DEFAULT_INSTRUMENT } from '../audio/instruments';
 import { soundEngine } from '../audio/audioContext';
 import { DrawnStroke, StrokeStyle, TraversalMode, LoopQuantizeMode } from './types';
@@ -740,15 +741,29 @@ export class StrokeManager {
         const nextIndex = Math.floor(nextDist / DOT_SPACING);
 
         if (prevIndex !== nextIndex && audible) {
-          PulseVoice.trigger(
-            pitch.frequency,
-            false,
-            0.85 * strokeVol,
-            instrument,
-            evalResult.point.x,
-            canvasWidth,
-            this.xModMode
-          );
+          if (stroke.instrumentId === 'onyx') {
+            const normY = canvasHeight > 0 ? evalResult.point.y / canvasHeight : 0.5;
+            if (normY >= 0.72) {
+              DrumSynth.triggerKick(0.95 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode);
+            } else if (normY >= 0.48) {
+              DrumSynth.triggerSnare(0.9 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode);
+            } else if (normY >= 0.25) {
+              const tomFreq = 100 + (1 - (normY - 0.25) / 0.23) * 120;
+              DrumSynth.triggerTom(tomFreq, 0.85 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode);
+            } else {
+              DrumSynth.triggerHiHat(true, 0.85 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode);
+            }
+          } else {
+            PulseVoice.trigger(
+              pitch.frequency,
+              false,
+              0.85 * strokeVol,
+              instrument,
+              evalResult.point.x,
+              canvasWidth,
+              this.xModMode
+            );
+          }
         }
       } else if (stroke.style === 'striped') {
         const pitch = quantizer.quantizeDiscrete(evalResult.point.y, canvasHeight);
@@ -758,15 +773,30 @@ export class StrokeManager {
         const nextIndex = Math.floor(nextDist / STRIPE_SPACING);
 
         if (prevIndex !== nextIndex && audible) {
-          PulseVoice.trigger(
-            pitch.frequency,
-            true,
-            0.7 * strokeVol,
-            instrument,
-            evalResult.point.x,
-            canvasWidth,
-            this.xModMode
-          );
+          if (stroke.instrumentId === 'onyx') {
+            const normY = canvasHeight > 0 ? evalResult.point.y / canvasHeight : 0.5;
+            if (normY >= 0.72) {
+              DrumSynth.triggerKick(0.85 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode);
+            } else if (normY >= 0.48) {
+              DrumSynth.triggerClap(0.85 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode);
+            } else if (normY >= 0.25) {
+              const tomFreq = 100 + (1 - (normY - 0.25) / 0.23) * 120;
+              DrumSynth.triggerTom(tomFreq, 0.75 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode);
+            } else {
+              const isOpen = normY < 0.12;
+              DrumSynth.triggerHiHat(!isOpen, 0.75 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode);
+            }
+          } else {
+            PulseVoice.trigger(
+              pitch.frequency,
+              true,
+              0.7 * strokeVol,
+              instrument,
+              evalResult.point.x,
+              canvasWidth,
+              this.xModMode
+            );
+          }
         }
       }
     }

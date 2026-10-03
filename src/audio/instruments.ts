@@ -191,6 +191,33 @@ export const INSTRUMENTS: Record<string, InstrumentDefinition> = {
       stripedBandpassQ: 6.2,
     },
   },
+
+  onyx: {
+    id: 'onyx',
+    name: '808 Drum Machine',
+    color: '#18181b', // Deep matte onyx / obsidian
+    icon: '🥁',
+    tagline: 'Synthetic 808 analog drums: Sub Kick (bottom), Snare/Clap (mid), Toms & Hi-Hats (top)',
+    drone: {
+      osc1Type: 'sine',
+      osc2Type: 'triangle',
+      osc2IntervalRatio: 1.0,
+      subType: 'sine',
+      filterType: 'lowpass',
+      baseCutoffMultiplier: 1.4,
+      maxCutoff: 1800,
+      baseQ: 1.6,
+      curvatureBrightness: 900,
+    },
+    pulse: {
+      dottedOscType: 'sine',
+      dottedDecay: 0.35,
+      dottedFilterQ: 2.0,
+      stripedOscType: 'triangle',
+      stripedDecay: 0.1,
+      stripedBandpassQ: 3.5,
+    },
+  },
 };
 
 export const DEFAULT_INSTRUMENT = INSTRUMENTS.indigo;

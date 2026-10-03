@@ -100,6 +100,49 @@ export class CanvasRenderer {
   }
 
   /**
+   * Draws subtle drum tier zone guides when the Onyx drum machine ink is active.
+   */
+  public drawDrumZones(isActive: boolean): void {
+    if (!isActive) return;
+    const w = this.width;
+    const h = this.height;
+    const ctx = this.ctx;
+    ctx.save();
+
+    const zones = [
+      { y: h * 0.25, label: '🥢 Hi-Hats' },
+      { y: h * 0.48, label: '🥁 Toms' },
+      { y: h * 0.72, label: '🪘 Snare / Clap' },
+    ];
+
+    for (const z of zones) {
+      ctx.beginPath();
+      ctx.moveTo(44, z.y);
+      ctx.lineTo(w - 44, z.y);
+      ctx.strokeStyle = 'rgba(24, 24, 27, 0.22)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 6]);
+      ctx.stroke();
+
+      ctx.setLineDash([]);
+      ctx.font = '600 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+      ctx.fillStyle = 'rgba(24, 24, 27, 0.65)';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(z.label, w - 48, z.y - 3);
+    }
+
+    // Bottom Kick label
+    ctx.font = '700 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.fillStyle = 'rgba(24, 24, 27, 0.75)';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('💥 Kick Drum', w - 48, h - 14);
+
+    ctx.restore();
+  }
+
+  /**
    * Draws a visual 4-beat measure bar tracker along the top canvas margin.
    */
   public drawBeatTracker(measureProgress: number, beatIndex: number): void {
@@ -252,7 +295,11 @@ export class CanvasRenderer {
       const travLabel = (stroke.traversal ?? 'restart') === 'pingpong' ? '⇄' : '↻';
 
       let tagText = `${volPercent}% vol • ${styleName} • ${syncLabel} • ${travLabel}`;
-      if (stroke.waveParams && stroke.waveParams.amplitude > 0) {
+      if (stroke.instrumentId === 'onyx') {
+        const normY = this.height > 0 ? startPt.y / this.height : 0.5;
+        const drumName = normY >= 0.72 ? 'Kick 💥' : normY >= 0.48 ? 'Snare 🪘' : normY >= 0.25 ? 'Tom 🥁' : 'Hi-Hat 🥢';
+        tagText = `${volPercent}% vol • ${drumName} • ${syncLabel} • ${travLabel}`;
+      } else if (stroke.waveParams && stroke.waveParams.amplitude > 0) {
         tagText = `${volPercent}% vol • ~Sine • ${styleName} • ${syncLabel} • ${travLabel}`;
       }
 

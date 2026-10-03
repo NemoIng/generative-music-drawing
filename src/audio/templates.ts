@@ -157,6 +157,76 @@ export const TEMPLATES: Record<string, MusicalTemplate> = {
       ];
     },
   },
+
+  electro808: {
+    id: 'electro808',
+    name: 'Analog 808 Groove',
+    tagline: 'Driving 808 kick, crisp snare, metallic hi-hat roll with acid bassline',
+    bpm: 110,
+    scaleId: 'minorPentatonic',
+    rootId: 'D2',
+    strokes: (w: number, h: number, quantizer: ScaleQuantizer) => {
+      const guidelines = quantizer.getGuidelines(h);
+      const rootY = guidelines[0]?.y ?? h * 0.88;
+      const bassY = guidelines[2]?.y ?? h * 0.76;
+      const leadY = guidelines[5]?.y ?? h * 0.38;
+
+      return [
+        // 1. 808 Kick Drum Line (Onyx, Dotted 8th-note pulse in Kick zone)
+        {
+          instrumentId: 'onyx',
+          style: 'dotted',
+          points: [
+            { x: w * 0.12, y: h * 0.84 },
+            { x: w * 0.5, y: h * 0.84 },
+            { x: w * 0.88, y: h * 0.84 },
+          ],
+        },
+        // 2. 808 Snare & Clap Line (Onyx, Dotted pulse in Snare zone)
+        {
+          instrumentId: 'onyx',
+          style: 'dotted',
+          points: [
+            { x: w * 0.2, y: h * 0.58 },
+            { x: w * 0.5, y: h * 0.58 },
+            { x: w * 0.8, y: h * 0.58 },
+          ],
+        },
+        // 3. 808 Hi-Hat Line (Onyx, Striped 16th-note roll in Top Hat zone)
+        {
+          instrumentId: 'onyx',
+          style: 'striped',
+          points: [
+            { x: w * 0.1, y: h * 0.16 },
+            { x: w * 0.5, y: h * 0.16 },
+            { x: w * 0.9, y: h * 0.16 },
+          ],
+        },
+        // 4. Slate Analog 303 Sub-Bass Line (Slate, Dotted)
+        {
+          instrumentId: 'slate',
+          style: 'dotted',
+          points: [
+            { x: w * 0.15, y: rootY },
+            { x: w * 0.38, y: bassY },
+            { x: w * 0.62, y: rootY },
+            { x: w * 0.85, y: bassY },
+          ],
+        },
+        // 5. Violet Crystalline Synth Lead (Violet, Dotted)
+        {
+          instrumentId: 'violet',
+          style: 'dotted',
+          points: [
+            { x: w * 0.22, y: leadY },
+            { x: w * 0.45, y: leadY - 24 },
+            { x: w * 0.68, y: leadY + 18 },
+            { x: w * 0.88, y: leadY },
+          ],
+        },
+      ];
+    },
+  },
 };
 
 /**
