@@ -10,6 +10,7 @@ export type DrawShape = 'curve' | 'straight';
 export interface InputHandlerOptions {
   onStrokeComplete: (path: SplinePath) => void;
   onDrawChange?: (points: Point2D[]) => void;
+  onSelectStroke?: (strokeId: string | null) => void;
   strokeManager: StrokeManager;
   getQuantizer: () => ScaleQuantizer;
 }
@@ -36,6 +37,7 @@ export class InputHandler {
 
   private onStrokeComplete: (path: SplinePath) => void;
   private onDrawChange?: (points: Point2D[]) => void;
+  private onSelectStroke?: (strokeId: string | null) => void;
 
   constructor(canvas: HTMLCanvasElement, options: InputHandlerOptions) {
     this.canvas = canvas;
@@ -43,6 +45,7 @@ export class InputHandler {
     this.getQuantizer = options.getQuantizer;
     this.onStrokeComplete = options.onStrokeComplete;
     this.onDrawChange = options.onDrawChange;
+    this.onSelectStroke = options.onSelectStroke;
 
     this.initEvents();
   }
@@ -66,6 +69,7 @@ export class InputHandler {
     if (mode === 'draw') {
       this.strokeManager.selectStroke(null);
       this.strokeManager.setHoveredStroke(null);
+      this.onSelectStroke?.(null);
     }
   }
 
@@ -139,6 +143,7 @@ export class InputHandler {
       const hit = this.strokeManager.hitTest(pt, 20);
       if (hit) {
         this.strokeManager.selectStroke(hit.id);
+        this.onSelectStroke?.(hit.id);
         this.isDragging = true;
         this.draggedStrokeId = hit.id;
         this.lastDragPoint = pt;
@@ -147,6 +152,7 @@ export class InputHandler {
         this.canvas.style.cursor = 'grabbing';
       } else {
         this.strokeManager.selectStroke(null);
+        this.onSelectStroke?.(null);
       }
       return;
     }

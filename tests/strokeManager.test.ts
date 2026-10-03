@@ -146,4 +146,30 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
     expect(sm.measureBeatIndex).toBe(0);
     expect(sm.measureProgress).toBeCloseTo(0.0, 2);
   });
+
+  it('supports controlling individual stroke volume with clamping and undo/redo', () => {
+    const sm = new StrokeManager();
+    const s1 = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+
+    expect(s1.volume).toBe(1.0);
+
+    // Set volume to 0.45
+    sm.setStrokeVolume(s1.id, 0.45);
+    expect(s1.volume).toBeCloseTo(0.45, 2);
+
+    // Clamps within [0, 1]
+    sm.setStrokeVolume(s1.id, 1.5);
+    expect(s1.volume).toBe(1.0);
+
+    sm.setStrokeVolume(s1.id, -0.2);
+    expect(s1.volume).toBe(0.0);
+
+    // Undo reverts to 1.0
+    sm.undo();
+    expect(s1.volume).toBe(1.0);
+
+    // Redo restores 0.0
+    sm.redo();
+    expect(s1.volume).toBe(0.0);
+  });
 });

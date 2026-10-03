@@ -28,8 +28,12 @@ const bpmVal = document.getElementById('bpmVal') as HTMLSpanElement;
 const deadbandSlider = document.getElementById('deadbandSlider') as HTMLInputElement;
 const deadbandVal = document.getElementById('deadbandVal') as HTMLSpanElement;
 const trackActionsGroup = document.getElementById('trackActionsGroup') as HTMLDivElement;
+const trackLabel = document.getElementById('trackLabel') as HTMLSpanElement;
+const trackVolSlider = document.getElementById('trackVolSlider') as HTMLInputElement;
+const trackVolVal = document.getElementById('trackVolVal') as HTMLSpanElement;
 const muteBtn = document.getElementById('muteBtn') as HTMLButtonElement;
 const soloBtn = document.getElementById('soloBtn') as HTMLButtonElement;
+const deleteTrackBtn = document.getElementById('deleteTrackBtn') as HTMLButtonElement;
 const undoBtn = document.getElementById('undoBtn') as HTMLButtonElement;
 const playPauseBtn = document.getElementById('playPauseBtn') as HTMLButtonElement;
 const playPauseIcon = document.getElementById('playPauseIcon') as HTMLSpanElement;
@@ -84,6 +88,9 @@ const inputHandler = new InputHandler(canvasEl, {
   },
   onDrawChange: (points: Point2D[]) => {
     activeDrawingPoints = points;
+  },
+  onSelectStroke: () => {
+    updateTrackActionsVisibility();
   },
 });
 
@@ -293,13 +300,18 @@ deadbandSlider.addEventListener('input', () => {
   quantizer.updateConfig({ deadbandWidth: val });
 });
 
-// Track Inspector Mute / Solo Buttons
+// Track Inspector Volume / Mute / Solo / Delete Controls
 function updateTrackActionsVisibility(): void {
   const selectedId = strokeManager.selectedStrokeId;
   if (inputHandler.currentMode === 'edit' && selectedId) {
     trackActionsGroup.style.display = 'flex';
     const stroke = strokeManager.activeStrokes.find((s) => s.id === selectedId);
     if (stroke) {
+      const inst = getInstrument(stroke.instrumentId);
+      trackLabel.textContent = `${inst.name}`;
+      const vol = typeof stroke.volume === 'number' ? stroke.volume : 1.0;
+      trackVolSlider.value = Math.round(vol * 100).toString();
+      trackVolVal.textContent = `${Math.round(vol * 100)}%`;
       muteBtn.classList.toggle('active-mute', !!stroke.muted);
       muteBtn.textContent = stroke.muted ? 'Unmute' : 'Mute';
       soloBtn.classList.toggle('active-solo', !!stroke.soloed);
@@ -309,6 +321,30 @@ function updateTrackActionsVisibility(): void {
     trackActionsGroup.style.display = 'none';
   }
 }
+
+// Volume Slider Event Listeners
+trackVolSlider.addEventListener('input', () => {
+  if (strokeManager.selectedStrokeId) {
+    const vol = parseFloat(trackVolSlider.value) / 100;
+    trackVolVal.textContent = `${Math.round(vol * 100)}%`;
+    strokeManager.setStrokeVolume(strokeManager.selectedStrokeId, vol, false);
+  }
+});
+
+trackVolSlider.addEventListener('change', () => {
+  if (strokeManager.selectedStrokeId) {
+    const vol = parseFloat(trackVolSlider.value) / 100;
+    strokeManager.setStrokeVolume(strokeManager.selectedStrokeId, vol, true);
+  }
+});
+
+deleteTrackBtn.addEventListener('click', () => {
+  if (strokeManager.selectedStrokeId) {
+    strokeManager.deleteSelected();
+    updateStats();
+    updateTrackActionsVisibility();
+  }
+});
 
 muteBtn.addEventListener('click', () => {
   if (strokeManager.selectedStrokeId) {
@@ -433,6 +469,19 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
   const keyIdx = instKeys.indexOf(e.key);
   if (keyIdx !== -1 && instIds[keyIdx]) {
     selectInstrument(instIds[keyIdx]);
+  }
+
+  // 7. Volume adjustment for selected stroke: [ or Down = -5%, ] or Up = +5%
+  if (strokeManager.selectedStrokeId && (e.key === '[' || e.key === ']' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+    const stroke = strokeManager.activeStrokes.find((s) => s.id === strokeManager.selectedStrokeId);
+    if (stroke) {
+      e.preventDefault();
+      const currentVol = stroke.volume ?? 1.0;
+      const delta = (e.key === ']' || e.key === 'ArrowUp') ? 0.05 : -0.05;
+      const nextVol = Math.max(0, Math.min(1, Math.round((currentVol + delta) * 100) / 100));
+      strokeManager.setStrokeVolume(stroke.id, nextVol, true);
+      updateTrackActionsVisibility();
+    }
   }
 });
 

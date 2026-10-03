@@ -18,6 +18,7 @@ export class DroneVoice {
   private isPlaying = false;
   private currentFreq = 220;
   private instrument: InstrumentDefinition = DEFAULT_INSTRUMENT;
+  private volume: number = 1.0;
 
   public get frequency(): number {
     return this.currentFreq;
@@ -27,11 +28,25 @@ export class DroneVoice {
     return this.instrument;
   }
 
-  public start(initialFreq: number, instrument?: InstrumentDefinition): void {
+  public get currentVolume(): number {
+    return this.volume;
+  }
+
+  public setVolume(volume: number): void {
+    this.volume = Math.max(0, Math.min(1, volume));
+    if (this.gainNode && this.isPlaying) {
+      const now = soundEngine.context.currentTime;
+      const targetGain = Math.max(0.0001, 0.26 * this.volume);
+      this.gainNode.gain.setTargetAtTime(targetGain, now, 0.03);
+    }
+  }
+
+  public start(initialFreq: number, instrument?: InstrumentDefinition, volume: number = 1.0): void {
     if (this.isPlaying || !soundEngine.isReady) return;
     const ctx = soundEngine.context;
     const now = ctx.currentTime;
     this.currentFreq = initialFreq;
+    this.volume = Math.max(0, Math.min(1, volume));
     if (instrument) this.instrument = instrument;
 
     const p = this.instrument.drone;
@@ -57,8 +72,9 @@ export class DroneVoice {
 
     // Gain node with soft fade-in
     this.gainNode = ctx.createGain();
+    const initialGain = Math.max(0.0001, 0.26 * this.volume);
     this.gainNode.gain.setValueAtTime(0.001, now);
-    this.gainNode.gain.exponentialRampToValueAtTime(0.26, now + 0.15);
+    this.gainNode.gain.exponentialRampToValueAtTime(initialGain, now + 0.15);
 
     // Stereo Panner Node for Horizontal Spatial Positioning
     this.pannerNode = ctx.createStereoPanner();
@@ -114,9 +130,13 @@ export class DroneVoice {
     curvature: number = 0,
     x: number = 0,
     canvasWidth: number = 1,
-    xModMode: XAxisModulationMode = 'panAndTone'
+    xModMode: XAxisModulationMode = 'panAndTone',
+    volume?: number
   ): void {
     if (!this.isPlaying || !this.filter || !this.osc1 || !this.osc2 || !this.subOsc || !this.pannerNode) return;
+    if (volume !== undefined && Math.abs(this.volume - volume) > 0.005) {
+      this.setVolume(volume);
+    }
     const ctx = soundEngine.context;
     const now = ctx.currentTime;
     const timeConstant = 0.035;
@@ -205,7 +225,7 @@ export class PulseVoice {
     canvasWidth: number = 1,
     xModMode: XAxisModulationMode = 'panAndTone'
   ): void {
-    if (!soundEngine.isReady) return;
+    if (!soundEngine.isReady || velocity <= 0.001) return;
     const ctx = soundEngine.context;
     const now = ctx.currentTime;
 

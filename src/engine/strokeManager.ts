@@ -12,7 +12,8 @@ type UndoAction =
   | { type: 'add'; stroke: DrawnStroke }
   | { type: 'remove'; stroke: DrawnStroke; index: number }
   | { type: 'move'; strokeId: string; dx: number; dy: number }
-  | { type: 'revoice'; strokeId: string; oldInstrumentId: string; newInstrumentId: string };
+  | { type: 'revoice'; strokeId: string; oldInstrumentId: string; newInstrumentId: string }
+  | { type: 'volume'; strokeId: string; oldVolume: number; newVolume: number };
 
 export class StrokeManager {
   private strokes: DrawnStroke[] = [];
@@ -100,7 +101,7 @@ export class StrokeManager {
         if (stroke.style === 'solid' && soundEngine.isReady && stroke.playhead.lastPitch && this.isStrokeAudible(stroke)) {
           const inst = getInstrument(stroke.instrumentId);
           stroke.droneVoice = new DroneVoice();
-          stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst);
+          stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, stroke.volume ?? 1.0);
         }
       }
     }
@@ -153,7 +154,7 @@ export class StrokeManager {
     } else if (this.isStrokeAudible(stroke) && stroke.style === 'solid' && soundEngine.isReady && stroke.playhead.lastPitch && !this.isPaused) {
       const inst = getInstrument(stroke.instrumentId);
       stroke.droneVoice = new DroneVoice();
-      stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst);
+      stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, stroke.volume ?? 1.0);
     }
     return stroke.muted ?? false;
   }
@@ -171,7 +172,7 @@ export class StrokeManager {
       } else if (audible && s.style === 'solid' && !s.droneVoice && soundEngine.isReady && s.playhead.lastPitch && !this.isPaused) {
         const inst = getInstrument(s.instrumentId);
         s.droneVoice = new DroneVoice();
-        s.droneVoice.start(s.playhead.lastPitch.frequency, inst);
+        s.droneVoice.start(s.playhead.lastPitch.frequency, inst, s.volume ?? 1.0);
       }
     }
     return stroke.soloed ?? false;
@@ -183,11 +184,13 @@ export class StrokeManager {
     instrumentId: string = DEFAULT_INSTRUMENT.id,
     baseVelocity: number = 140,
     quantizer?: ScaleQuantizer,
-    canvasHeight?: number
+    canvasHeight?: number,
+    volume: number = 1.0
   ): DrawnStroke {
     const lut = buildArcLengthLUT(path, 64);
     const id = `stroke-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const instrument = getInstrument(instrumentId);
+    const strokeVolume = Math.max(0, Math.min(1, volume));
 
     let initialPitch = null;
     let initialEval = null;
@@ -202,7 +205,7 @@ export class StrokeManager {
     let droneVoice: DroneVoice | null = null;
     if (style === 'solid' && soundEngine.isReady && initialPitch && !this.isPaused) {
       droneVoice = new DroneVoice();
-      droneVoice.start(initialPitch.frequency, instrument);
+      droneVoice.start(initialPitch.frequency, instrument, strokeVolume);
     }
 
     // Align initial playhead distance to measure downbeat if quantizing
@@ -236,12 +239,40 @@ export class StrokeManager {
       hovered: false,
       muted: false,
       soloed: false,
+      volume: strokeVolume,
     };
 
     this.strokes.push(stroke);
     this.undoStack.push({ type: 'add', stroke });
     this.redoStack = [];
     return stroke;
+  }
+
+  /**
+   * Sets the volume (gain multiplier) of an individual stroke with undo support.
+   */
+  public setStrokeVolume(strokeId: string, volume: number, recordUndo = true): boolean {
+    const stroke = this.strokes.find((s) => s.id === strokeId);
+    if (!stroke) return false;
+    const clampedVol = Math.max(0, Math.min(1, volume));
+    const oldVol = stroke.volume ?? 1.0;
+    if (Math.abs(oldVol - clampedVol) < 0.001) return false;
+
+    stroke.volume = clampedVol;
+    if (stroke.droneVoice) {
+      stroke.droneVoice.setVolume(clampedVol);
+    }
+
+    if (recordUndo) {
+      this.undoStack.push({
+        type: 'volume',
+        strokeId,
+        oldVolume: oldVol,
+        newVolume: clampedVol,
+      });
+      this.redoStack = [];
+    }
+    return true;
   }
 
   /**
@@ -337,7 +368,7 @@ export class StrokeManager {
       if (stroke.style === 'solid' && !stroke.droneVoice && stroke.playhead.lastPitch && this.isStrokeAudible(stroke)) {
         const inst = getInstrument(stroke.instrumentId);
         stroke.droneVoice = new DroneVoice();
-        stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst);
+        stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, stroke.volume ?? 1.0);
       }
     }
   }
@@ -404,9 +435,10 @@ export class StrokeManager {
         ph.trail.pop();
       }
 
-      // 3. Audio & Pitch evaluation (Respecting Mute & Solo)
+      // 3. Audio & Pitch evaluation (Respecting Volume, Mute & Solo)
       const audible = this.isStrokeAudible(stroke);
       const instrument = getInstrument(stroke.instrumentId);
+      const strokeVol = stroke.volume ?? 1.0;
 
       if (stroke.style === 'solid') {
         const pitch = quantizer.quantizeContinuous(evalResult.point.y, canvasHeight);
@@ -415,14 +447,15 @@ export class StrokeManager {
         if (audible) {
           if (!stroke.droneVoice && soundEngine.isReady) {
             stroke.droneVoice = new DroneVoice();
-            stroke.droneVoice.start(pitch.frequency, instrument);
+            stroke.droneVoice.start(pitch.frequency, instrument, strokeVol);
           } else if (stroke.droneVoice) {
             stroke.droneVoice.update(
               pitch.frequency,
               evalResult.curvature,
               evalResult.point.x,
               canvasWidth,
-              this.xModMode
+              this.xModMode,
+              strokeVol
             );
           }
         } else if (stroke.droneVoice) {
@@ -439,7 +472,7 @@ export class StrokeManager {
           PulseVoice.trigger(
             pitch.frequency,
             false,
-            0.85,
+            0.85 * strokeVol,
             instrument,
             evalResult.point.x,
             canvasWidth,
@@ -457,7 +490,7 @@ export class StrokeManager {
           PulseVoice.trigger(
             pitch.frequency,
             true,
-            0.7,
+            0.7 * strokeVol,
             instrument,
             evalResult.point.x,
             canvasWidth,
@@ -494,6 +527,13 @@ export class StrokeManager {
     } else if (action.type === 'revoice') {
       this.revoiceStroke(action.strokeId, action.oldInstrumentId, false);
       this.redoStack.push(action);
+    } else if (action.type === 'volume') {
+      const stroke = this.strokes.find((s) => s.id === action.strokeId);
+      if (stroke) {
+        stroke.volume = action.oldVolume;
+        stroke.droneVoice?.setVolume(action.oldVolume);
+      }
+      this.redoStack.push(action);
     }
 
     return true;
@@ -508,7 +548,7 @@ export class StrokeManager {
       if (action.stroke.style === 'solid' && soundEngine.isReady && action.stroke.playhead.lastPitch && this.isStrokeAudible(action.stroke)) {
         const inst = getInstrument(action.stroke.instrumentId);
         action.stroke.droneVoice = new DroneVoice();
-        action.stroke.droneVoice.start(action.stroke.playhead.lastPitch.frequency, inst);
+        action.stroke.droneVoice.start(action.stroke.playhead.lastPitch.frequency, inst, action.stroke.volume ?? 1.0);
       }
       this.undoStack.push(action);
     } else if (action.type === 'remove') {
@@ -524,6 +564,13 @@ export class StrokeManager {
       this.undoStack.push(action);
     } else if (action.type === 'revoice') {
       this.revoiceStroke(action.strokeId, action.newInstrumentId, false);
+      this.undoStack.push(action);
+    } else if (action.type === 'volume') {
+      const stroke = this.strokes.find((s) => s.id === action.strokeId);
+      if (stroke) {
+        stroke.volume = action.newVolume;
+        stroke.droneVoice?.setVolume(action.newVolume);
+      }
       this.undoStack.push(action);
     }
 

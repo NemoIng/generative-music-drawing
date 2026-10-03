@@ -31,4 +31,5 @@ export interface DrawnStroke {
   hovered?: boolean;
   muted?: boolean;
   soloed?: boolean;
+  volume?: number; // 0.0 to 1.0 (default 1.0)
 }

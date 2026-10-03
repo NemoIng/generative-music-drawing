@@ -459,30 +459,91 @@ body, html {
   border-radius: 20px;
 }
 
-.track-btn {
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--text-secondary);
-  font-size: 0.7rem;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.12s ease;
-}
-
-.track-btn:hover {
+/* Track Actions Group (Inline in Top Bar when a line is selected) */
+.track-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   background: var(--bg-subtle);
-  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  animation: fadeInTrack 0.18s ease-out;
 }
 
-.track-btn.active-mute {
+@keyframes fadeInTrack {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.track-inspector-label {
+  font-size: 0.72rem;
+  font-weight: 650;
+  color: var(--text-primary);
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+.track-vol-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 6px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.track-vol-control label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.track-vol-slider {
+  width: 60px;
+  height: 4px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--border-subtle);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.track-vol-slider::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.1s ease;
+}
+
+.track-vol-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.track-vol-val {
+  font-size: 0.68rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  min-width: 32px;
+  text-align: right;
+}
+
+.track-actions-group .action-btn.active-mute {
   background: #fee2e2;
   color: #b91c1c;
   border-color: #fca5a5;
 }
 
-.track-btn.active-solo {
+.track-actions-group .action-btn.active-solo {
   background: #fef3c7;
   color: #b45309;
   border-color: #fcd34d;

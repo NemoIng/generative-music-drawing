@@ -148,8 +148,11 @@ export class CanvasRenderer {
     const ctx = this.ctx;
     ctx.save();
 
+    const vol = typeof stroke.volume === 'number' ? stroke.volume : 1.0;
     if (stroke.muted) {
-      ctx.globalAlpha = 0.32;
+      ctx.globalAlpha = 0.28;
+    } else {
+      ctx.globalAlpha = 0.35 + 0.65 * vol;
     }
 
     ctx.beginPath();
@@ -207,7 +210,7 @@ export class CanvasRenderer {
       ctx.stroke();
     }
 
-    // Selection Anchor Rings
+    // Selection Anchor Rings & Floating Volume Tag
     if (stroke.selected && path.segments.length > 0) {
       ctx.shadowBlur = 0;
       const startPt = path.segments[0].p0;
@@ -230,6 +233,27 @@ export class CanvasRenderer {
         ctx.strokeStyle = '#2563eb';
         ctx.stroke();
       }
+
+      // Floating volume pill badge above start point
+      const volPercent = Math.round(vol * 100);
+      const tagText = `${volPercent}% vol`;
+      ctx.font = '600 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+      const textMetrics = ctx.measureText(tagText);
+      const padX = 6;
+      const tagW = textMetrics.width + padX * 2;
+      const tagH = 16;
+      const tagX = startPt.x - tagW / 2;
+      const tagY = startPt.y - 20;
+
+      ctx.fillStyle = '#1c1917';
+      ctx.beginPath();
+      ctx.roundRect(tagX, tagY, tagW, tagH, 8);
+      ctx.fill();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(tagText, tagX + tagW / 2, tagY + tagH / 2);
     }
 
     ctx.restore();
@@ -246,8 +270,11 @@ export class CanvasRenderer {
     const ctx = this.ctx;
     ctx.save();
 
+    const vol = typeof stroke.volume === 'number' ? stroke.volume : 1.0;
     if (stroke.muted) {
       ctx.globalAlpha = 0.35;
+    } else {
+      ctx.globalAlpha = 0.4 + 0.6 * vol;
     }
 
     // 1. Motion Trail

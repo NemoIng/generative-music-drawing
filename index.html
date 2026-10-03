@@ -284,10 +284,17 @@
             <input type="range" id="deadbandSlider" min="0.05" max="0.45" step="0.05" value="0.25" class="minimal-slider" />
           </div>
 
-          <!-- Track Inspector Actions (Mute / Solo / Delete) -->
+          <!-- Track Inspector Actions (Volume / Mute / Solo / Delete) -->
           <div class="track-actions-group" id="trackActionsGroup" style="display: none;">
+            <span id="trackLabel" class="track-inspector-label">Track</span>
+            <div class="track-vol-control has-tooltip" data-tooltip="Line Volume: Drag to adjust volume of this line (0% - 100%). Shortcut: [ / ] or ↑ / ↓.">
+              <label for="trackVolSlider">Vol</label>
+              <input type="range" id="trackVolSlider" min="0" max="100" step="1" value="100" class="track-vol-slider" />
+              <span id="trackVolVal" class="track-vol-val">100%</span>
+            </div>
             <button id="muteBtn" class="action-btn has-tooltip" data-tooltip="Mute selected line (M)">Mute</button>
             <button id="soloBtn" class="action-btn has-tooltip" data-tooltip="Solo selected line (S)">Solo</button>
+            <button id="deleteTrackBtn" class="action-btn text-danger has-tooltip" data-tooltip="Delete selected line (Backspace / Delete)">Delete</button>
           </div>
 
           <!-- Master Action Buttons -->
