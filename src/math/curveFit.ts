@@ -27,17 +27,55 @@ export function decimatePoints(points: Point2D[], minDistance: number = 8): Poin
 }
 
 /**
+ * Applies Laplacian moving-average smoothing to an array of points,
+ * preserving endpoints to prevent curve shrinkage or endpoint displacement.
+ *
+ * @param points Array of 2D points to smooth
+ * @param iterations Number of smoothing passes (default 3)
+ * @param weight Center weight vs neighbor weight (0.0 to 1.0, default 0.45)
+ */
+export function smoothPoints(points: Point2D[], iterations: number = 3, weight: number = 0.45): Point2D[] {
+  if (points.length < 3) return points.map((p) => ({ ...p }));
+
+  let pts = points.map((p) => ({ ...p }));
+  const neighborWeight = (1 - weight) / 2;
+
+  for (let iter = 0; iter < iterations; iter++) {
+    const smoothed: Point2D[] = [{ ...pts[0] }];
+    for (let i = 1; i < pts.length - 1; i++) {
+      smoothed.push({
+        x: pts[i].x * weight + (pts[i - 1].x + pts[i + 1].x) * neighborWeight,
+        y: pts[i].y * weight + (pts[i - 1].y + pts[i + 1].y) * neighborWeight,
+      });
+    }
+    smoothed.push({ ...pts[pts.length - 1] });
+    pts = smoothed;
+  }
+
+  return pts;
+}
+
+/**
  * Converts a sequence of points into smooth cubic Bezier segments using Catmull-Rom
  * to Bezier conversion (with tension = 1/6 for smooth C1 continuity).
  *
  * @param rawPoints Array of sampled 2D points from user input
  * @param closeThreshold Max distance between start and end point to automatically close the loop
+ * @param smooth Whether to apply automatic smoothing to eliminate hand tremor jitter
  */
 export function fitSplineFromPoints(
   rawPoints: Point2D[],
-  closeThreshold: number = 40
+  closeThreshold: number = 40,
+  smooth: boolean = false
 ): SplinePath | null {
-  const points = decimatePoints(rawPoints, 10);
+  let pointsToFit = rawPoints;
+  if (smooth && rawPoints.length >= 3) {
+    const smoothed = smoothPoints(rawPoints, 3, 0.45);
+    pointsToFit = decimatePoints(smoothed, 16);
+  } else {
+    pointsToFit = decimatePoints(rawPoints, 10);
+  }
+  const points = pointsToFit;
   if (points.length < 2) return null;
 
   // Determine if path forms a closed loop

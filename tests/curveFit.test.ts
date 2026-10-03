@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fitSplineFromPoints, decimatePoints } from '../src/math/curveFit';
+import { fitSplineFromPoints, decimatePoints, smoothPoints } from '../src/math/curveFit';
 import { Point2D } from '../src/math/types';
 
 describe('Curve Fitting & Auto-closure', () => {
@@ -52,5 +52,45 @@ describe('Curve Fitting & Auto-closure', () => {
     expect(spline).not.toBeNull();
     expect(spline?.isClosed).toBe(false);
     expect(spline?.segments.length).toBe(3);
+  });
+
+  it('smooths raw point jitter while preserving start and end coordinates', () => {
+    // Shaky hand trajectory along y = 100 with tremors
+    const jittery: Point2D[] = [
+      { x: 0, y: 100 },
+      { x: 20, y: 120 }, // jitter peak
+      { x: 40, y: 80 },  // jitter trough
+      { x: 60, y: 115 }, // jitter peak
+      { x: 80, y: 90 },  // jitter trough
+      { x: 100, y: 100 },
+    ];
+
+    const smoothed = smoothPoints(jittery, 3, 0.45);
+    expect(smoothed.length).toBe(jittery.length);
+    // Endpoints must remain exact
+    expect(smoothed[0]).toEqual({ x: 0, y: 100 });
+    expect(smoothed[smoothed.length - 1]).toEqual({ x: 100, y: 100 });
+
+    // Interior jitter deviations should be dampened towards average (100)
+    expect(Math.abs(smoothed[1].y - 100)).toBeLessThan(Math.abs(jittery[1].y - 100));
+    expect(Math.abs(smoothed[2].y - 100)).toBeLessThan(Math.abs(jittery[2].y - 100));
+  });
+
+  it('fits smooth spline when auto-smoothing is enabled', () => {
+    const points: Point2D[] = [
+      { x: 0, y: 100 },
+      { x: 30, y: 130 },
+      { x: 60, y: 90 },
+      { x: 90, y: 120 },
+      { x: 120, y: 100 },
+      { x: 150, y: 100 },
+    ];
+
+    const smoothSpline = fitSplineFromPoints(points, 45, true);
+    expect(smoothSpline).not.toBeNull();
+    expect(smoothSpline?.segments.length).toBeGreaterThan(0);
+    // Start of first segment and end of last segment match start and end of path
+    expect(smoothSpline?.segments[0].p0.x).toBeCloseTo(0, 1);
+    expect(smoothSpline?.segments[0].p0.y).toBeCloseTo(100, 1);
   });
 });

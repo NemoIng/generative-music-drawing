@@ -22,6 +22,7 @@ export class InputHandler {
   private mode: InteractionMode = 'draw';
   private shape: DrawShape = 'curve';
   private snapPitch = false;
+  private autoSmooth = true;
 
   // Drawing state
   private isDrawing = false;
@@ -79,6 +80,14 @@ export class InputHandler {
 
   public setSnapPitch(snap: boolean): void {
     this.snapPitch = snap;
+  }
+
+  public get isAutoSmooth(): boolean {
+    return this.autoSmooth;
+  }
+
+  public setAutoSmooth(smooth: boolean): void {
+    this.autoSmooth = smooth;
   }
 
   public get points(): ReadonlyArray<Point2D> {
@@ -227,7 +236,7 @@ export class InputHandler {
     this.isDrawing = false;
 
     if (this.currentPoints.length >= 2) {
-      const spline = fitSplineFromPoints(this.currentPoints, 45);
+      const spline = fitSplineFromPoints(this.currentPoints, 45, this.autoSmooth);
       if (spline && spline.segments.length > 0) {
         this.onStrokeComplete(spline);
       }

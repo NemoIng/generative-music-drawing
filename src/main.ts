@@ -15,6 +15,7 @@ const canvasEl = document.getElementById('musicCanvas') as HTMLCanvasElement;
 const templateSelect = document.getElementById('templateSelect') as HTMLSelectElement;
 const toolModeButtons = document.querySelectorAll<HTMLButtonElement>('#toolModeControl .seg-btn');
 const shapeButtons = document.querySelectorAll<HTMLButtonElement>('#shapeControl .seg-btn');
+const autoSmoothBtn = document.getElementById('autoSmoothBtn') as HTMLButtonElement;
 const snapPitchBtn = document.getElementById('snapPitchBtn') as HTMLButtonElement;
 const swatchButtons = document.querySelectorAll<HTMLButtonElement>('#instrumentPalette .swatch-btn');
 const xAxisSelect = document.getElementById('xAxisSelect') as HTMLSelectElement;
@@ -27,7 +28,8 @@ const bpmSlider = document.getElementById('bpmSlider') as HTMLInputElement;
 const bpmVal = document.getElementById('bpmVal') as HTMLSpanElement;
 const deadbandSlider = document.getElementById('deadbandSlider') as HTMLInputElement;
 const deadbandVal = document.getElementById('deadbandVal') as HTMLSpanElement;
-const trackActionsGroup = document.getElementById('trackActionsGroup') as HTMLDivElement;
+const trackInspectorBar = document.getElementById('trackInspectorBar') as HTMLElement;
+const trackBadgeDot = document.getElementById('trackBadgeDot') as HTMLElement;
 const trackLabel = document.getElementById('trackLabel') as HTMLSpanElement;
 const trackVolSlider = document.getElementById('trackVolSlider') as HTMLInputElement;
 const trackVolVal = document.getElementById('trackVolVal') as HTMLSpanElement;
@@ -39,6 +41,7 @@ const wavePeriodVal = document.getElementById('wavePeriodVal') as HTMLSpanElemen
 const muteBtn = document.getElementById('muteBtn') as HTMLButtonElement;
 const soloBtn = document.getElementById('soloBtn') as HTMLButtonElement;
 const deleteTrackBtn = document.getElementById('deleteTrackBtn') as HTMLButtonElement;
+const deselectTrackBtn = document.getElementById('deselectTrackBtn') as HTMLButtonElement;
 const trackTextureButtons = document.querySelectorAll<HTMLButtonElement>('#trackTextureControl .seg-btn');
 const trackSyncSelect = document.getElementById('trackSyncSelect') as HTMLSelectElement;
 const undoBtn = document.getElementById('undoBtn') as HTMLButtonElement;
@@ -128,6 +131,14 @@ shapeButtons.forEach((btn) => {
       inputHandler.setDrawShape(shape);
     }
   });
+});
+
+// Auto-Smooth Toggle
+autoSmoothBtn.addEventListener('click', () => {
+  const willSmooth = !inputHandler.isAutoSmooth;
+  inputHandler.setAutoSmooth(willSmooth);
+  autoSmoothBtn.classList.toggle('active', willSmooth);
+  autoSmoothBtn.textContent = willSmooth ? 'Smooth On' : 'Smooth Off';
 });
 
 // Magnetic Pitch Snap Toggle
@@ -317,15 +328,19 @@ deadbandSlider.addEventListener('input', () => {
   quantizer.updateConfig({ deadbandWidth: val });
 });
 
-// Track Inspector Volume / Wave Reshape / Mute / Solo / Delete Controls
+// Track Inspector Volume / Texture / Sync / Wave Reshape / Mute / Solo / Delete Controls
 function updateTrackActionsVisibility(): void {
   const selectedId = strokeManager.selectedStrokeId;
   if (inputHandler.currentMode === 'edit' && selectedId) {
-    trackActionsGroup.style.display = 'flex';
+    trackInspectorBar.style.display = 'flex';
+    trackInspectorBar.classList.remove('hidden');
     const stroke = strokeManager.activeStrokes.find((s) => s.id === selectedId);
     if (stroke) {
       const inst = getInstrument(stroke.instrumentId);
       trackLabel.textContent = `${inst.name}`;
+      trackBadgeDot.style.background = inst.color;
+      trackBadgeDot.style.boxShadow = `0 0 8px ${inst.color}80`;
+
       const vol = typeof stroke.volume === 'number' ? stroke.volume : 1.0;
       trackVolSlider.value = Math.round(vol * 100).toString();
       trackVolVal.textContent = `${Math.round(vol * 100)}%`;
@@ -365,7 +380,8 @@ function updateTrackActionsVisibility(): void {
       soloBtn.textContent = stroke.soloed ? 'Unsolo' : 'Solo';
     }
   } else {
-    trackActionsGroup.style.display = 'none';
+    trackInspectorBar.style.display = 'none';
+    trackInspectorBar.classList.add('hidden');
     // Restore top bar to global current style & quantize
     strokeModeButtons.forEach((b) => {
       b.classList.toggle('active', b.getAttribute('data-style') === currentStyle);
@@ -373,6 +389,11 @@ function updateTrackActionsVisibility(): void {
     quantizeSelect.value = strokeManager.loopQuantize;
   }
 }
+
+deselectTrackBtn?.addEventListener('click', () => {
+  strokeManager.selectStroke(null);
+  updateTrackActionsVisibility();
+});
 
 // Track Inspector Texture Event Listeners
 trackTextureButtons.forEach((btn) => {
@@ -580,7 +601,16 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     }
   }
 
-  // 4. Quick Mode toggles: D = Draw, V = Select/Edit
+  // 4. Escape: Deselect active stroke
+  if (e.key === 'Escape') {
+    if (strokeManager.selectedStrokeId) {
+      strokeManager.selectStroke(null);
+      updateTrackActionsVisibility();
+      return;
+    }
+  }
+
+  // 5. Quick Mode toggles: D = Draw, V = Select/Edit
   if (e.key.toLowerCase() === 'd') {
     setToolMode('draw');
   } else if (e.key.toLowerCase() === 'v') {

@@ -84,6 +84,19 @@
             </div>
           </div>
 
+          <!-- Auto-Smooth Toggle -->
+          <div class="control-group">
+            <label>Smooth</label>
+            <button
+              type="button"
+              id="autoSmoothBtn"
+              class="toggle-btn active has-tooltip"
+              data-tooltip="Auto-Smooth: Automatically eliminates hand jitters and refines curves into silky, flowing musical lines upon release."
+            >
+              Smooth On
+            </button>
+          </div>
+
           <!-- Magnetic Pitch Snap Toggle -->
           <div class="control-group">
             <label>Pitch Grid</label>
@@ -157,6 +170,8 @@
               </button>
             </div>
           </div>
+
+          <div class="nav-divider"></div>
 
           <!-- X-Axis Modulation Setting -->
           <div class="control-group has-tooltip" data-tooltip="X-Axis Modulation: Controls how horizontal position shapes sound (Stereo Panning across soundstage + Timbral Brightness).">
@@ -284,40 +299,76 @@
             <input type="range" id="deadbandSlider" min="0.05" max="0.45" step="0.05" value="0.25" class="minimal-slider" />
           </div>
 
-          <!-- Track Inspector Actions (Volume / Wave Reshape / Mute / Solo / Delete) -->
-          <div class="track-actions-group" id="trackActionsGroup" style="display: none;">
-            <span id="trackLabel" class="track-inspector-label">Track</span>
-            <div class="track-vol-control has-tooltip" data-tooltip="Line Volume: Drag to adjust volume of this line (0% - 100%). Shortcut: [ / ] or ↑ / ↓.">
-              <label for="trackVolSlider">Vol</label>
+          <div class="nav-divider"></div>
+
+          <!-- Master Action Buttons -->
+          <div class="actions-group">
+            <button id="undoBtn" class="action-btn has-tooltip" data-tooltip="Undo (⌘Z / Ctrl+Z): Undo last action.">
+              Undo
+            </button>
+            <button id="playPauseBtn" class="action-btn has-tooltip" data-tooltip="Play / Pause (Spacebar): Toggle playback.">
+              <span id="playPauseIcon">⏸</span> <span id="playPauseText">Pause</span>
+            </button>
+            <button id="clearBtn" class="action-btn text-danger has-tooltip" data-tooltip="Clear Canvas: Remove all curves.">
+              Clear
+            </button>
+            <button id="infoBtn" class="action-btn text-muted has-tooltip" data-tooltip="Algorithm & Math: View equations.">
+              Math
+            </button>
+          </div>
+        </nav>
+      </header>
+
+      <!-- Dedicated Selected Line Inspector (Appears when a line is selected in Select mode) -->
+      <section id="trackInspectorBar" class="track-inspector-bar" style="display: none;">
+        <div class="track-inspector-inner">
+          <!-- Line Identity & Color Pill -->
+          <div class="inspector-badge">
+            <span class="inspector-badge-dot" id="trackBadgeDot"></span>
+            <div class="inspector-badge-meta">
+              <span class="inspector-badge-sub">Selected Line</span>
+              <span class="inspector-badge-name" id="trackLabel">Bowed Cello</span>
+            </div>
+          </div>
+
+          <div class="inspector-divider"></div>
+
+          <!-- Individual Line Volume -->
+          <div class="inspector-cell has-tooltip" data-tooltip="Line Volume: Drag to adjust volume of this line (0% - 100%). Shortcut: [ / ] or ↑ / ↓.">
+            <label for="trackVolSlider">Volume</label>
+            <div class="track-slider-wrap">
               <input type="range" id="trackVolSlider" min="0" max="100" step="1" value="100" class="track-vol-slider" />
               <span id="trackVolVal" class="track-vol-val">100%</span>
             </div>
+          </div>
 
-            <!-- Line Texture Control (Solid / Dotted / Striped) -->
-            <div class="track-prop-control has-tooltip" data-tooltip="Line Texture: Switch audio voice between continuous solid drone, 8th-note dotted chimes, and 16th-note striped pulses.">
-              <label>Texture</label>
-              <div class="segmented-switch mini-switch" id="trackTextureControl">
-                <button type="button" class="seg-btn active" data-track-style="solid">Solid</button>
-                <button type="button" class="seg-btn" data-track-style="dotted">Dotted</button>
-                <button type="button" class="seg-btn" data-track-style="striped">Striped</button>
-              </div>
+          <!-- Individual Line Texture -->
+          <div class="inspector-cell has-tooltip" data-tooltip="Line Texture: Switch audio voice between continuous solid drone, 8th-note dotted chimes, and 16th-note striped pulses.">
+            <label>Texture</label>
+            <div class="segmented-switch mini-switch" id="trackTextureControl">
+              <button type="button" class="seg-btn active" data-track-style="solid">Solid</button>
+              <button type="button" class="seg-btn" data-track-style="dotted">Dotted</button>
+              <button type="button" class="seg-btn" data-track-style="striped">Striped</button>
             </div>
+          </div>
 
-            <!-- Line Loop Sync (1 Bar / 2 Bars / 4 Bars / Freeform) -->
-            <div class="track-prop-control has-tooltip" data-tooltip="Line Loop Sync: Aligns loop cycle to musical bars. Locked tracks loop in rhythmic unison regardless of length.">
-              <label for="trackSyncSelect">Sync</label>
-              <div class="select-wrapper mini-select-wrapper">
-                <select id="trackSyncSelect" class="minimal-select track-mini-select">
-                  <option value="1bar">1 Bar</option>
-                  <option value="2bars">2 Bars</option>
-                  <option value="4bars">4 Bars</option>
-                  <option value="freeform">Freeform</option>
-                </select>
-              </div>
+          <!-- Individual Line Loop Sync -->
+          <div class="inspector-cell has-tooltip" data-tooltip="Line Loop Sync: Aligns loop cycle to musical bars. Locked tracks loop in rhythmic unison regardless of length.">
+            <label for="trackSyncSelect">Loop Sync</label>
+            <div class="select-wrapper mini-select-wrapper">
+              <select id="trackSyncSelect" class="minimal-select track-mini-select">
+                <option value="1bar">1 Bar</option>
+                <option value="2bars">2 Bars</option>
+                <option value="4bars">4 Bars</option>
+                <option value="freeform">Freeform</option>
+              </select>
             </div>
+          </div>
 
-            <!-- Wave Restructuring (Sine Wave, Amplitude, Period) -->
-            <div class="track-wave-control" id="trackWaveControl">
+          <!-- Wave Restructuring -->
+          <div class="inspector-cell inspector-wave-cell" id="trackWaveControl">
+            <label>Shape</label>
+            <div class="track-wave-subgroup">
               <button
                 type="button"
                 id="waveSineBtn"
@@ -337,29 +388,19 @@
                 <span id="wavePeriodVal" class="track-mini-val">2.0x</span>
               </div>
             </div>
+          </div>
 
+          <div class="inspector-divider"></div>
+
+          <!-- Actions: Mute / Solo / Delete / Done -->
+          <div class="inspector-actions">
             <button id="muteBtn" class="action-btn has-tooltip" data-tooltip="Mute selected line (M)">Mute</button>
             <button id="soloBtn" class="action-btn has-tooltip" data-tooltip="Solo selected line (S)">Solo</button>
             <button id="deleteTrackBtn" class="action-btn text-danger has-tooltip" data-tooltip="Delete selected line (Backspace / Delete)">Delete</button>
+            <button id="deselectTrackBtn" class="action-btn btn-subtle has-tooltip" data-tooltip="Deselect line (Esc)">✕ Done</button>
           </div>
-
-          <!-- Master Action Buttons -->
-          <div class="actions-group">
-            <button id="undoBtn" class="action-btn has-tooltip" data-tooltip="Undo (⌘Z / Ctrl+Z): Undo last action.">
-              Undo
-            </button>
-            <button id="playPauseBtn" class="action-btn has-tooltip" data-tooltip="Play / Pause (Spacebar): Toggle playback.">
-              <span id="playPauseIcon">⏸</span> <span id="playPauseText">Pause</span>
-            </button>
-            <button id="clearBtn" class="action-btn text-danger has-tooltip" data-tooltip="Clear Canvas: Remove all curves.">
-              Clear
-            </button>
-            <button id="infoBtn" class="action-btn text-muted has-tooltip" data-tooltip="Algorithm & Math: View equations.">
-              Math
-            </button>
-          </div>
-        </nav>
-      </header>
+        </div>
+      </section>
 
       <!-- Drawing Canvas Area -->
       <main class="canvas-container">
