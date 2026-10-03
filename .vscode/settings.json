@@ -1,0 +1,5 @@
+{
+  "git.enableSmartCommit": false,
+  "git.suggestSmartCommit": false,
+  "files.autoSave": "off"
+}
