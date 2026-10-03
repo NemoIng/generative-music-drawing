@@ -3,17 +3,22 @@ import { ScaleQuantizer } from './audio/scaleQuantizer';
 import { SCALES, ROOT_NOTES } from './audio/scales';
 import { StrokeManager } from './engine/strokeManager';
 import { CanvasRenderer } from './canvas/renderer';
-import { InputHandler, InteractionMode } from './canvas/inputHandler';
-import { StrokeStyle, TraversalMode, XAxisModulationMode } from './engine/types';
+import { InputHandler, InteractionMode, DrawShape } from './canvas/inputHandler';
+import { StrokeStyle, TraversalMode, XAxisModulationMode, LoopQuantizeMode } from './engine/types';
 import { INSTRUMENTS, DEFAULT_INSTRUMENT, getInstrument } from './audio/instruments';
+import { TEMPLATES, buildTemplateStrokes } from './audio/templates';
 import { soundEngine } from './audio/audioContext';
 import { SplinePath, Point2D } from './math/types';
 
 // DOM Elements
 const canvasEl = document.getElementById('musicCanvas') as HTMLCanvasElement;
+const templateSelect = document.getElementById('templateSelect') as HTMLSelectElement;
 const toolModeButtons = document.querySelectorAll<HTMLButtonElement>('#toolModeControl .seg-btn');
+const shapeButtons = document.querySelectorAll<HTMLButtonElement>('#shapeControl .seg-btn');
+const snapPitchBtn = document.getElementById('snapPitchBtn') as HTMLButtonElement;
 const swatchButtons = document.querySelectorAll<HTMLButtonElement>('#instrumentPalette .swatch-btn');
 const xAxisSelect = document.getElementById('xAxisSelect') as HTMLSelectElement;
+const quantizeSelect = document.getElementById('quantizeSelect') as HTMLSelectElement;
 const traversalButtons = document.querySelectorAll<HTMLButtonElement>('#traversalControl .seg-btn');
 const scaleSelect = document.getElementById('scaleSelect') as HTMLSelectElement;
 const rootSelect = document.getElementById('rootSelect') as HTMLSelectElement;
@@ -22,6 +27,9 @@ const bpmSlider = document.getElementById('bpmSlider') as HTMLInputElement;
 const bpmVal = document.getElementById('bpmVal') as HTMLSpanElement;
 const deadbandSlider = document.getElementById('deadbandSlider') as HTMLInputElement;
 const deadbandVal = document.getElementById('deadbandVal') as HTMLSpanElement;
+const trackActionsGroup = document.getElementById('trackActionsGroup') as HTMLDivElement;
+const muteBtn = document.getElementById('muteBtn') as HTMLButtonElement;
+const soloBtn = document.getElementById('soloBtn') as HTMLButtonElement;
 const undoBtn = document.getElementById('undoBtn') as HTMLButtonElement;
 const playPauseBtn = document.getElementById('playPauseBtn') as HTMLButtonElement;
 const playPauseIcon = document.getElementById('playPauseIcon') as HTMLSpanElement;
@@ -35,7 +43,8 @@ const statStrokes = document.getElementById('statStrokes') as HTMLSpanElement;
 const statMode = document.getElementById('statMode') as HTMLSpanElement;
 const statTempo = document.getElementById('statTempo') as HTMLSpanElement;
 const statInstrument = document.getElementById('statInstrument') as HTMLSpanElement;
-const statXMod = document.getElementById('statXMod') as HTMLSpanElement;
+const statLoopSync = document.getElementById('statLoopSync') as HTMLSpanElement;
+const statPitchSnap = document.getElementById('statPitchSnap') as HTMLSpanElement;
 const statAudio = document.getElementById('statAudio') as HTMLSpanElement;
 const contextHelp = document.getElementById('contextHelp') as HTMLSpanElement;
 
@@ -54,9 +63,10 @@ let currentStyle: StrokeStyle = 'solid';
 let currentInstrumentId: string = DEFAULT_INSTRUMENT.id;
 let activeDrawingPoints: Point2D[] = [];
 
-// Input Handling with Draw / Edit modes
+// Input Handling with Draw / Edit modes, straight bars, and pitch snapping
 const inputHandler = new InputHandler(canvasEl, {
   strokeManager,
+  getQuantizer: () => quantizer,
   onStrokeComplete: (path: SplinePath) => {
     audioUnlockPrompt.classList.add('hidden');
 
@@ -83,7 +93,8 @@ function setToolMode(mode: InteractionMode): void {
   toolModeButtons.forEach((b) => {
     b.classList.toggle('active', b.getAttribute('data-mode') === mode);
   });
-  statMode.textContent = mode === 'edit' ? 'Select / Move' : 'Draw Mode';
+  statMode.textContent = mode === 'edit' ? 'Select Mode' : 'Draw Mode';
+  updateTrackActionsVisibility();
 }
 
 toolModeButtons.forEach((btn) => {
@@ -91,6 +102,78 @@ toolModeButtons.forEach((btn) => {
     const mode = btn.getAttribute('data-mode') as InteractionMode;
     if (mode) setToolMode(mode);
   });
+});
+
+// Drawing Shape Switching (Curve vs Straight Note Bar)
+shapeButtons.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    shapeButtons.forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    const shape = btn.getAttribute('data-shape') as DrawShape;
+    if (shape) {
+      inputHandler.setDrawShape(shape);
+    }
+  });
+});
+
+// Magnetic Pitch Snap Toggle
+snapPitchBtn.addEventListener('click', () => {
+  const willSnap = !inputHandler.isPitchSnapped;
+  inputHandler.setSnapPitch(willSnap);
+  snapPitchBtn.classList.toggle('active', willSnap);
+  snapPitchBtn.textContent = willSnap ? 'Snap ON' : 'Snap Off';
+  statPitchSnap.textContent = willSnap ? 'Snap ON' : 'Snap Off';
+  statPitchSnap.style.color = willSnap ? '#2563eb' : 'inherit';
+});
+
+// Starter Groove Template Loader
+templateSelect.addEventListener('change', async () => {
+  const tId = templateSelect.value;
+  if (!tId) return;
+
+  const template = TEMPLATES[tId];
+  if (!template) return;
+
+  if (!soundEngine.isReady) {
+    await soundEngine.init();
+    statAudio.textContent = 'Audio: Active';
+    statAudio.classList.add('chip-ready');
+  }
+
+  audioUnlockPrompt.classList.add('hidden');
+
+  // Update scale, root, and tempo to template recommendations
+  if (SCALES[template.scaleId]) {
+    quantizer.updateConfig({ scale: SCALES[template.scaleId] });
+    scaleSelect.value = template.scaleId;
+  }
+  if (ROOT_NOTES[template.rootId]) {
+    quantizer.updateConfig({ root: ROOT_NOTES[template.rootId] });
+    rootSelect.value = template.rootId;
+  }
+  strokeManager.setBpm(template.bpm);
+  bpmSlider.value = template.bpm.toString();
+  bpmVal.textContent = `${template.bpm} BPM`;
+  statTempo.textContent = `${template.bpm} BPM`;
+
+  // Clear existing and load template strokes
+  strokeManager.clearAll();
+  const strokes = buildTemplateStrokes(tId, renderer.width, renderer.height, quantizer);
+
+  for (const s of strokes) {
+    strokeManager.addStroke(
+      s.path,
+      s.style,
+      s.instrumentId,
+      140,
+      quantizer,
+      renderer.height
+    );
+  }
+
+  strokeManager.activateAudioVoices();
+  updateStats();
+  templateSelect.value = ''; // Reset select to placeholder
 });
 
 // Color-Sound Instrument Swatch Selection
@@ -121,12 +204,19 @@ swatchButtons.forEach((btn) => {
 xAxisSelect.addEventListener('change', () => {
   const mode = xAxisSelect.value as XAxisModulationMode;
   strokeManager.setXAxisModulationMode(mode);
-  const labels: Record<XAxisModulationMode, string> = {
-    panAndTone: 'Stereo Pan + Tone',
-    panOnly: 'Stereo Pan Only',
-    spaceDepth: 'Reverb Space Depth',
+});
+
+// Loop Measure Quantize
+quantizeSelect.addEventListener('change', () => {
+  const mode = quantizeSelect.value as LoopQuantizeMode;
+  strokeManager.setLoopQuantizeMode(mode);
+  const labels: Record<LoopQuantizeMode, string> = {
+    '1bar': '1 Bar Sync',
+    '2bars': '2 Bars Sync',
+    '4bars': '4 Bars Sync',
+    'freeform': 'Freeform',
   };
-  statXMod.textContent = labels[mode] || 'Stereo Pan';
+  statLoopSync.textContent = labels[mode] || 'Sync';
 });
 
 // Traversal Mode Switching (Restart vs Ping-Pong)
@@ -142,7 +232,7 @@ traversalButtons.forEach((btn) => {
 });
 
 // Contextual Hover Descriptions
-const DEFAULT_HELP = 'Hover over any setting for details • Space: Pause • ⌘Z: Undo • V: Select/Move • 1-6: Inks';
+const DEFAULT_HELP = 'Hover over any setting for details • Space: Pause • ⌘Z: Undo • Shift: Straight Note • M: Mute • S: Solo • 1-6: Inks';
 const tooltipElements = document.querySelectorAll<HTMLElement>('[data-tooltip]');
 
 tooltipElements.forEach((el) => {
@@ -203,6 +293,37 @@ deadbandSlider.addEventListener('input', () => {
   quantizer.updateConfig({ deadbandWidth: val });
 });
 
+// Track Inspector Mute / Solo Buttons
+function updateTrackActionsVisibility(): void {
+  const selectedId = strokeManager.selectedStrokeId;
+  if (inputHandler.currentMode === 'edit' && selectedId) {
+    trackActionsGroup.style.display = 'flex';
+    const stroke = strokeManager.activeStrokes.find((s) => s.id === selectedId);
+    if (stroke) {
+      muteBtn.classList.toggle('active-mute', !!stroke.muted);
+      muteBtn.textContent = stroke.muted ? 'Unmute' : 'Mute';
+      soloBtn.classList.toggle('active-solo', !!stroke.soloed);
+      soloBtn.textContent = stroke.soloed ? 'Unsolo' : 'Solo';
+    }
+  } else {
+    trackActionsGroup.style.display = 'none';
+  }
+}
+
+muteBtn.addEventListener('click', () => {
+  if (strokeManager.selectedStrokeId) {
+    strokeManager.toggleMute(strokeManager.selectedStrokeId);
+    updateTrackActionsVisibility();
+  }
+});
+
+soloBtn.addEventListener('click', () => {
+  if (strokeManager.selectedStrokeId) {
+    strokeManager.toggleSolo(strokeManager.selectedStrokeId);
+    updateTrackActionsVisibility();
+  }
+});
+
 // Play / Pause Toggle
 function togglePlayPause(): void {
   const isPaused = !strokeManager.paused;
@@ -223,11 +344,13 @@ playPauseBtn.addEventListener('click', togglePlayPause);
 undoBtn.addEventListener('click', () => {
   strokeManager.undo();
   updateStats();
+  updateTrackActionsVisibility();
 });
 
 clearBtn.addEventListener('click', () => {
   strokeManager.clearAll();
   updateStats();
+  updateTrackActionsVisibility();
 });
 
 infoBtn.addEventListener('click', () => {
@@ -265,6 +388,7 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
       strokeManager.undo();
     }
     updateStats();
+    updateTrackActionsVisibility();
     return;
   }
 
@@ -272,6 +396,7 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     e.preventDefault();
     strokeManager.redo();
     updateStats();
+    updateTrackActionsVisibility();
     return;
   }
 
@@ -281,6 +406,7 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
       e.preventDefault();
       strokeManager.deleteSelected();
       updateStats();
+      updateTrackActionsVisibility();
       return;
     }
   }
@@ -292,7 +418,16 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     setToolMode('edit');
   }
 
-  // 5. Number Keys 1 - 6: Quick select instruments
+  // 5. Mute / Solo shortcuts: M = Mute, S = Solo
+  if (e.key.toLowerCase() === 'm' && strokeManager.selectedStrokeId) {
+    strokeManager.toggleMute(strokeManager.selectedStrokeId);
+    updateTrackActionsVisibility();
+  } else if (e.key.toLowerCase() === 's' && strokeManager.selectedStrokeId) {
+    strokeManager.toggleSolo(strokeManager.selectedStrokeId);
+    updateTrackActionsVisibility();
+  }
+
+  // 6. Number Keys 1 - 6: Quick select instruments
   const instKeys = ['1', '2', '3', '4', '5', '6'];
   const instIds = Object.keys(INSTRUMENTS);
   const keyIdx = instKeys.indexOf(e.key);
@@ -310,6 +445,7 @@ window.addEventListener('pointerdown', async () => {
     statAudio.classList.add('chip-ready');
     audioUnlockPrompt.classList.add('hidden');
   }
+  setTimeout(updateTrackActionsVisibility, 50);
 }, { once: false });
 
 window.addEventListener('resize', () => {
@@ -328,22 +464,25 @@ function animationLoop(nowMs: number): void {
   const dt = Math.min(0.08, (nowMs - lastTimeMs) / 1000);
   lastTimeMs = nowMs;
 
-  // 1. Update constant-velocity playheads, Y pitch, and X stereo/timbre modulation
+  // 1. Update constant-velocity playheads, Y pitch, X stereo modulation, and measure progress
   strokeManager.update(dt, renderer.width, renderer.height, quantizer);
 
   // 2. Clear canvas to warm paper tone
   renderer.clear();
 
-  // 3. Render modal scale guidelines
+  // 3. Render modal scale guidelines (Root and 5th highlighted)
   renderer.drawGuidelines(quantizer.getGuidelines(renderer.height));
 
-  // 4. Render active strokes & playheads
+  // 4. Render 4-beat visual measure tracker along the top
+  renderer.drawBeatTracker(strokeManager.measureProgress, strokeManager.measureBeatIndex);
+
+  // 5. Render active strokes & playheads
   for (const stroke of strokeManager.activeStrokes) {
     renderer.drawStroke(stroke);
     renderer.drawPlayhead(stroke, nowMs);
   }
 
-  // 5. Render user's active in-flight gesture (in Draw mode) with active instrument color
+  // 6. Render user's active in-flight gesture (in Draw mode)
   if (inputHandler.currentMode === 'draw' && activeDrawingPoints.length > 1) {
     renderer.drawActiveGesture(activeDrawingPoints, getInstrument(currentInstrumentId).color);
   }

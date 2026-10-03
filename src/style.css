@@ -326,7 +326,7 @@ body, html {
   color: var(--text-muted);
 }
 
-/* Tooltip Hover System */
+/* Tooltip Hover System - Placed strictly ON TOP */
 .has-tooltip {
   position: relative;
 }
@@ -334,9 +334,10 @@ body, html {
 .has-tooltip::after {
   content: attr(data-tooltip);
   position: absolute;
-  top: calc(100% + 8px);
+  bottom: calc(100% + 8px);
+  top: auto;
   left: 50%;
-  transform: translateX(-50%) translateY(-3px);
+  transform: translateX(-50%) translateY(3px);
   background: #1c1917;
   color: #f5f5f4;
   font-size: 0.72rem;
@@ -346,20 +347,89 @@ body, html {
   border-radius: 6px;
   white-space: normal;
   width: max-content;
-  max-width: 240px;
+  max-width: 260px;
   text-align: center;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
   pointer-events: none;
   opacity: 0;
   visibility: hidden;
   transition: opacity 0.18s ease, transform 0.18s ease;
-  z-index: 50;
+  z-index: 100;
 }
 
 .has-tooltip:hover::after {
   opacity: 1;
   visibility: visible;
   transform: translateX(-50%) translateY(0);
+}
+
+/* Toggle Buttons (e.g. Snap Pitch) */
+.toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  padding: 5px 10px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.toggle-btn:hover {
+  background: var(--bg-subtle);
+  color: var(--text-primary);
+}
+
+.toggle-btn.active {
+  background: var(--text-primary);
+  color: #ffffff;
+  border-color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Track Inspector Floating Bar */
+.track-inspector {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
+  padding: 3px 6px;
+  border-radius: 20px;
+}
+
+.track-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.track-btn:hover {
+  background: var(--bg-subtle);
+  color: var(--text-primary);
+}
+
+.track-btn.active-mute {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
+
+.track-btn.active-solo {
+  background: #fef3c7;
+  color: #b45309;
+  border-color: #fcd34d;
 }
 
 /* Canvas Area */

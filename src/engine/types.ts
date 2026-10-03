@@ -4,6 +4,7 @@ import { PitchResult } from '../audio/scaleQuantizer';
 
 export type StrokeStyle = 'solid' | 'dotted' | 'striped';
 export type TraversalMode = 'restart' | 'pingpong';
+export type LoopQuantizeMode = 'freeform' | '1bar' | '2bars' | '4bars';
 export type { XAxisModulationMode };
 
 export interface StrokePlayhead {
@@ -28,4 +29,6 @@ export interface DrawnStroke {
   active: boolean;
   selected?: boolean;
   hovered?: boolean;
+  muted?: boolean;
+  soloed?: boolean;
 }

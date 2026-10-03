@@ -6,7 +6,7 @@ import { ScaleQuantizer } from '../audio/scaleQuantizer';
 import { DroneVoice, PulseVoice, XAxisModulationMode } from '../audio/synthVoice';
 import { getInstrument, DEFAULT_INSTRUMENT } from '../audio/instruments';
 import { soundEngine } from '../audio/audioContext';
-import { DrawnStroke, StrokeStyle, TraversalMode } from './types';
+import { DrawnStroke, StrokeStyle, TraversalMode, LoopQuantizeMode } from './types';
 
 type UndoAction =
   | { type: 'add'; stroke: DrawnStroke }
@@ -20,8 +20,10 @@ export class StrokeManager {
   private bpm = 100;
   private traversalMode: TraversalMode = 'restart';
   private xModMode: XAxisModulationMode = 'panAndTone';
+  private quantizeMode: LoopQuantizeMode = '1bar';
   private selectedId: string | null = null;
   private hoveredId: string | null = null;
+  private masterClockTime = 0;
 
   // History stacks
   private undoStack: UndoAction[] = [];
@@ -46,6 +48,10 @@ export class StrokeManager {
     return this.xModMode;
   }
 
+  public get loopQuantize(): LoopQuantizeMode {
+    return this.quantizeMode;
+  }
+
   public get selectedStrokeId(): string | null {
     return this.selectedId;
   }
@@ -66,6 +72,21 @@ export class StrokeManager {
     return this.redoStack.length > 0;
   }
 
+  /** Current musical beat in elapsed time */
+  public get currentBeat(): number {
+    return this.masterClockTime * (this.bpm / 60);
+  }
+
+  /** Current progress through 4-beat measure [0.0, 1.0) */
+  public get measureProgress(): number {
+    return (this.currentBeat % 4) / 4;
+  }
+
+  /** Current integer beat index (0, 1, 2, 3) */
+  public get measureBeatIndex(): number {
+    return Math.floor(this.currentBeat % 4);
+  }
+
   public setPaused(paused: boolean): void {
     this.isPaused = paused;
     if (this.isPaused) {
@@ -76,7 +97,7 @@ export class StrokeManager {
       }
     } else {
       for (const stroke of this.strokes) {
-        if (stroke.style === 'solid' && soundEngine.isReady && stroke.playhead.lastPitch) {
+        if (stroke.style === 'solid' && soundEngine.isReady && stroke.playhead.lastPitch && this.isStrokeAudible(stroke)) {
           const inst = getInstrument(stroke.instrumentId);
           stroke.droneVoice = new DroneVoice();
           stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst);
@@ -97,6 +118,10 @@ export class StrokeManager {
     this.xModMode = mode;
   }
 
+  public setLoopQuantizeMode(mode: LoopQuantizeMode): void {
+    this.quantizeMode = mode;
+  }
+
   public selectStroke(id: string | null): void {
     this.selectedId = id;
     for (const stroke of this.strokes) {
@@ -109,6 +134,47 @@ export class StrokeManager {
     for (const stroke of this.strokes) {
       stroke.hovered = stroke.id === id;
     }
+  }
+
+  public isStrokeAudible(stroke: DrawnStroke): boolean {
+    if (stroke.muted) return false;
+    const hasSolo = this.strokes.some((s) => s.soloed);
+    if (hasSolo && !stroke.soloed) return false;
+    return true;
+  }
+
+  public toggleMute(strokeId: string): boolean {
+    const stroke = this.strokes.find((s) => s.id === strokeId);
+    if (!stroke) return false;
+    stroke.muted = !stroke.muted;
+
+    if (!this.isStrokeAudible(stroke) && stroke.droneVoice) {
+      stroke.droneVoice.stop();
+    } else if (this.isStrokeAudible(stroke) && stroke.style === 'solid' && soundEngine.isReady && stroke.playhead.lastPitch && !this.isPaused) {
+      const inst = getInstrument(stroke.instrumentId);
+      stroke.droneVoice = new DroneVoice();
+      stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst);
+    }
+    return stroke.muted ?? false;
+  }
+
+  public toggleSolo(strokeId: string): boolean {
+    const stroke = this.strokes.find((s) => s.id === strokeId);
+    if (!stroke) return false;
+    stroke.soloed = !stroke.soloed;
+
+    // Refresh audio voices for all strokes
+    for (const s of this.strokes) {
+      const audible = this.isStrokeAudible(s);
+      if (!audible && s.droneVoice) {
+        s.droneVoice.stop();
+      } else if (audible && s.style === 'solid' && !s.droneVoice && soundEngine.isReady && s.playhead.lastPitch && !this.isPaused) {
+        const inst = getInstrument(s.instrumentId);
+        s.droneVoice = new DroneVoice();
+        s.droneVoice.start(s.playhead.lastPitch.frequency, inst);
+      }
+    }
+    return stroke.soloed ?? false;
   }
 
   public addStroke(
@@ -139,6 +205,15 @@ export class StrokeManager {
       droneVoice.start(initialPitch.frequency, instrument);
     }
 
+    // Align initial playhead distance to measure downbeat if quantizing
+    let initialDist = 0;
+    if (this.quantizeMode !== 'freeform' && lut.totalLength > 1) {
+      const beatsPerBar = this.quantizeMode === '1bar' ? 4 : this.quantizeMode === '2bars' ? 8 : 16;
+      const cycleLength = beatsPerBar * StrokeManager.BEAT_DISTANCE;
+      const currentCycleDist = (this.currentBeat * StrokeManager.BEAT_DISTANCE) % cycleLength;
+      initialDist = (currentCycleDist % lut.totalLength + lut.totalLength) % lut.totalLength;
+    }
+
     const stroke: DrawnStroke = {
       id,
       color: instrument.color,
@@ -147,10 +222,10 @@ export class StrokeManager {
       path,
       lut,
       playhead: {
-        currentDistance: 0,
+        currentDistance: initialDist,
         velocity: baseVelocity,
         direction: 1,
-        lastTriggerDistance: 0,
+        lastTriggerDistance: initialDist,
         lastEval: initialEval,
         lastPitch: initialPitch,
         trail: [],
@@ -159,6 +234,8 @@ export class StrokeManager {
       active: true,
       selected: false,
       hovered: false,
+      muted: false,
+      soloed: false,
     };
 
     this.strokes.push(stroke);
@@ -195,7 +272,6 @@ export class StrokeManager {
 
   /**
    * Translates an existing stroke by (dx, dy).
-   * Rigid translation preserves arc length identically, keeping LUT valid.
    */
   public translateStroke(id: string, dx: number, dy: number, recordUndo = false): boolean {
     const stroke = this.strokes.find((s) => s.id === id);
@@ -239,7 +315,6 @@ export class StrokeManager {
       const segments = stroke.path.segments;
 
       for (const seg of segments) {
-        // Sample 10 points along cubic segment
         for (let i = 0; i <= 10; i++) {
           const t = i / 10;
           const pt = evaluateBezier(seg, t);
@@ -259,7 +334,7 @@ export class StrokeManager {
     if (!soundEngine.isReady || this.isPaused) return;
 
     for (const stroke of this.strokes) {
-      if (stroke.style === 'solid' && !stroke.droneVoice && stroke.playhead.lastPitch) {
+      if (stroke.style === 'solid' && !stroke.droneVoice && stroke.playhead.lastPitch && this.isStrokeAudible(stroke)) {
         const inst = getInstrument(stroke.instrumentId);
         stroke.droneVoice = new DroneVoice();
         stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst);
@@ -269,10 +344,11 @@ export class StrokeManager {
 
   /**
    * Main per-frame update loop.
-   * Handles constant-velocity traversal, Y pitch quantization, and X stereo/timbre modulation.
    */
   public update(dt: number, canvasWidth: number, canvasHeight: number, quantizer: ScaleQuantizer): void {
     if (this.isPaused || dt <= 0) return;
+
+    this.masterClockTime += dt;
 
     const DOT_SPACING = 40;   // 1/8th note (2 triggers per beat)
     const STRIPE_SPACING = 20; // 1/16th note (4 triggers per beat)
@@ -296,7 +372,6 @@ export class StrokeManager {
         nextDist = ((nextDist % L) + L) % L;
       } else {
         if (this.traversalMode === 'restart') {
-          // One-way traversal: always journeys start -> end, then immediately restarts from start
           if (nextDist >= L) {
             nextDist = nextDist % L;
           } else if (nextDist < 0) {
@@ -304,7 +379,6 @@ export class StrokeManager {
           }
           ph.direction = 1;
         } else {
-          // Ping-Pong bounce
           if (nextDist >= L) {
             nextDist = L - (nextDist - L);
             ph.direction = -1;
@@ -330,24 +404,29 @@ export class StrokeManager {
         ph.trail.pop();
       }
 
-      // 3. Audio & Pitch evaluation (Y -> Pitch, X -> Stereo Pan & Timbre)
+      // 3. Audio & Pitch evaluation (Respecting Mute & Solo)
+      const audible = this.isStrokeAudible(stroke);
       const instrument = getInstrument(stroke.instrumentId);
 
       if (stroke.style === 'solid') {
         const pitch = quantizer.quantizeContinuous(evalResult.point.y, canvasHeight);
         ph.lastPitch = pitch;
 
-        if (!stroke.droneVoice && soundEngine.isReady) {
-          stroke.droneVoice = new DroneVoice();
-          stroke.droneVoice.start(pitch.frequency, instrument);
+        if (audible) {
+          if (!stroke.droneVoice && soundEngine.isReady) {
+            stroke.droneVoice = new DroneVoice();
+            stroke.droneVoice.start(pitch.frequency, instrument);
+          } else if (stroke.droneVoice) {
+            stroke.droneVoice.update(
+              pitch.frequency,
+              evalResult.curvature,
+              evalResult.point.x,
+              canvasWidth,
+              this.xModMode
+            );
+          }
         } else if (stroke.droneVoice) {
-          stroke.droneVoice.update(
-            pitch.frequency,
-            evalResult.curvature,
-            evalResult.point.x,
-            canvasWidth,
-            this.xModMode
-          );
+          stroke.droneVoice.stop();
         }
       } else if (stroke.style === 'dotted') {
         const pitch = quantizer.quantizeDiscrete(evalResult.point.y, canvasHeight);
@@ -356,7 +435,7 @@ export class StrokeManager {
         const prevIndex = Math.floor(prevDist / DOT_SPACING);
         const nextIndex = Math.floor(nextDist / DOT_SPACING);
 
-        if (prevIndex !== nextIndex) {
+        if (prevIndex !== nextIndex && audible) {
           PulseVoice.trigger(
             pitch.frequency,
             false,
@@ -374,7 +453,7 @@ export class StrokeManager {
         const prevIndex = Math.floor(prevDist / STRIPE_SPACING);
         const nextIndex = Math.floor(nextDist / STRIPE_SPACING);
 
-        if (prevIndex !== nextIndex) {
+        if (prevIndex !== nextIndex && audible) {
           PulseVoice.trigger(
             pitch.frequency,
             true,
@@ -389,9 +468,6 @@ export class StrokeManager {
     }
   }
 
-  /**
-   * Undo last action (draw, move, remove, revoice).
-   */
   public undo(): boolean {
     const action = this.undoStack.pop();
     if (!action) return false;
@@ -406,7 +482,7 @@ export class StrokeManager {
       }
     } else if (action.type === 'remove') {
       this.strokes.splice(action.index, 0, action.stroke);
-      if (action.stroke.style === 'solid' && soundEngine.isReady && action.stroke.playhead.lastPitch) {
+      if (action.stroke.style === 'solid' && soundEngine.isReady && action.stroke.playhead.lastPitch && this.isStrokeAudible(action.stroke)) {
         const inst = getInstrument(action.stroke.instrumentId);
         action.stroke.droneVoice = new DroneVoice();
         action.stroke.droneVoice.start(action.stroke.playhead.lastPitch.frequency, inst);
@@ -423,16 +499,13 @@ export class StrokeManager {
     return true;
   }
 
-  /**
-   * Redo previously undone action.
-   */
   public redo(): boolean {
     const action = this.redoStack.pop();
     if (!action) return false;
 
     if (action.type === 'add') {
       this.strokes.push(action.stroke);
-      if (action.stroke.style === 'solid' && soundEngine.isReady && action.stroke.playhead.lastPitch) {
+      if (action.stroke.style === 'solid' && soundEngine.isReady && action.stroke.playhead.lastPitch && this.isStrokeAudible(action.stroke)) {
         const inst = getInstrument(action.stroke.instrumentId);
         action.stroke.droneVoice = new DroneVoice();
         action.stroke.droneVoice.start(action.stroke.playhead.lastPitch.frequency, inst);

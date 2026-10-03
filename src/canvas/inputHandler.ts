@@ -2,23 +2,30 @@ import { Point2D, SplinePath } from '../math/types';
 import { fitSplineFromPoints } from '../math/curveFit';
 import { soundEngine } from '../audio/audioContext';
 import { StrokeManager } from '../engine/strokeManager';
+import { ScaleQuantizer } from '../audio/scaleQuantizer';
 
 export type InteractionMode = 'draw' | 'edit';
+export type DrawShape = 'curve' | 'straight';
 
 export interface InputHandlerOptions {
   onStrokeComplete: (path: SplinePath) => void;
   onDrawChange?: (points: Point2D[]) => void;
   strokeManager: StrokeManager;
+  getQuantizer: () => ScaleQuantizer;
 }
 
 export class InputHandler {
   private canvas: HTMLCanvasElement;
   private strokeManager: StrokeManager;
+  private getQuantizer: () => ScaleQuantizer;
   private mode: InteractionMode = 'draw';
+  private shape: DrawShape = 'curve';
+  private snapPitch = false;
 
   // Drawing state
   private isDrawing = false;
   private currentPoints: Point2D[] = [];
+  private startPoint: Point2D | null = null;
 
   // Edit / Dragging state
   private isDragging = false;
@@ -33,6 +40,7 @@ export class InputHandler {
   constructor(canvas: HTMLCanvasElement, options: InputHandlerOptions) {
     this.canvas = canvas;
     this.strokeManager = options.strokeManager;
+    this.getQuantizer = options.getQuantizer;
     this.onStrokeComplete = options.onStrokeComplete;
     this.onDrawChange = options.onDrawChange;
 
@@ -43,6 +51,14 @@ export class InputHandler {
     return this.mode;
   }
 
+  public get drawShape(): DrawShape {
+    return this.shape;
+  }
+
+  public get isPitchSnapped(): boolean {
+    return this.snapPitch;
+  }
+
   public setMode(mode: InteractionMode): void {
     this.mode = mode;
     this.canvas.style.cursor = mode === 'edit' ? 'default' : 'crosshair';
@@ -51,6 +67,14 @@ export class InputHandler {
       this.strokeManager.selectStroke(null);
       this.strokeManager.setHoveredStroke(null);
     }
+  }
+
+  public setDrawShape(shape: DrawShape): void {
+    this.shape = shape;
+  }
+
+  public setSnapPitch(snap: boolean): void {
+    this.snapPitch = snap;
   }
 
   public get points(): ReadonlyArray<Point2D> {
@@ -80,14 +104,30 @@ export class InputHandler {
 
   private getCanvasPoint(e: PointerEvent): Point2D {
     const rect = this.canvas.getBoundingClientRect();
-    return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    };
+    let x = e.clientX - rect.left;
+    let y = e.clientY - rect.top;
+
+    // Magnetic Pitch Snapping (snaps y to nearest scale line within 20px)
+    if (this.snapPitch) {
+      const quantizer = this.getQuantizer();
+      const guidelines = quantizer.getGuidelines(rect.height);
+      let closestY = y;
+      let minDiff = 20;
+
+      for (const g of guidelines) {
+        const diff = Math.abs(g.y - y);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestY = g.y;
+        }
+      }
+      y = closestY;
+    }
+
+    return { x, y };
   }
 
   private handlePointerDown = async (e: PointerEvent): Promise<void> => {
-    // Unlock Audio Context
     if (!soundEngine.isReady) {
       await soundEngine.init();
       this.strokeManager.activateAudioVoices();
@@ -106,7 +146,6 @@ export class InputHandler {
         this.dragAccumDy = 0;
         this.canvas.style.cursor = 'grabbing';
       } else {
-        // Clicked outside -> deselect
         this.strokeManager.selectStroke(null);
       }
       return;
@@ -114,37 +153,52 @@ export class InputHandler {
 
     // Draw mode
     this.isDrawing = true;
+    this.startPoint = pt;
     this.currentPoints = [pt];
     this.onDrawChange?.(this.currentPoints);
   };
 
   private handlePointerMove = (e: PointerEvent): void => {
-    const pt = this.getCanvasPoint(e);
+    const rawPt = this.getCanvasPoint(e);
 
     if (this.mode === 'edit') {
       if (this.isDragging && this.draggedStrokeId && this.lastDragPoint) {
-        const dx = pt.x - this.lastDragPoint.x;
-        const dy = pt.y - this.lastDragPoint.y;
+        const dx = rawPt.x - this.lastDragPoint.x;
+        const dy = rawPt.y - this.lastDragPoint.y;
 
         this.strokeManager.translateStroke(this.draggedStrokeId, dx, dy, false);
         this.dragAccumDx += dx;
         this.dragAccumDy += dy;
-        this.lastDragPoint = pt;
+        this.lastDragPoint = rawPt;
       } else {
-        // Hover inspection
-        const hit = this.strokeManager.hitTest(pt, 18);
+        const hit = this.strokeManager.hitTest(rawPt, 18);
         this.strokeManager.setHoveredStroke(hit ? hit.id : null);
         this.canvas.style.cursor = hit ? 'grab' : 'default';
       }
       return;
     }
 
-    // Draw mode
     if (!this.isDrawing) return;
+
+    // Straight note constraint: if drawShape is 'straight' or Shift key is held down
+    const isStraight = this.shape === 'straight' || e.shiftKey;
+    const pt: Point2D = isStraight && this.startPoint
+      ? { x: rawPt.x, y: this.startPoint.y }
+      : rawPt;
+
     const last = this.currentPoints[this.currentPoints.length - 1];
 
     if (Math.hypot(pt.x - last.x, pt.y - last.y) >= 4) {
-      this.currentPoints.push(pt);
+      if (isStraight && this.startPoint) {
+        // Keep simple 3-point horizontal line (start, mid, current)
+        this.currentPoints = [
+          { ...this.startPoint },
+          { x: (this.startPoint.x + pt.x) / 2, y: this.startPoint.y },
+          { ...pt },
+        ];
+      } else {
+        this.currentPoints.push(pt);
+      }
       this.onDrawChange?.(this.currentPoints);
     }
   };
@@ -152,7 +206,6 @@ export class InputHandler {
   private handlePointerUp = (): void => {
     if (this.mode === 'edit') {
       if (this.isDragging && this.draggedStrokeId) {
-        // Record undo for cumulative move
         if (Math.abs(this.dragAccumDx) > 0.5 || Math.abs(this.dragAccumDy) > 0.5) {
           this.strokeManager.translateStroke(this.draggedStrokeId, 0, 0, true);
         }
@@ -164,7 +217,6 @@ export class InputHandler {
       return;
     }
 
-    // Draw mode
     if (!this.isDrawing) return;
     this.isDrawing = false;
 
@@ -176,6 +228,7 @@ export class InputHandler {
     }
 
     this.currentPoints = [];
+    this.startPoint = null;
     this.onDrawChange?.(this.currentPoints);
   };
 }

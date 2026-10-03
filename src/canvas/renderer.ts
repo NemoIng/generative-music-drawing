@@ -49,6 +49,7 @@ export class CanvasRenderer {
 
   /**
    * Draws modal scale horizontal guidelines across the canvas.
+   * Clearly highlights Root (Tonic) and 5th (Dominant) degrees for harmonic grounding.
    */
   public drawGuidelines(guidelines: ScaleGuideline[]): void {
     const w = this.width;
@@ -59,12 +60,18 @@ export class CanvasRenderer {
       this.ctx.moveTo(44, g.y);
       this.ctx.lineTo(w - 44, g.y);
 
+      const isFifth = g.scaleDegree % 7 === 4; // Dominant 5th in heptatonic modes
+
       if (g.isRoot) {
-        this.ctx.strokeStyle = 'rgba(68, 64, 60, 0.22)';
-        this.ctx.lineWidth = 1.2;
+        this.ctx.strokeStyle = 'rgba(28, 25, 23, 0.35)';
+        this.ctx.lineWidth = 1.4;
         this.ctx.setLineDash([]);
+      } else if (isFifth) {
+        this.ctx.strokeStyle = 'rgba(37, 99, 235, 0.22)';
+        this.ctx.lineWidth = 1.2;
+        this.ctx.setLineDash([6, 6]);
       } else {
-        this.ctx.strokeStyle = 'rgba(120, 113, 108, 0.1)';
+        this.ctx.strokeStyle = 'rgba(120, 113, 108, 0.09)';
         this.ctx.lineWidth = 1;
         this.ctx.setLineDash([3, 5]);
       }
@@ -73,12 +80,17 @@ export class CanvasRenderer {
       // Note Name on margins
       this.ctx.setLineDash([]);
       this.ctx.font = g.isRoot
-        ? '600 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+        ? '700 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+        : isFifth
+        ? '600 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
         : '400 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-      this.ctx.fillStyle = g.isRoot ? '#292524' : '#a8a29e';
+
+      this.ctx.fillStyle = g.isRoot ? '#1c1917' : isFifth ? '#2563eb' : '#a8a29e';
       this.ctx.textAlign = 'right';
       this.ctx.textBaseline = 'middle';
-      this.ctx.fillText(g.noteName, 36, g.y);
+
+      const label = g.isRoot ? `★ ${g.noteName}` : isFifth ? `${g.noteName} (5th)` : g.noteName;
+      this.ctx.fillText(label, 36, g.y);
 
       this.ctx.textAlign = 'left';
       this.ctx.fillText(`${Math.round(g.frequency)}Hz`, w - 36, g.y);
@@ -88,12 +100,57 @@ export class CanvasRenderer {
   }
 
   /**
-   * Renders completed strokes with refined ink-on-paper aesthetics.
+   * Draws a visual 4-beat measure bar tracker along the top canvas margin.
+   */
+  public drawBeatTracker(measureProgress: number, beatIndex: number): void {
+    const w = this.width;
+    const ctx = this.ctx;
+    ctx.save();
+
+    const barW = Math.min(240, w * 0.4);
+    const startX = (w - barW) / 2;
+    const y = 14;
+
+    // Background track
+    ctx.beginPath();
+    ctx.moveTo(startX, y);
+    ctx.lineTo(startX + barW, y);
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    // 4 Beat tick dots
+    for (let b = 0; b < 4; b++) {
+      const bx = startX + (b / 3) * barW;
+      const isCurrent = b === beatIndex;
+      ctx.beginPath();
+      ctx.arc(bx, y, isCurrent ? 3.5 : 2, 0, Math.PI * 2);
+      ctx.fillStyle = isCurrent ? '#1c1917' : 'rgba(0, 0, 0, 0.2)';
+      ctx.fill();
+    }
+
+    // Moving playhead needle
+    const needleX = startX + measureProgress * barW;
+    ctx.beginPath();
+    ctx.arc(needleX, y, 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#2563eb';
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  /**
+   * Renders completed strokes with ink-on-paper aesthetics and mute/solo awareness.
    */
   public drawStroke(stroke: DrawnStroke): void {
     const { path, color, style } = stroke;
     const ctx = this.ctx;
     ctx.save();
+
+    if (stroke.muted) {
+      ctx.globalAlpha = 0.32;
+    }
 
     ctx.beginPath();
     for (let i = 0; i < path.segments.length; i++) {
@@ -107,10 +164,14 @@ export class CanvasRenderer {
       ctx.closePath();
     }
 
-    // Outer glow / ink depth
+    // Outer glow / selection depth
     if (stroke.selected) {
-      ctx.shadowColor = 'rgba(37, 99, 235, 0.35)';
+      ctx.shadowColor = 'rgba(37, 99, 235, 0.4)';
       ctx.shadowBlur = 12;
+      ctx.shadowOffsetY = 0;
+    } else if (stroke.soloed) {
+      ctx.shadowColor = 'rgba(217, 119, 6, 0.4)';
+      ctx.shadowBlur = 10;
       ctx.shadowOffsetY = 0;
     } else if (stroke.hovered) {
       ctx.shadowColor = 'rgba(37, 99, 235, 0.2)';
@@ -131,7 +192,6 @@ export class CanvasRenderer {
       ctx.setLineDash([]);
       ctx.stroke();
 
-      // Subtle core depth
       ctx.shadowBlur = 0;
       ctx.shadowOffsetY = 0;
       ctx.strokeStyle = color;
@@ -153,7 +213,6 @@ export class CanvasRenderer {
       const startPt = path.segments[0].p0;
       const endPt = path.segments[path.segments.length - 1].p3;
 
-      // Start Handle
       ctx.beginPath();
       ctx.arc(startPt.x, startPt.y, 5, 0, Math.PI * 2);
       ctx.fillStyle = '#ffffff';
@@ -162,7 +221,6 @@ export class CanvasRenderer {
       ctx.strokeStyle = '#2563eb';
       ctx.stroke();
 
-      // End Handle (if not closed)
       if (!path.isClosed) {
         ctx.beginPath();
         ctx.arc(endPt.x, endPt.y, 5, 0, Math.PI * 2);
@@ -188,6 +246,10 @@ export class CanvasRenderer {
     const ctx = this.ctx;
     ctx.save();
 
+    if (stroke.muted) {
+      ctx.globalAlpha = 0.35;
+    }
+
     // 1. Motion Trail
     if (ph.trail.length > 1) {
       for (let i = 0; i < ph.trail.length - 1; i++) {
@@ -205,20 +267,22 @@ export class CanvasRenderer {
         ctx.stroke();
       }
     }
-    ctx.globalAlpha = 1.0;
+    ctx.globalAlpha = stroke.muted ? 0.35 : 1.0;
 
-    // 2. Playhead Acoustic Pulse Ring
-    const pulsePhase = (nowMs % 1400) / 1400;
-    const pulseRadius = 6 + pulsePhase * 14;
-    const pulseAlpha = (1 - pulsePhase) * 0.45;
+    // 2. Playhead Acoustic Pulse Ring (only if audible)
+    if (!stroke.muted) {
+      const pulsePhase = (nowMs % 1400) / 1400;
+      const pulseRadius = 6 + pulsePhase * 14;
+      const pulseAlpha = (1 - pulsePhase) * 0.45;
 
-    ctx.beginPath();
-    ctx.arc(x, y, pulseRadius, 0, Math.PI * 2);
-    ctx.strokeStyle = stroke.color;
-    ctx.globalAlpha = pulseAlpha;
-    ctx.lineWidth = 1.2;
-    ctx.stroke();
-    ctx.globalAlpha = 1.0;
+      ctx.beginPath();
+      ctx.arc(x, y, pulseRadius, 0, Math.PI * 2);
+      ctx.strokeStyle = stroke.color;
+      ctx.globalAlpha = pulseAlpha;
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+      ctx.globalAlpha = 1.0;
+    }
 
     // 3. Playhead Center Bead
     ctx.shadowColor = 'rgba(0, 0, 0, 0.15)';
@@ -230,7 +294,6 @@ export class CanvasRenderer {
     ctx.fillStyle = stroke.color;
     ctx.fill();
 
-    // Clean white core dot
     ctx.shadowBlur = 0;
     ctx.shadowOffsetY = 0;
     ctx.beginPath();
@@ -243,7 +306,12 @@ export class CanvasRenderer {
       const normX = this.width > 0 ? Math.max(0, Math.min(1, x / this.width)) : 0.5;
       const panPercent = Math.round(Math.abs(normX - 0.5) * 200);
       const panText = normX < 0.46 ? `L${panPercent}%` : normX > 0.54 ? `R${panPercent}%` : 'C';
-      const badgeText = `${ph.lastPitch.noteName} · ${Math.round(ph.lastPitch.frequency)}Hz · ${panText}`;
+
+      let statusBadge = '';
+      if (stroke.muted) statusBadge = ' [MUTE]';
+      else if (stroke.soloed) statusBadge = ' [SOLO]';
+
+      const badgeText = `${ph.lastPitch.noteName} · ${Math.round(ph.lastPitch.frequency)}Hz · ${panText}${statusBadge}`;
       const badgeX = x + 12;
       const badgeY = y - 16;
 
@@ -253,13 +321,12 @@ export class CanvasRenderer {
       const boxW = textWidth + padding * 2;
       const boxH = 18;
 
-      // Paper card tag
       ctx.shadowColor = 'rgba(0, 0, 0, 0.08)';
       ctx.shadowBlur = 6;
       ctx.shadowOffsetY = 2;
 
       ctx.fillStyle = '#ffffff';
-      ctx.strokeStyle = ph.lastPitch.isSnapped ? stroke.color : '#d6d3cd';
+      ctx.strokeStyle = stroke.selected ? '#2563eb' : stroke.soloed ? '#d97706' : ph.lastPitch.isSnapped ? stroke.color : '#d6d3cd';
       ctx.lineWidth = 1;
 
       ctx.beginPath();
@@ -267,10 +334,9 @@ export class CanvasRenderer {
       ctx.fill();
       ctx.stroke();
 
-      // Clean typography
       ctx.shadowBlur = 0;
       ctx.shadowOffsetY = 0;
-      ctx.fillStyle = '#1c1917';
+      ctx.fillStyle = stroke.muted ? '#78716c' : '#1c1917';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillText(badgeText, badgeX + padding, badgeY - 3);
@@ -280,7 +346,7 @@ export class CanvasRenderer {
   }
 
   /**
-   * Draws active drawing stroke while user drags pointer.
+   * Draws active drawing gesture while user drags pointer.
    */
   public drawActiveGesture(points: Point2D[], color: string): void {
     if (points.length < 2) return;
@@ -300,7 +366,6 @@ export class CanvasRenderer {
     ctx.setLineDash([4, 4]);
     ctx.stroke();
 
-    // Origin dot
     ctx.beginPath();
     ctx.arc(points[0].x, points[0].y, 3.5, 0, Math.PI * 2);
     ctx.fillStyle = color;

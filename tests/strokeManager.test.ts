@@ -86,21 +86,64 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
     expect(stroke.instrumentId).toBe('amber');
   });
 
-  it('maps horizontal coordinate across the stereo field', () => {
+  it('calculates stereo pan from horizontal coordinate', () => {
     const canvasWidth = 1000;
-    // Left edge
-    const normX0 = 0 / canvasWidth;
-    const pan0 = Math.max(-1, Math.min(1, 2 * normX0 - 1));
-    expect(pan0).toBe(-1.0); // Full left
+    const normXLeft = 0 / canvasWidth;
+    const panLeft = Math.max(-1, Math.min(1, 2 * normXLeft - 1));
+    expect(panLeft).toBe(-1.0);
 
-    // Center
     const normXCenter = 500 / canvasWidth;
     const panCenter = Math.max(-1, Math.min(1, 2 * normXCenter - 1));
-    expect(panCenter).toBeCloseTo(0.0, 5); // Center
+    expect(panCenter).toBe(0.0);
 
-    // Right edge
     const normXRight = 1000 / canvasWidth;
     const panRight = Math.max(-1, Math.min(1, 2 * normXRight - 1));
-    expect(panRight).toBe(1.0); // Full right
+    expect(panRight).toBe(1.0);
+  });
+
+  it('supports muting and soloing individual tracks', () => {
+    const sm = new StrokeManager();
+    const s1 = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+    const s2 = sm.addStroke(dummyPath, 'dotted', 'amber', 100);
+
+    expect(sm.isStrokeAudible(s1)).toBe(true);
+    expect(sm.isStrokeAudible(s2)).toBe(true);
+
+    // Mute s1
+    sm.toggleMute(s1.id);
+    expect(sm.isStrokeAudible(s1)).toBe(false);
+    expect(sm.isStrokeAudible(s2)).toBe(true);
+
+    // Unmute s1
+    sm.toggleMute(s1.id);
+    expect(sm.isStrokeAudible(s1)).toBe(true);
+
+    // Solo s2
+    sm.toggleSolo(s2.id);
+    expect(sm.isStrokeAudible(s1)).toBe(false); // silenced because s2 is soloed
+    expect(sm.isStrokeAudible(s2)).toBe(true);
+
+    // Unsolo s2
+    sm.toggleSolo(s2.id);
+    expect(sm.isStrokeAudible(s1)).toBe(true);
+    expect(sm.isStrokeAudible(s2)).toBe(true);
+  });
+
+  it('tracks musical measure progress and beat indices', () => {
+    const sm = new StrokeManager();
+    sm.setBpm(120); // 2 beats per second
+    const quantizer = new ScaleQuantizer();
+
+    // 0.5 seconds = 1.0 beat
+    sm.update(0.5, 800, 600, quantizer);
+    expect(sm.currentBeat).toBeCloseTo(1.0, 2);
+    expect(sm.measureBeatIndex).toBe(1);
+    expect(sm.measureProgress).toBeCloseTo(0.25, 2);
+
+    // 1.5 seconds more = 3.0 beats elapsed total = 4 beats total (complete measure)
+    sm.update(1.5, 800, 600, quantizer);
+    expect(sm.currentBeat).toBeCloseTo(4.0, 2);
+    expect(sm.measureBeatIndex).toBe(0);
+    expect(sm.measureProgress).toBeCloseTo(0.0, 2);
   });
 });
