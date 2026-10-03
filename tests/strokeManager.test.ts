@@ -310,5 +310,64 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
     expect(s1.droneVoice?.isPlaying).toBe(true);
     expect(s2.droneVoice?.isPlaying).toBe(true);
   });
+
+  it('accurately hit-tests the closest stroke with continuous segment projection', () => {
+    const sm = new StrokeManager();
+    const s1 = sm.addStroke(dummyPath, 'solid', 'indigo', 100); // dummyPath at y = 100 from x=0 to 100
+
+    const path2: SplinePath = {
+      segments: [
+        {
+          p0: { x: 0, y: 130 },
+          p1: { x: 50, y: 130 },
+          p2: { x: 50, y: 130 },
+          p3: { x: 100, y: 130 },
+        },
+      ],
+      isClosed: false,
+    };
+    const s2 = sm.addStroke(path2, 'solid', 'amber', 100);
+
+    // Clicking at (50, 105) is 5px from s1 and 25px from s2 -> hits s1
+    const hit1 = sm.hitTest({ x: 50, y: 105 }, 24);
+    expect(hit1?.id).toBe(s1.id);
+
+    // Clicking at (50, 125) is 5px from s2 and 25px from s1 -> hits s2
+    const hit2 = sm.hitTest({ x: 50, y: 125 }, 24);
+    expect(hit2?.id).toBe(s2.id);
+
+    // Clicking far away at (50, 200) -> misses both
+    const hitMiss = sm.hitTest({ x: 50, y: 200 }, 24);
+    expect(hitMiss).toBeNull();
+  });
+
+  it('supports restructuring a stroke into tangent and other wave shapes with undo/redo', () => {
+    const sm = new StrokeManager();
+    const s = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+
+    sm.restructureStrokeWave(s.id, 40, 2, 'tangent');
+    expect(s.waveParams?.shapeType).toBe('tangent');
+    expect(s.waveParams?.amplitude).toBe(40);
+
+    sm.restructureStrokeWave(s.id, 30, 3, 'triangle');
+    expect(s.waveParams?.shapeType).toBe('triangle');
+    expect(s.waveParams?.amplitude).toBe(30);
+
+    sm.undo();
+    expect(s.waveParams?.shapeType).toBe('tangent');
+    expect(s.waveParams?.amplitude).toBe(40);
+
+    sm.redo();
+    expect(s.waveParams?.shapeType).toBe('triangle');
+    expect(s.waveParams?.amplitude).toBe(30);
+  });
+
+  it('supports setting xAxisModulationMode to none for centered, neutral sound without effects', () => {
+    const sm = new StrokeManager();
+    expect(sm.xAxisModulationMode).toBe('panAndTone');
+
+    sm.setXAxisModulationMode('none');
+    expect(sm.xAxisModulationMode).toBe('none');
+  });
 });
 

@@ -181,6 +181,7 @@
                 <option value="panAndTone" selected>Stereo Pan + Tone</option>
                 <option value="panOnly">Stereo Pan Only</option>
                 <option value="spaceDepth">Reverb Space Depth</option>
+                <option value="none">None (No Effects)</option>
               </select>
             </div>
           </div>
@@ -319,91 +320,101 @@
         </nav>
       </header>
 
-      <!-- Dedicated Selected Line Inspector (Appears when a line is selected in Select mode) -->
-      <section id="trackInspectorBar" class="track-inspector-bar" style="display: none;">
-        <div class="track-inspector-inner">
-          <!-- Line Identity & Color Pill -->
-          <div class="inspector-badge">
-            <span class="inspector-badge-dot" id="trackBadgeDot"></span>
-            <div class="inspector-badge-meta">
-              <span class="inspector-badge-sub">Selected Line</span>
-              <span class="inspector-badge-name" id="trackLabel">Bowed Cello</span>
-            </div>
-          </div>
-
-          <div class="inspector-divider"></div>
-
-          <!-- Individual Line Volume -->
-          <div class="inspector-cell has-tooltip" data-tooltip="Line Volume: Drag to adjust volume of this line (0% - 100%). Shortcut: [ / ] or ↑ / ↓.">
-            <label for="trackVolSlider">Volume</label>
-            <div class="track-slider-wrap">
-              <input type="range" id="trackVolSlider" min="0" max="100" step="1" value="100" class="track-vol-slider" />
-              <span id="trackVolVal" class="track-vol-val">100%</span>
-            </div>
-          </div>
-
-          <!-- Individual Line Texture -->
-          <div class="inspector-cell has-tooltip" data-tooltip="Line Texture: Switch audio voice between continuous solid drone, 8th-note dotted chimes, and 16th-note striped pulses.">
-            <label>Texture</label>
-            <div class="segmented-switch mini-switch" id="trackTextureControl">
-              <button type="button" class="seg-btn active" data-track-style="solid">Solid</button>
-              <button type="button" class="seg-btn" data-track-style="dotted">Dotted</button>
-              <button type="button" class="seg-btn" data-track-style="striped">Striped</button>
-            </div>
-          </div>
-
-          <!-- Individual Line Loop Sync -->
-          <div class="inspector-cell has-tooltip" data-tooltip="Line Loop Sync: Aligns loop cycle to musical bars. Locked tracks loop in rhythmic unison regardless of length.">
-            <label for="trackSyncSelect">Loop Sync</label>
-            <div class="select-wrapper mini-select-wrapper">
-              <select id="trackSyncSelect" class="minimal-select track-mini-select">
-                <option value="1bar">1 Bar</option>
-                <option value="2bars">2 Bars</option>
-                <option value="4bars">4 Bars</option>
-                <option value="freeform">Freeform</option>
-              </select>
-            </div>
-          </div>
-
-          <!-- Wave Restructuring -->
-          <div class="inspector-cell inspector-wave-cell" id="trackWaveControl">
-            <label>Shape</label>
-            <div class="track-wave-subgroup">
-              <button
-                type="button"
-                id="waveSineBtn"
-                class="wave-toggle-btn has-tooltip"
-                data-tooltip="Restructure into Sine Wave (~): Converts this stroke into a mathematically smooth oscillating sine wave."
-              >
-                ~ Sine
-              </button>
-              <div class="wave-slider-group has-tooltip" data-tooltip="Sine Amplitude: Adjusts the vertical wave height / pitch modulation depth (0px = straight, up to 100px).">
-                <label for="waveAmpSlider">Amp</label>
-                <input type="range" id="waveAmpSlider" min="0" max="100" step="1" value="0" class="track-mini-slider" />
-                <span id="waveAmpVal" class="track-mini-val">0px</span>
-              </div>
-              <div class="wave-slider-group has-tooltip" data-tooltip="Sine Period / Frequency: Number of complete wave cycles along the stroke length (0.5 to 8.0 cycles).">
-                <label for="wavePeriodSlider">Period</label>
-                <input type="range" id="wavePeriodSlider" min="0.5" max="8" step="0.5" value="2" class="track-mini-slider" />
-                <span id="wavePeriodVal" class="track-mini-val">2.0x</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="inspector-divider"></div>
-
-          <!-- Actions: Mute / Solo / Delete / Done -->
-          <div class="inspector-actions">
-            <button id="muteBtn" class="action-btn has-tooltip" data-tooltip="Mute selected line (M)">Mute</button>
-            <button id="soloBtn" class="action-btn has-tooltip" data-tooltip="Solo selected line (S)">Solo</button>
-            <button id="deleteTrackBtn" class="action-btn text-danger has-tooltip" data-tooltip="Delete selected line (Backspace / Delete)">Delete</button>
-            <button id="deselectTrackBtn" class="action-btn btn-subtle has-tooltip" data-tooltip="Deselect line (Esc)">✕ Done</button>
-          </div>
-        </div>
-      </section>
-
       <!-- Drawing Canvas Area -->
       <main class="canvas-container">
+        <!-- Floating Dedicated Selected Line Inspector (Appears over canvas when a line is selected) -->
+        <section id="trackInspectorBar" class="track-inspector-bar" style="display: none;">
+          <div class="track-inspector-inner">
+            <!-- Line Identity & Color Pill -->
+            <div class="inspector-badge">
+              <span class="inspector-badge-dot" id="trackBadgeDot"></span>
+              <div class="inspector-badge-meta">
+                <span class="inspector-badge-sub">Selected Line</span>
+                <span class="inspector-badge-name" id="trackLabel">Bowed Cello</span>
+              </div>
+            </div>
+
+            <div class="inspector-divider"></div>
+
+            <!-- Individual Line Volume -->
+            <div class="inspector-cell has-tooltip" data-tooltip="Line Volume: Drag to adjust volume of this line (0% - 100%). Shortcut: [ / ] or ↑ / ↓.">
+              <label for="trackVolSlider">Volume</label>
+              <div class="track-slider-wrap">
+                <input type="range" id="trackVolSlider" min="0" max="100" step="1" value="100" class="track-vol-slider" />
+                <span id="trackVolVal" class="track-vol-val">100%</span>
+              </div>
+            </div>
+
+            <!-- Individual Line Texture -->
+            <div class="inspector-cell has-tooltip" data-tooltip="Line Texture: Switch audio voice between continuous solid drone, 8th-note dotted chimes, and 16th-note striped pulses.">
+              <label>Texture</label>
+              <div class="segmented-switch mini-switch" id="trackTextureControl">
+                <button type="button" class="seg-btn active" data-track-style="solid">Solid</button>
+                <button type="button" class="seg-btn" data-track-style="dotted">Dotted</button>
+                <button type="button" class="seg-btn" data-track-style="striped">Striped</button>
+              </div>
+            </div>
+
+            <!-- Individual Line Loop Sync -->
+            <div class="inspector-cell has-tooltip" data-tooltip="Line Loop Sync: Aligns loop cycle to musical bars. Locked tracks loop in rhythmic unison regardless of length.">
+              <label for="trackSyncSelect">Loop Sync</label>
+              <div class="select-wrapper mini-select-wrapper">
+                <select id="trackSyncSelect" class="minimal-select track-mini-select">
+                  <option value="1bar">1 Bar</option>
+                  <option value="2bars">2 Bars</option>
+                  <option value="4bars">4 Bars</option>
+                  <option value="freeform">Freeform</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Mathematical Wave Restructuring -->
+            <div class="inspector-cell inspector-wave-cell" id="trackWaveControl">
+              <label>Shape</label>
+              <div class="track-wave-subgroup">
+                <div class="select-wrapper mini-select-wrapper has-tooltip" data-tooltip="Mathematical Shape: Restructure this line into Sine (~), Tangent (∿), Triangle (▲), Square (⊓), Sawtooth (⊿), or Melodic Arch (⌒).">
+                  <select id="waveShapeSelect" class="minimal-select track-mini-select">
+                    <option value="sine" selected>~ Sine</option>
+                    <option value="tangent">∿ Tangent</option>
+                    <option value="triangle">▲ Triangle</option>
+                    <option value="square">⊓ Square</option>
+                    <option value="sawtooth">⊿ Sawtooth</option>
+                    <option value="arch">⌒ Arch</option>
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  id="waveSineBtn"
+                  class="wave-toggle-btn has-tooltip"
+                  data-tooltip="Toggle Shape Restructuring: Applies or flattens the mathematical curve."
+                >
+                  Wave
+                </button>
+                <div class="wave-slider-group has-tooltip" data-tooltip="Wave Amplitude: Adjusts the vertical wave height / pitch modulation depth (0px = straight, up to 100px).">
+                  <label for="waveAmpSlider">Amp</label>
+                  <input type="range" id="waveAmpSlider" min="0" max="100" step="1" value="0" class="track-mini-slider" />
+                  <span id="waveAmpVal" class="track-mini-val">0px</span>
+                </div>
+                <div class="wave-slider-group has-tooltip" data-tooltip="Wave Period / Frequency: Number of complete wave cycles along the stroke length (0.5 to 8.0 cycles).">
+                  <label for="wavePeriodSlider">Period</label>
+                  <input type="range" id="wavePeriodSlider" min="0.5" max="8" step="0.5" value="2" class="track-mini-slider" />
+                  <span id="wavePeriodVal" class="track-mini-val">2.0x</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="inspector-divider"></div>
+
+            <!-- Actions: Mute / Solo / Delete / Done -->
+            <div class="inspector-actions">
+              <button id="muteBtn" class="action-btn has-tooltip" data-tooltip="Mute selected line (M)">Mute</button>
+              <button id="soloBtn" class="action-btn has-tooltip" data-tooltip="Solo selected line (S)">Solo</button>
+              <button id="deleteTrackBtn" class="action-btn text-danger has-tooltip" data-tooltip="Delete selected line (Backspace / Delete)">Delete</button>
+              <button id="deselectTrackBtn" class="action-btn btn-subtle has-tooltip" data-tooltip="Deselect line (Esc)">✕ Done</button>
+            </div>
+          </div>
+        </section>
+
         <canvas id="musicCanvas"></canvas>
 
         <!-- Initial Gentle Invitation Banner -->

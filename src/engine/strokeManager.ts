@@ -2,7 +2,7 @@ import { SplinePath, Point2D, ArcLengthLUT } from '../math/types';
 import { buildArcLengthLUT } from '../math/arcLengthTable';
 import { evaluateAtDistance } from '../math/arcLengthInverter';
 import { evaluateBezier } from '../math/bezier';
-import { generateSineSpline, WaveParams } from '../math/waveShape';
+import { generateWaveSpline, WaveParams, WaveShapeType } from '../math/waveShape';
 import { ScaleQuantizer } from '../audio/scaleQuantizer';
 import { DroneVoice, PulseVoice, XAxisModulationMode } from '../audio/synthVoice';
 import { getInstrument, DEFAULT_INSTRUMENT } from '../audio/instruments';
@@ -27,6 +27,16 @@ type UndoAction =
       newLut: ArcLengthLUT;
       newWaveParams: WaveParams;
     };
+
+function distToSegment(p: Point2D, a: Point2D, b: Point2D): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const l2 = dx * dx + dy * dy;
+  if (l2 === 0) return Math.hypot(p.x - a.x, p.y - a.y);
+  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
 
 export class StrokeManager {
   private strokes: DrawnStroke[] = [];
@@ -450,14 +460,21 @@ export class StrokeManager {
   }
 
   /**
-   * Restructures an existing stroke into a smooth, mathematically exact sine wave curve.
+   * Restructures an existing stroke into a smooth, mathematically exact wave curve (sine, tangent, triangle, square, sawtooth, arch).
    *
    * @param strokeId ID of the stroke to restructure
-   * @param amplitude Peak sine wave displacement in pixels (0 = straight line)
-   * @param periods Number of full sine cycles along baseline
+   * @param amplitude Peak wave displacement in pixels (0 = straight line)
+   * @param periods Number of full wave cycles along baseline
+   * @param shapeType Wave type: 'sine' | 'tangent' | 'triangle' | 'square' | 'sawtooth' | 'arch'
    * @param recordUndo Whether to record an entry in the undo stack
    */
-  public restructureStrokeWave(strokeId: string, amplitude: number, periods: number, recordUndo = true): boolean {
+  public restructureStrokeWave(
+    strokeId: string,
+    amplitude: number,
+    periods: number,
+    shapeType?: WaveShapeType,
+    recordUndo = true
+  ): boolean {
     const stroke = this.strokes.find((s) => s.id === strokeId);
     if (!stroke || stroke.path.segments.length === 0) return false;
 
@@ -474,14 +491,23 @@ export class StrokeManager {
       ? { ...stroke.waveParams.baseP1 }
       : { ...lastSeg.p3 };
 
+    const effectiveShapeType: WaveShapeType = shapeType ?? stroke.waveParams?.shapeType ?? 'sine';
+
     const newWaveParams: WaveParams = {
+      shapeType: effectiveShapeType,
       amplitude: Math.max(0, Math.min(150, amplitude)),
       periods: Math.max(0.5, Math.min(12, periods)),
       baseP0,
       baseP1,
     };
 
-    const newPath = generateSineSpline(baseP0, baseP1, newWaveParams.amplitude, newWaveParams.periods);
+    const newPath = generateWaveSpline(
+      baseP0,
+      baseP1,
+      newWaveParams.amplitude,
+      newWaveParams.periods,
+      effectiveShapeType
+    );
     const newLut = buildArcLengthLUT(newPath, 64);
 
     stroke.path = newPath;
@@ -511,24 +537,31 @@ export class StrokeManager {
   }
 
   /**
-   * Hit tests canvas coordinates against all strokes.
+   * Continuous high-precision hit tests canvas coordinates against all strokes,
+   * finding the closest stroke within tolerance across all segments.
    */
-  public hitTest(point: Point2D, tolerance = 18): DrawnStroke | null {
+  public hitTest(point: Point2D, tolerance = 24): DrawnStroke | null {
+    let bestStroke: DrawnStroke | null = null;
+    let bestDist = tolerance;
+
     for (let sIdx = this.strokes.length - 1; sIdx >= 0; sIdx--) {
       const stroke = this.strokes[sIdx];
       const segments = stroke.path.segments;
 
       for (const seg of segments) {
-        for (let i = 0; i <= 10; i++) {
-          const t = i / 10;
-          const pt = evaluateBezier(seg, t);
-          if (Math.hypot(pt.x - point.x, pt.y - point.y) <= tolerance) {
-            return stroke;
+        let prevPt = evaluateBezier(seg, 0);
+        for (let i = 1; i <= 20; i++) {
+          const currPt = evaluateBezier(seg, i / 20);
+          const d = distToSegment(point, prevPt, currPt);
+          if (d < bestDist) {
+            bestDist = d;
+            bestStroke = stroke;
           }
+          prevPt = currPt;
         }
       }
     }
-    return null;
+    return bestStroke;
   }
 
   /**

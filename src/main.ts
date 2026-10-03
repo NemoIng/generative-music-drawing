@@ -4,7 +4,7 @@ import { SCALES, ROOT_NOTES } from './audio/scales';
 import { StrokeManager } from './engine/strokeManager';
 import { CanvasRenderer } from './canvas/renderer';
 import { InputHandler, InteractionMode, DrawShape } from './canvas/inputHandler';
-import { StrokeStyle, TraversalMode, XAxisModulationMode, LoopQuantizeMode } from './engine/types';
+import { StrokeStyle, TraversalMode, XAxisModulationMode, LoopQuantizeMode, WaveShapeType } from './engine/types';
 import { INSTRUMENTS, DEFAULT_INSTRUMENT, getInstrument } from './audio/instruments';
 import { TEMPLATES, buildTemplateStrokes } from './audio/templates';
 import { soundEngine } from './audio/audioContext';
@@ -33,6 +33,7 @@ const trackBadgeDot = document.getElementById('trackBadgeDot') as HTMLElement;
 const trackLabel = document.getElementById('trackLabel') as HTMLSpanElement;
 const trackVolSlider = document.getElementById('trackVolSlider') as HTMLInputElement;
 const trackVolVal = document.getElementById('trackVolVal') as HTMLSpanElement;
+const waveShapeSelect = document.getElementById('waveShapeSelect') as HTMLSelectElement;
 const waveSineBtn = document.getElementById('waveSineBtn') as HTMLButtonElement;
 const waveAmpSlider = document.getElementById('waveAmpSlider') as HTMLInputElement;
 const waveAmpVal = document.getElementById('waveAmpVal') as HTMLSpanElement;
@@ -348,12 +349,14 @@ function updateTrackActionsVisibility(): void {
       // Wave parameters sync
       if (stroke.waveParams) {
         waveSineBtn.classList.toggle('active', stroke.waveParams.amplitude > 0);
+        waveShapeSelect.value = stroke.waveParams.shapeType ?? 'sine';
         waveAmpSlider.value = stroke.waveParams.amplitude.toString();
         waveAmpVal.textContent = `${Math.round(stroke.waveParams.amplitude)}px`;
         wavePeriodSlider.value = stroke.waveParams.periods.toString();
         wavePeriodVal.textContent = `${stroke.waveParams.periods.toFixed(1)}x`;
       } else {
         waveSineBtn.classList.remove('active');
+        waveShapeSelect.value = 'sine';
         waveAmpSlider.value = '0';
         waveAmpVal.textContent = '0px';
         wavePeriodSlider.value = '2';
@@ -437,6 +440,21 @@ trackVolSlider.addEventListener('change', () => {
 });
 
 // Wave Restructuring Event Listeners
+waveShapeSelect.addEventListener('change', () => {
+  const selectedId = strokeManager.selectedStrokeId;
+  if (!selectedId) return;
+
+  const stroke = strokeManager.activeStrokes.find((s) => s.id === selectedId);
+  if (!stroke) return;
+
+  const shape = waveShapeSelect.value as WaveShapeType;
+  const currentAmp = stroke.waveParams && stroke.waveParams.amplitude > 0 ? stroke.waveParams.amplitude : 35;
+  const currentPeriods = stroke.waveParams ? stroke.waveParams.periods : 2.0;
+
+  strokeManager.restructureStrokeWave(selectedId, currentAmp, currentPeriods, shape, true);
+  updateTrackActionsVisibility();
+});
+
 waveSineBtn.addEventListener('click', () => {
   const selectedId = strokeManager.selectedStrokeId;
   if (!selectedId) return;
@@ -444,11 +462,12 @@ waveSineBtn.addEventListener('click', () => {
   const stroke = strokeManager.activeStrokes.find((s) => s.id === selectedId);
   if (!stroke) return;
 
+  const shape = (waveShapeSelect.value as WaveShapeType) || 'sine';
   const isCurrentlyWavy = stroke.waveParams && stroke.waveParams.amplitude > 0;
   const targetAmp = isCurrentlyWavy ? 0 : 35;
   const targetPeriods = stroke.waveParams ? stroke.waveParams.periods : 2.0;
 
-  strokeManager.restructureStrokeWave(selectedId, targetAmp, targetPeriods, true);
+  strokeManager.restructureStrokeWave(selectedId, targetAmp, targetPeriods, shape, true);
   updateTrackActionsVisibility();
 });
 
@@ -457,9 +476,10 @@ waveAmpSlider.addEventListener('input', () => {
   if (selectedId) {
     const amp = parseFloat(waveAmpSlider.value);
     const periods = parseFloat(wavePeriodSlider.value);
+    const shape = (waveShapeSelect.value as WaveShapeType) || 'sine';
     waveAmpVal.textContent = `${Math.round(amp)}px`;
     waveSineBtn.classList.toggle('active', amp > 0);
-    strokeManager.restructureStrokeWave(selectedId, amp, periods, false);
+    strokeManager.restructureStrokeWave(selectedId, amp, periods, shape, false);
   }
 });
 
@@ -468,7 +488,8 @@ waveAmpSlider.addEventListener('change', () => {
   if (selectedId) {
     const amp = parseFloat(waveAmpSlider.value);
     const periods = parseFloat(wavePeriodSlider.value);
-    strokeManager.restructureStrokeWave(selectedId, amp, periods, true);
+    const shape = (waveShapeSelect.value as WaveShapeType) || 'sine';
+    strokeManager.restructureStrokeWave(selectedId, amp, periods, shape, true);
   }
 });
 
@@ -477,8 +498,9 @@ wavePeriodSlider.addEventListener('input', () => {
   if (selectedId) {
     const amp = parseFloat(waveAmpSlider.value);
     const periods = parseFloat(wavePeriodSlider.value);
+    const shape = (waveShapeSelect.value as WaveShapeType) || 'sine';
     wavePeriodVal.textContent = `${periods.toFixed(1)}x`;
-    strokeManager.restructureStrokeWave(selectedId, amp, periods, false);
+    strokeManager.restructureStrokeWave(selectedId, amp, periods, shape, false);
   }
 });
 
@@ -487,7 +509,8 @@ wavePeriodSlider.addEventListener('change', () => {
   if (selectedId) {
     const amp = parseFloat(waveAmpSlider.value);
     const periods = parseFloat(wavePeriodSlider.value);
-    strokeManager.restructureStrokeWave(selectedId, amp, periods, true);
+    const shape = (waveShapeSelect.value as WaveShapeType) || 'sine';
+    strokeManager.restructureStrokeWave(selectedId, amp, periods, shape, true);
   }
 });
 

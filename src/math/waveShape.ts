@@ -1,28 +1,71 @@
 import { Point2D, SplinePath } from './types';
 import { fitSplineFromPoints } from './curveFit';
 
+export type WaveShapeType = 'sine' | 'tangent' | 'triangle' | 'square' | 'sawtooth' | 'arch';
+
 export interface WaveParams {
+  shapeType?: WaveShapeType;
   amplitude: number; // in pixels (e.g. 0 to 100)
-  periods: number;   // number of full sine cycles (e.g. 0.5 to 8)
+  periods: number;   // number of full cycles (e.g. 0.5 to 8)
   phase?: number;    // phase offset in radians (default 0)
   baseP0: Point2D;
   baseP1: Point2D;
 }
 
 /**
- * Generates an exact, smooth sinusoidal cubic Bézier spline between two baseline endpoints.
+ * Computes normalized mathematical wave displacement [-1, 1] for a given shape type.
+ */
+export function evaluateWaveShape(shapeType: WaveShapeType, s: number, periods: number, phase: number = 0): number {
+  const angle = 2 * Math.PI * periods * s + phase;
+  const rawPhase = (periods * s + phase / (2 * Math.PI)) % 1;
+  const u = rawPhase < 0 ? rawPhase + 1 : rawPhase;
+
+  switch (shapeType) {
+    case 'tangent': {
+      // Bounded, smooth tangent sweep with steep crescendo inflection
+      const w = (u - 0.5) * 0.92;
+      const rawTan = Math.tan(Math.PI * w) * 0.5;
+      const maxTan = Math.tanh(Math.tan(Math.PI * 0.46) * 0.5);
+      return Math.tanh(rawTan) / (maxTan || 1);
+    }
+    case 'triangle': {
+      // Continuous linear triangle wave with arpeggio slopes
+      return Math.asin(Math.sin(angle)) * (2 / Math.PI);
+    }
+    case 'square': {
+      // Smooth rounded square wave with alternating high/low pitch plates
+      return Math.tanh(3.5 * Math.sin(angle));
+    }
+    case 'sawtooth': {
+      // Ramped bandlimited saw wave
+      return Math.atan(2.5 * Math.tan(angle * 0.5)) * (2 / Math.PI);
+    }
+    case 'arch': {
+      // Melodic arch / rainbow parabola across phrase or periods
+      return periods <= 1.2 ? Math.sin(Math.PI * s) : Math.sin(Math.PI * u);
+    }
+    case 'sine':
+    default:
+      return Math.sin(angle);
+  }
+}
+
+/**
+ * Generates an exact, smooth mathematical cubic Bézier spline (sine, tangent, triangle, square, saw, arch)
+ * between two baseline endpoints.
  *
  * For a baseline from pStart to pEnd:
  * - Along baseline axis: progression from 0 to 1
- * - Perpendicular axis: sinusoidal displacement A * sin(2π * periods * s + phase)
+ * - Perpendicular axis: displacement A * evaluateWaveShape(shape, s, periods, phase)
  *
  * When amplitude is 0, produces an exact straight line.
  */
-export function generateSineSpline(
+export function generateWaveSpline(
   pStart: Point2D,
   pEnd: Point2D,
   amplitude: number,
   periods: number,
+  shapeType: WaveShapeType = 'sine',
   phase: number = 0
 ): SplinePath {
   const dx = pEnd.x - pStart.x;
@@ -62,15 +105,14 @@ export function generateSineSpline(
     };
   }
 
-  // Sample points along the sine wave (24 samples per cycle, minimum 36)
+  // Sample points along the wave curve (28 samples per cycle, minimum 42)
   const safePeriods = Math.max(0.5, Math.min(12, periods));
-  const numSamples = Math.max(36, Math.round(24 * safePeriods));
+  const numSamples = Math.max(42, Math.round(28 * safePeriods));
   const rawPoints: Point2D[] = [];
 
   for (let i = 0; i <= numSamples; i++) {
     const s = i / numSamples;
-    const angle = 2 * Math.PI * safePeriods * s + phase;
-    const wave = amplitude * Math.sin(angle);
+    const wave = amplitude * evaluateWaveShape(shapeType, s, safePeriods, phase);
 
     const bx = pStart.x + s * effectiveDx;
     const by = pStart.y + s * effectiveDy;
@@ -102,4 +144,17 @@ export function generateSineSpline(
     ],
     isClosed: false,
   };
+}
+
+/**
+ * Backward compatibility alias for generating sinusoidal splines.
+ */
+export function generateSineSpline(
+  pStart: Point2D,
+  pEnd: Point2D,
+  amplitude: number,
+  periods: number,
+  phase: number = 0
+): SplinePath {
+  return generateWaveSpline(pStart, pEnd, amplitude, periods, 'sine', phase);
 }

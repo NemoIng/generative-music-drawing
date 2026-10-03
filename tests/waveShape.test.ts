@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateSineSpline } from '../src/math/waveShape';
+import { generateSineSpline, generateWaveSpline, WaveShapeType } from '../src/math/waveShape';
 import { evaluateAtDistance } from '../src/math/arcLengthInverter';
 import { buildArcLengthLUT } from '../src/math/arcLengthTable';
 
@@ -63,5 +63,29 @@ describe('Wave Shape Restructuring - Sine Spline Generator', () => {
     const lastSeg = spline.segments[spline.segments.length - 1];
     expect(lastSeg.p3.x).toBeCloseTo(200, 1);
     expect(lastSeg.p3.y).toBeCloseTo(500, 1);
+  });
+
+  it('generates tangent, triangle, square, sawtooth, and arch wave shapes with exact endpoints', () => {
+    const pStart = { x: 100, y: 250 };
+    const pEnd = { x: 600, y: 250 };
+    const shapes: WaveShapeType[] = ['tangent', 'triangle', 'square', 'sawtooth', 'arch'];
+
+    for (const shape of shapes) {
+      const spline = generateWaveSpline(pStart, pEnd, 35, 2, shape);
+      expect(spline.segments.length).toBeGreaterThan(0);
+
+      // Start must match pStart
+      expect(spline.segments[0].p0.x).toBeCloseTo(100, 1);
+      expect(spline.segments[0].p0.y).toBeCloseTo(250, 1);
+
+      // End must match pEnd
+      const lastSeg = spline.segments[spline.segments.length - 1];
+      expect(lastSeg.p3.x).toBeCloseTo(600, 1);
+      expect(lastSeg.p3.y).toBeCloseTo(250, 1);
+
+      // Wave should oscillate and have arc length greater than flat distance (500)
+      const lut = buildArcLengthLUT(spline, 64);
+      expect(lut.totalLength).toBeGreaterThan(500);
+    }
   });
 });

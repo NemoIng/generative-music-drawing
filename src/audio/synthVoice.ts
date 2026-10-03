@@ -1,7 +1,7 @@
 import { soundEngine } from './audioContext';
 import { InstrumentDefinition, DEFAULT_INSTRUMENT } from './instruments';
 
-export type XAxisModulationMode = 'panAndTone' | 'panOnly' | 'spaceDepth';
+export type XAxisModulationMode = 'panAndTone' | 'panOnly' | 'spaceDepth' | 'none';
 
 /**
  * Continuous Drone Voice for Solid strokes.
@@ -240,7 +240,7 @@ export class PulseVoice {
 
     // Stereo Panning from horizontal position
     const normX = Math.max(0, Math.min(1, canvasWidth > 0 ? x / canvasWidth : 0.5));
-    const pan = xModMode === 'spaceDepth' ? 0 : Math.max(-1, Math.min(1, 2 * normX - 1));
+    const pan = (xModMode === 'spaceDepth' || xModMode === 'none') ? 0 : Math.max(-1, Math.min(1, 2 * normX - 1));
     panner.pan.setValueAtTime(pan, now);
 
     const p = instrument.pulse;

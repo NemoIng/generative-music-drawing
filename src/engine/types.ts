@@ -1,12 +1,12 @@
 import { SplinePath, ArcLengthLUT, Point2D, CurveEvaluation } from '../math/types';
 import { DroneVoice, XAxisModulationMode } from '../audio/synthVoice';
 import { PitchResult } from '../audio/scaleQuantizer';
-import { WaveParams } from '../math/waveShape';
+import { WaveParams, WaveShapeType } from '../math/waveShape';
 
 export type StrokeStyle = 'solid' | 'dotted' | 'striped';
 export type TraversalMode = 'restart' | 'pingpong';
 export type LoopQuantizeMode = 'freeform' | '1bar' | '2bars' | '4bars';
-export type { XAxisModulationMode };
+export type { XAxisModulationMode, WaveShapeType };
 
 export interface StrokePlayhead {
   currentDistance: number;

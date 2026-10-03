@@ -115,13 +115,13 @@ export class InputHandler {
     window.removeEventListener('pointercancel', this.handlePointerUp);
   }
 
-  private getCanvasPoint(e: PointerEvent): Point2D {
+  private getCanvasPoint(e: PointerEvent, applySnap: boolean = true): Point2D {
     const rect = this.canvas.getBoundingClientRect();
     let x = e.clientX - rect.left;
     let y = e.clientY - rect.top;
 
-    // Magnetic Pitch Snapping (snaps y to nearest scale line within 20px)
-    if (this.snapPitch) {
+    // Magnetic Pitch Snapping (only applied when drawing, never when selecting/editing)
+    if (applySnap && this.snapPitch && this.mode === 'draw') {
       const quantizer = this.getQuantizer();
       const guidelines = quantizer.getGuidelines(rect.height);
       let closestY = y;
@@ -146,10 +146,9 @@ export class InputHandler {
       this.strokeManager.activateAudioVoices();
     }
 
-    const pt = this.getCanvasPoint(e);
-
     if (this.mode === 'edit') {
-      const hit = this.strokeManager.hitTest(pt, 20);
+      const pt = this.getCanvasPoint(e, false);
+      const hit = this.strokeManager.hitTest(pt, 24);
       if (hit) {
         this.strokeManager.selectStroke(hit.id);
         this.onSelectStroke?.(hit.id);
@@ -166,6 +165,7 @@ export class InputHandler {
       return;
     }
 
+    const pt = this.getCanvasPoint(e, true);
     // Draw mode
     this.isDrawing = true;
     this.startPoint = pt;
@@ -174,9 +174,8 @@ export class InputHandler {
   };
 
   private handlePointerMove = (e: PointerEvent): void => {
-    const rawPt = this.getCanvasPoint(e);
-
     if (this.mode === 'edit') {
+      const rawPt = this.getCanvasPoint(e, false);
       if (this.isDragging && this.draggedStrokeId && this.lastDragPoint) {
         const dx = rawPt.x - this.lastDragPoint.x;
         const dy = rawPt.y - this.lastDragPoint.y;
@@ -186,12 +185,14 @@ export class InputHandler {
         this.dragAccumDy += dy;
         this.lastDragPoint = rawPt;
       } else {
-        const hit = this.strokeManager.hitTest(rawPt, 18);
+        const hit = this.strokeManager.hitTest(rawPt, 22);
         this.strokeManager.setHoveredStroke(hit ? hit.id : null);
         this.canvas.style.cursor = hit ? 'grab' : 'default';
       }
       return;
     }
+
+    const rawPt = this.getCanvasPoint(e, true);
 
     if (!this.isDrawing) return;
 
