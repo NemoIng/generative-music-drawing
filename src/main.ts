@@ -4,15 +4,16 @@ import { SCALES, ROOT_NOTES } from './audio/scales';
 import { StrokeManager } from './engine/strokeManager';
 import { CanvasRenderer } from './canvas/renderer';
 import { InputHandler, InteractionMode } from './canvas/inputHandler';
-import { StrokeStyle, TraversalMode } from './engine/types';
-import { SOUND_PALETTES, SoundPaletteId } from './audio/soundPalettes';
+import { StrokeStyle, TraversalMode, XAxisModulationMode } from './engine/types';
+import { INSTRUMENTS, DEFAULT_INSTRUMENT, getInstrument } from './audio/instruments';
 import { soundEngine } from './audio/audioContext';
 import { SplinePath, Point2D } from './math/types';
 
 // DOM Elements
 const canvasEl = document.getElementById('musicCanvas') as HTMLCanvasElement;
 const toolModeButtons = document.querySelectorAll<HTMLButtonElement>('#toolModeControl .seg-btn');
-const paletteSelect = document.getElementById('paletteSelect') as HTMLSelectElement;
+const swatchButtons = document.querySelectorAll<HTMLButtonElement>('#instrumentPalette .swatch-btn');
+const xAxisSelect = document.getElementById('xAxisSelect') as HTMLSelectElement;
 const traversalButtons = document.querySelectorAll<HTMLButtonElement>('#traversalControl .seg-btn');
 const scaleSelect = document.getElementById('scaleSelect') as HTMLSelectElement;
 const rootSelect = document.getElementById('rootSelect') as HTMLSelectElement;
@@ -33,7 +34,8 @@ const audioUnlockPrompt = document.getElementById('audioUnlockPrompt') as HTMLDi
 const statStrokes = document.getElementById('statStrokes') as HTMLSpanElement;
 const statMode = document.getElementById('statMode') as HTMLSpanElement;
 const statTempo = document.getElementById('statTempo') as HTMLSpanElement;
-const statPalette = document.getElementById('statPalette') as HTMLSpanElement;
+const statInstrument = document.getElementById('statInstrument') as HTMLSpanElement;
+const statXMod = document.getElementById('statXMod') as HTMLSpanElement;
 const statAudio = document.getElementById('statAudio') as HTMLSpanElement;
 const contextHelp = document.getElementById('contextHelp') as HTMLSpanElement;
 
@@ -49,14 +51,8 @@ const strokeManager = new StrokeManager();
 const renderer = new CanvasRenderer(canvasEl);
 
 let currentStyle: StrokeStyle = 'solid';
+let currentInstrumentId: string = DEFAULT_INSTRUMENT.id;
 let activeDrawingPoints: Point2D[] = [];
-
-// Refined natural ink color palette for off-white canvas
-const STYLE_COLORS: Record<StrokeStyle, string> = {
-  solid: '#1e293b',   // Deep slate indigo
-  dotted: '#c2410c',  // Warm terracotta
-  striped: '#0f766e', // Botanical spruce
-};
 
 // Input Handling with Draw / Edit modes
 const inputHandler = new InputHandler(canvasEl, {
@@ -64,11 +60,10 @@ const inputHandler = new InputHandler(canvasEl, {
   onStrokeComplete: (path: SplinePath) => {
     audioUnlockPrompt.classList.add('hidden');
 
-    const color = STYLE_COLORS[currentStyle];
     strokeManager.addStroke(
       path,
       currentStyle,
-      color,
+      currentInstrumentId,
       140,
       quantizer,
       renderer.height
@@ -98,14 +93,40 @@ toolModeButtons.forEach((btn) => {
   });
 });
 
-// Sound Palette Selection
-paletteSelect.addEventListener('change', () => {
-  const pId = paletteSelect.value as SoundPaletteId;
-  const palette = SOUND_PALETTES[pId];
-  if (palette) {
-    strokeManager.setSoundPalette(palette);
-    statPalette.textContent = palette.name;
+// Color-Sound Instrument Swatch Selection
+function selectInstrument(instrumentId: string): void {
+  const inst = getInstrument(instrumentId);
+  currentInstrumentId = inst.id;
+
+  swatchButtons.forEach((btn) => {
+    btn.classList.toggle('active', btn.getAttribute('data-instrument') === inst.id);
+  });
+
+  statInstrument.textContent = `${inst.icon} ${inst.name}`;
+
+  // In Edit Mode: if a stroke is selected, re-voice that stroke immediately!
+  if (inputHandler.currentMode === 'edit' && strokeManager.selectedStrokeId) {
+    strokeManager.revoiceStroke(strokeManager.selectedStrokeId, inst.id);
   }
+}
+
+swatchButtons.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const instId = btn.getAttribute('data-instrument');
+    if (instId) selectInstrument(instId);
+  });
+});
+
+// X-Axis Modulation Mode
+xAxisSelect.addEventListener('change', () => {
+  const mode = xAxisSelect.value as XAxisModulationMode;
+  strokeManager.setXAxisModulationMode(mode);
+  const labels: Record<XAxisModulationMode, string> = {
+    panAndTone: 'Stereo Pan + Tone',
+    panOnly: 'Stereo Pan Only',
+    spaceDepth: 'Reverb Space Depth',
+  };
+  statXMod.textContent = labels[mode] || 'Stereo Pan';
 });
 
 // Traversal Mode Switching (Restart vs Ping-Pong)
@@ -121,7 +142,7 @@ traversalButtons.forEach((btn) => {
 });
 
 // Contextual Hover Descriptions
-const DEFAULT_HELP = 'Hover over any setting for details • Space: Pause • ⌘Z: Undo • V: Select/Move • D: Draw';
+const DEFAULT_HELP = 'Hover over any setting for details • Space: Pause • ⌘Z: Undo • V: Select/Move • 1-6: Inks';
 const tooltipElements = document.querySelectorAll<HTMLElement>('[data-tooltip]');
 
 tooltipElements.forEach((el) => {
@@ -223,7 +244,6 @@ infoModal.querySelector('.modal-backdrop')?.addEventListener('click', () => {
 
 // Global Keyboard Shortcuts
 window.addEventListener('keydown', (e: KeyboardEvent) => {
-  // Ignore shortcuts if focusing a select or modal text
   const targetTag = (e.target as HTMLElement)?.tagName?.toLowerCase();
   if (targetTag === 'input' || targetTag === 'select' || targetTag === 'textarea') {
     return;
@@ -271,6 +291,14 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
   } else if (e.key.toLowerCase() === 'v') {
     setToolMode('edit');
   }
+
+  // 5. Number Keys 1 - 6: Quick select instruments
+  const instKeys = ['1', '2', '3', '4', '5', '6'];
+  const instIds = Object.keys(INSTRUMENTS);
+  const keyIdx = instKeys.indexOf(e.key);
+  if (keyIdx !== -1 && instIds[keyIdx]) {
+    selectInstrument(instIds[keyIdx]);
+  }
 });
 
 // Audio Unlock on First Pointer Down
@@ -300,8 +328,8 @@ function animationLoop(nowMs: number): void {
   const dt = Math.min(0.08, (nowMs - lastTimeMs) / 1000);
   lastTimeMs = nowMs;
 
-  // 1. Update constant-velocity playheads and audio
-  strokeManager.update(dt, renderer.height, quantizer);
+  // 1. Update constant-velocity playheads, Y pitch, and X stereo/timbre modulation
+  strokeManager.update(dt, renderer.width, renderer.height, quantizer);
 
   // 2. Clear canvas to warm paper tone
   renderer.clear();
@@ -315,9 +343,9 @@ function animationLoop(nowMs: number): void {
     renderer.drawPlayhead(stroke, nowMs);
   }
 
-  // 5. Render user's active in-flight gesture (in Draw mode)
+  // 5. Render user's active in-flight gesture (in Draw mode) with active instrument color
   if (inputHandler.currentMode === 'draw' && activeDrawingPoints.length > 1) {
-    renderer.drawActiveGesture(activeDrawingPoints, STYLE_COLORS[currentStyle]);
+    renderer.drawActiveGesture(activeDrawingPoints, getInstrument(currentInstrumentId).color);
   }
 
   requestAnimationFrame(animationLoop);

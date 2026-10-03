@@ -1,9 +1,10 @@
 import { SplinePath, ArcLengthLUT, Point2D, CurveEvaluation } from '../math/types';
-import { DroneVoice } from '../audio/synthVoice';
+import { DroneVoice, XAxisModulationMode } from '../audio/synthVoice';
 import { PitchResult } from '../audio/scaleQuantizer';
 
 export type StrokeStyle = 'solid' | 'dotted' | 'striped';
 export type TraversalMode = 'restart' | 'pingpong';
+export type { XAxisModulationMode };
 
 export interface StrokePlayhead {
   currentDistance: number;
@@ -18,6 +19,7 @@ export interface StrokePlayhead {
 export interface DrawnStroke {
   id: string;
   color: string;
+  instrumentId: string;
   style: StrokeStyle;
   path: SplinePath;
   lut: ArcLengthLUT;

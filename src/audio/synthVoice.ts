@@ -1,9 +1,12 @@
 import { soundEngine } from './audioContext';
-import { SoundPalette, SOUND_PALETTES } from './soundPalettes';
+import { InstrumentDefinition, DEFAULT_INSTRUMENT } from './instruments';
+
+export type XAxisModulationMode = 'panAndTone' | 'panOnly' | 'spaceDepth';
 
 /**
  * Continuous Drone Voice for Solid strokes.
- * Dual detuned/harmonic oscillators + sub-oscillator + resonant filter modulated by curvature.
+ * Dual detuned/harmonic oscillators + sub-oscillator + resonant filter modulated by curvature & horizontal position.
+ * Features native stereo panning and timbral brightness modulation.
  */
 export class DroneVoice {
   private osc1: OscillatorNode | null = null;
@@ -11,22 +14,27 @@ export class DroneVoice {
   private subOsc: OscillatorNode | null = null;
   private filter: BiquadFilterNode | null = null;
   private gainNode: GainNode | null = null;
+  private pannerNode: StereoPannerNode | null = null;
   private isPlaying = false;
   private currentFreq = 220;
-  private palette: SoundPalette = SOUND_PALETTES.celestial;
+  private instrument: InstrumentDefinition = DEFAULT_INSTRUMENT;
 
   public get frequency(): number {
     return this.currentFreq;
   }
 
-  public start(initialFreq: number, palette?: SoundPalette): void {
+  public get currentInstrument(): InstrumentDefinition {
+    return this.instrument;
+  }
+
+  public start(initialFreq: number, instrument?: InstrumentDefinition): void {
     if (this.isPlaying || !soundEngine.isReady) return;
     const ctx = soundEngine.context;
     const now = ctx.currentTime;
     this.currentFreq = initialFreq;
-    if (palette) this.palette = palette;
+    if (instrument) this.instrument = instrument;
 
-    const p = this.palette.drone;
+    const p = this.instrument.drone;
 
     // Oscillators
     this.osc1 = ctx.createOscillator();
@@ -52,6 +60,10 @@ export class DroneVoice {
     this.gainNode.gain.setValueAtTime(0.001, now);
     this.gainNode.gain.exponentialRampToValueAtTime(0.26, now + 0.15);
 
+    // Stereo Panner Node for Horizontal Spatial Positioning
+    this.pannerNode = ctx.createStereoPanner();
+    this.pannerNode.pan.setValueAtTime(0, now);
+
     // Internal Mix
     const oscGain1 = ctx.createGain();
     oscGain1.gain.setValueAtTime(0.35, now);
@@ -69,7 +81,9 @@ export class DroneVoice {
     subGain.connect(this.filter);
 
     this.filter.connect(this.gainNode);
-    soundEngine.connectVoice(this.gainNode, 0.35, 0.4);
+    this.gainNode.connect(this.pannerNode);
+
+    soundEngine.connectVoice(this.pannerNode, 0.35, 0.4);
 
     this.osc1.start(now);
     this.osc2.start(now);
@@ -77,41 +91,67 @@ export class DroneVoice {
     this.isPlaying = true;
   }
 
-  public setPalette(palette: SoundPalette): void {
-    this.palette = palette;
+  public setInstrument(instrument: InstrumentDefinition): void {
+    this.instrument = instrument;
     if (this.isPlaying && this.osc1 && this.osc2 && this.subOsc && this.filter) {
-      this.osc1.type = palette.drone.osc1Type;
-      this.osc2.type = palette.drone.osc2Type;
-      this.subOsc.type = palette.drone.subType;
-      this.filter.type = palette.drone.filterType;
-      this.filter.Q.setTargetAtTime(palette.drone.baseQ, soundEngine.context.currentTime, 0.05);
-      this.update(this.currentFreq, 0);
+      this.osc1.type = instrument.drone.osc1Type;
+      this.osc2.type = instrument.drone.osc2Type;
+      this.subOsc.type = instrument.drone.subType;
+      this.filter.type = instrument.drone.filterType;
+      this.filter.Q.setTargetAtTime(instrument.drone.baseQ, soundEngine.context.currentTime, 0.05);
+      this.update(this.currentFreq, 0, 0, 100);
     }
   }
 
   /**
-   * Continuous frequency glide with hysteresis and curvature-modulated filter cutoff.
+   * Continuous parameter update:
+   * - Vertical (freq): smooth portamento pitch glide
+   * - Curvature: dynamic filter opening on sharp turns
+   * - Horizontal (x): spatial stereo panning and timbral brightness modulation
    */
-  public update(freq: number, curvature: number = 0): void {
-    if (!this.isPlaying || !this.filter || !this.osc1 || !this.osc2 || !this.subOsc) return;
+  public update(
+    freq: number,
+    curvature: number = 0,
+    x: number = 0,
+    canvasWidth: number = 1,
+    xModMode: XAxisModulationMode = 'panAndTone'
+  ): void {
+    if (!this.isPlaying || !this.filter || !this.osc1 || !this.osc2 || !this.subOsc || !this.pannerNode) return;
     const ctx = soundEngine.context;
     const now = ctx.currentTime;
     const timeConstant = 0.035;
 
     this.currentFreq = freq;
-    const p = this.palette.drone;
+    const p = this.instrument.drone;
 
     this.osc1.frequency.setTargetAtTime(freq, now, timeConstant);
     this.osc2.frequency.setTargetAtTime(freq * p.osc2IntervalRatio, now, timeConstant);
     this.subOsc.frequency.setTargetAtTime(freq * 0.5, now, timeConstant);
 
-    // Curvature modulates filter cutoff
+    // 1. Horizontal Stereo Panning
+    const normX = Math.max(0, Math.min(1, canvasWidth > 0 ? x / canvasWidth : 0.5));
+    const targetPan = Math.max(-1, Math.min(1, 2 * normX - 1));
+
+    if (xModMode === 'panAndTone' || xModMode === 'panOnly') {
+      this.pannerNode.pan.setTargetAtTime(targetPan, now, 0.04);
+    } else {
+      this.pannerNode.pan.setTargetAtTime(0, now, 0.04);
+    }
+
+    // 2. Timbral Brightness Modulation from X-axis
+    let toneMultiplier = 1.0;
+    if (xModMode === 'panAndTone') {
+      // Left edge is warmer/subtle (0.75x), right edge opens up to 1.35x
+      toneMultiplier = 0.75 + 0.6 * normX;
+    }
+
+    // 3. Curvature Modulation
     const normalizedCurvature = Math.min(1, curvature * 200);
-    const baseCutoff = Math.max(250, Math.min(p.maxCutoff, freq * p.baseCutoffMultiplier));
+    const baseCutoff = Math.max(200, Math.min(p.maxCutoff, freq * p.baseCutoffMultiplier * toneMultiplier));
     const targetCutoff = Math.min(p.maxCutoff, baseCutoff + normalizedCurvature * p.curvatureBrightness);
     this.filter.frequency.setTargetAtTime(targetCutoff, now, 0.06);
 
-    const targetQ = p.baseQ + normalizedCurvature * 3.0;
+    const targetQ = p.baseQ + normalizedCurvature * 2.5;
     this.filter.Q.setTargetAtTime(targetQ, now, 0.06);
   }
 
@@ -143,22 +183,27 @@ export class DroneVoice {
     this.osc2 = null;
     this.subOsc = null;
     this.filter = null;
+    this.pannerNode = null;
     this.gainNode = null;
   }
 }
 
 /**
  * Staccato / Pulsed Voice for Dotted and Striped strokes.
+ * Dispatches spatially panned pulses based on the stroke's assigned InstrumentDefinition.
  */
 export class PulseVoice {
   /**
-   * Triggers a staccato note pulse using active SoundPalette parameters.
+   * Triggers a staccato note pulse using the assigned InstrumentDefinition and stereo position.
    */
   public static trigger(
     freq: number,
     isStriped: boolean = false,
     velocity: number = 0.8,
-    palette: SoundPalette = SOUND_PALETTES.celestial
+    instrument: InstrumentDefinition = DEFAULT_INSTRUMENT,
+    x: number = 0,
+    canvasWidth: number = 1,
+    xModMode: XAxisModulationMode = 'panAndTone'
   ): void {
     if (!soundEngine.isReady) return;
     const ctx = soundEngine.context;
@@ -167,7 +212,15 @@ export class PulseVoice {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     const filter = ctx.createBiquadFilter();
-    const p = palette.pulse;
+    const panner = ctx.createStereoPanner();
+
+    // Stereo Panning from horizontal position
+    const normX = Math.max(0, Math.min(1, canvasWidth > 0 ? x / canvasWidth : 0.5));
+    const pan = xModMode === 'spaceDepth' ? 0 : Math.max(-1, Math.min(1, 2 * normX - 1));
+    panner.pan.setValueAtTime(pan, now);
+
+    const p = instrument.pulse;
+    const toneMultiplier = xModMode === 'panAndTone' ? 0.8 + 0.4 * normX : 1.0;
 
     if (isStriped) {
       // Striped mode: Rhythmic percussive burst
@@ -175,7 +228,7 @@ export class PulseVoice {
       osc.frequency.setValueAtTime(freq, now);
 
       filter.type = 'bandpass';
-      filter.frequency.setValueAtTime(freq * 1.6, now);
+      filter.frequency.setValueAtTime(freq * 1.6 * toneMultiplier, now);
       filter.Q.setValueAtTime(p.stripedBandpassQ, now);
 
       gain.gain.setValueAtTime(0.001, now);
@@ -184,7 +237,8 @@ export class PulseVoice {
 
       osc.connect(filter);
       filter.connect(gain);
-      soundEngine.connectVoice(gain, 0.25, 0.25);
+      gain.connect(panner);
+      soundEngine.connectVoice(panner, 0.25, 0.25);
 
       osc.start(now);
       osc.stop(now + p.stripedDecay + 0.02);
@@ -192,11 +246,10 @@ export class PulseVoice {
       // Dotted mode: Resonant melodic chime / pluck
       osc.type = p.dottedOscType;
       osc.frequency.setValueAtTime(freq, now);
-      // Subtle pitch envelope for acoustic punch
       osc.frequency.exponentialRampToValueAtTime(freq * 0.996, now + 0.1);
 
       filter.type = 'lowpass';
-      filter.frequency.setValueAtTime(freq * 3.5, now);
+      filter.frequency.setValueAtTime(freq * 3.5 * toneMultiplier, now);
       filter.frequency.exponentialRampToValueAtTime(freq * 0.9, now + p.dottedDecay * 0.8);
       filter.Q.setValueAtTime(p.dottedFilterQ, now);
 
@@ -206,7 +259,8 @@ export class PulseVoice {
 
       osc.connect(filter);
       filter.connect(gain);
-      soundEngine.connectVoice(gain, 0.35, 0.45);
+      gain.connect(panner);
+      soundEngine.connectVoice(panner, 0.35, 0.45);
 
       osc.start(now);
       osc.stop(now + p.dottedDecay + 0.03);

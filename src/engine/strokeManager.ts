@@ -3,22 +3,23 @@ import { buildArcLengthLUT } from '../math/arcLengthTable';
 import { evaluateAtDistance } from '../math/arcLengthInverter';
 import { evaluateBezier } from '../math/bezier';
 import { ScaleQuantizer } from '../audio/scaleQuantizer';
-import { DroneVoice, PulseVoice } from '../audio/synthVoice';
-import { SoundPalette, SOUND_PALETTES } from '../audio/soundPalettes';
+import { DroneVoice, PulseVoice, XAxisModulationMode } from '../audio/synthVoice';
+import { getInstrument, DEFAULT_INSTRUMENT } from '../audio/instruments';
 import { soundEngine } from '../audio/audioContext';
 import { DrawnStroke, StrokeStyle, TraversalMode } from './types';
 
 type UndoAction =
   | { type: 'add'; stroke: DrawnStroke }
   | { type: 'remove'; stroke: DrawnStroke; index: number }
-  | { type: 'move'; strokeId: string; dx: number; dy: number };
+  | { type: 'move'; strokeId: string; dx: number; dy: number }
+  | { type: 'revoice'; strokeId: string; oldInstrumentId: string; newInstrumentId: string };
 
 export class StrokeManager {
   private strokes: DrawnStroke[] = [];
   private isPaused = false;
   private bpm = 100;
   private traversalMode: TraversalMode = 'restart';
-  private currentPalette: SoundPalette = SOUND_PALETTES.celestial;
+  private xModMode: XAxisModulationMode = 'panAndTone';
   private selectedId: string | null = null;
   private hoveredId: string | null = null;
 
@@ -41,8 +42,8 @@ export class StrokeManager {
     return this.traversalMode;
   }
 
-  public get palette(): SoundPalette {
-    return this.currentPalette;
+  public get xAxisModulationMode(): XAxisModulationMode {
+    return this.xModMode;
   }
 
   public get selectedStrokeId(): string | null {
@@ -76,8 +77,9 @@ export class StrokeManager {
     } else {
       for (const stroke of this.strokes) {
         if (stroke.style === 'solid' && soundEngine.isReady && stroke.playhead.lastPitch) {
+          const inst = getInstrument(stroke.instrumentId);
           stroke.droneVoice = new DroneVoice();
-          stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, this.currentPalette);
+          stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst);
         }
       }
     }
@@ -91,13 +93,8 @@ export class StrokeManager {
     this.traversalMode = mode;
   }
 
-  public setSoundPalette(palette: SoundPalette): void {
-    this.currentPalette = palette;
-    for (const stroke of this.strokes) {
-      if (stroke.droneVoice) {
-        stroke.droneVoice.setPalette(palette);
-      }
-    }
+  public setXAxisModulationMode(mode: XAxisModulationMode): void {
+    this.xModMode = mode;
   }
 
   public selectStroke(id: string | null): void {
@@ -117,13 +114,14 @@ export class StrokeManager {
   public addStroke(
     path: SplinePath,
     style: StrokeStyle,
-    color: string,
+    instrumentId: string = DEFAULT_INSTRUMENT.id,
     baseVelocity: number = 140,
     quantizer?: ScaleQuantizer,
     canvasHeight?: number
   ): DrawnStroke {
     const lut = buildArcLengthLUT(path, 64);
     const id = `stroke-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const instrument = getInstrument(instrumentId);
 
     let initialPitch = null;
     let initialEval = null;
@@ -138,12 +136,13 @@ export class StrokeManager {
     let droneVoice: DroneVoice | null = null;
     if (style === 'solid' && soundEngine.isReady && initialPitch && !this.isPaused) {
       droneVoice = new DroneVoice();
-      droneVoice.start(initialPitch.frequency, this.currentPalette);
+      droneVoice.start(initialPitch.frequency, instrument);
     }
 
     const stroke: DrawnStroke = {
       id,
-      color,
+      color: instrument.color,
+      instrumentId: instrument.id,
       style,
       path,
       lut,
@@ -164,8 +163,34 @@ export class StrokeManager {
 
     this.strokes.push(stroke);
     this.undoStack.push({ type: 'add', stroke });
-    this.redoStack = []; // clear redo on new action
+    this.redoStack = [];
     return stroke;
+  }
+
+  /**
+   * Re-voices an existing stroke with a new instrument/color.
+   */
+  public revoiceStroke(strokeId: string, newInstrumentId: string, recordUndo = true): boolean {
+    const stroke = this.strokes.find((s) => s.id === strokeId);
+    if (!stroke) return false;
+
+    const oldInstrumentId = stroke.instrumentId;
+    if (oldInstrumentId === newInstrumentId) return false;
+
+    const newInstrument = getInstrument(newInstrumentId);
+    stroke.instrumentId = newInstrument.id;
+    stroke.color = newInstrument.color;
+
+    if (stroke.droneVoice) {
+      stroke.droneVoice.setInstrument(newInstrument);
+    }
+
+    if (recordUndo) {
+      this.undoStack.push({ type: 'revoice', strokeId, oldInstrumentId, newInstrumentId });
+      this.redoStack = [];
+    }
+
+    return true;
   }
 
   /**
@@ -235,16 +260,18 @@ export class StrokeManager {
 
     for (const stroke of this.strokes) {
       if (stroke.style === 'solid' && !stroke.droneVoice && stroke.playhead.lastPitch) {
+        const inst = getInstrument(stroke.instrumentId);
         stroke.droneVoice = new DroneVoice();
-        stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, this.currentPalette);
+        stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst);
       }
     }
   }
 
   /**
    * Main per-frame update loop.
+   * Handles constant-velocity traversal, Y pitch quantization, and X stereo/timbre modulation.
    */
-  public update(dt: number, canvasHeight: number, quantizer: ScaleQuantizer): void {
+  public update(dt: number, canvasWidth: number, canvasHeight: number, quantizer: ScaleQuantizer): void {
     if (this.isPaused || dt <= 0) return;
 
     const DOT_SPACING = 40;   // 1/8th note (2 triggers per beat)
@@ -266,10 +293,8 @@ export class StrokeManager {
 
       // Handle curve boundary
       if (stroke.lut.isClosed) {
-        // Cyclic closed loop
         nextDist = ((nextDist % L) + L) % L;
       } else {
-        // Open Curve
         if (this.traversalMode === 'restart') {
           // One-way traversal: always journeys start -> end, then immediately restarts from start
           if (nextDist >= L) {
@@ -305,16 +330,24 @@ export class StrokeManager {
         ph.trail.pop();
       }
 
-      // 3. Audio & Pitch evaluation
+      // 3. Audio & Pitch evaluation (Y -> Pitch, X -> Stereo Pan & Timbre)
+      const instrument = getInstrument(stroke.instrumentId);
+
       if (stroke.style === 'solid') {
         const pitch = quantizer.quantizeContinuous(evalResult.point.y, canvasHeight);
         ph.lastPitch = pitch;
 
         if (!stroke.droneVoice && soundEngine.isReady) {
           stroke.droneVoice = new DroneVoice();
-          stroke.droneVoice.start(pitch.frequency, this.currentPalette);
+          stroke.droneVoice.start(pitch.frequency, instrument);
         } else if (stroke.droneVoice) {
-          stroke.droneVoice.update(pitch.frequency, evalResult.curvature);
+          stroke.droneVoice.update(
+            pitch.frequency,
+            evalResult.curvature,
+            evalResult.point.x,
+            canvasWidth,
+            this.xModMode
+          );
         }
       } else if (stroke.style === 'dotted') {
         const pitch = quantizer.quantizeDiscrete(evalResult.point.y, canvasHeight);
@@ -324,7 +357,15 @@ export class StrokeManager {
         const nextIndex = Math.floor(nextDist / DOT_SPACING);
 
         if (prevIndex !== nextIndex) {
-          PulseVoice.trigger(pitch.frequency, false, 0.85, this.currentPalette);
+          PulseVoice.trigger(
+            pitch.frequency,
+            false,
+            0.85,
+            instrument,
+            evalResult.point.x,
+            canvasWidth,
+            this.xModMode
+          );
         }
       } else if (stroke.style === 'striped') {
         const pitch = quantizer.quantizeDiscrete(evalResult.point.y, canvasHeight);
@@ -334,14 +375,22 @@ export class StrokeManager {
         const nextIndex = Math.floor(nextDist / STRIPE_SPACING);
 
         if (prevIndex !== nextIndex) {
-          PulseVoice.trigger(pitch.frequency, true, 0.7, this.currentPalette);
+          PulseVoice.trigger(
+            pitch.frequency,
+            true,
+            0.7,
+            instrument,
+            evalResult.point.x,
+            canvasWidth,
+            this.xModMode
+          );
         }
       }
     }
   }
 
   /**
-   * Undo last action (draw, move, remove).
+   * Undo last action (draw, move, remove, revoice).
    */
   public undo(): boolean {
     const action = this.undoStack.pop();
@@ -358,12 +407,16 @@ export class StrokeManager {
     } else if (action.type === 'remove') {
       this.strokes.splice(action.index, 0, action.stroke);
       if (action.stroke.style === 'solid' && soundEngine.isReady && action.stroke.playhead.lastPitch) {
+        const inst = getInstrument(action.stroke.instrumentId);
         action.stroke.droneVoice = new DroneVoice();
-        action.stroke.droneVoice.start(action.stroke.playhead.lastPitch.frequency, this.currentPalette);
+        action.stroke.droneVoice.start(action.stroke.playhead.lastPitch.frequency, inst);
       }
       this.redoStack.push({ type: 'remove', stroke: action.stroke, index: action.index });
     } else if (action.type === 'move') {
       this.translateStroke(action.strokeId, -action.dx, -action.dy, false);
+      this.redoStack.push(action);
+    } else if (action.type === 'revoice') {
+      this.revoiceStroke(action.strokeId, action.oldInstrumentId, false);
       this.redoStack.push(action);
     }
 
@@ -380,8 +433,9 @@ export class StrokeManager {
     if (action.type === 'add') {
       this.strokes.push(action.stroke);
       if (action.stroke.style === 'solid' && soundEngine.isReady && action.stroke.playhead.lastPitch) {
+        const inst = getInstrument(action.stroke.instrumentId);
         action.stroke.droneVoice = new DroneVoice();
-        action.stroke.droneVoice.start(action.stroke.playhead.lastPitch.frequency, this.currentPalette);
+        action.stroke.droneVoice.start(action.stroke.playhead.lastPitch.frequency, inst);
       }
       this.undoStack.push(action);
     } else if (action.type === 'remove') {
@@ -394,6 +448,9 @@ export class StrokeManager {
       }
     } else if (action.type === 'move') {
       this.translateStroke(action.strokeId, action.dx, action.dy, false);
+      this.undoStack.push(action);
+    } else if (action.type === 'revoice') {
+      this.revoiceStroke(action.strokeId, action.newInstrumentId, false);
       this.undoStack.push(action);
     }
 

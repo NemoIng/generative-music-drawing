@@ -238,9 +238,12 @@ export class CanvasRenderer {
     ctx.fillStyle = '#ffffff';
     ctx.fill();
 
-    // 4. Clean Minimalist Note Tag
+    // 4. Clean Minimalist Note Tag with Pitch & Stereo Pan
     if (ph.lastPitch) {
-      const badgeText = `${ph.lastPitch.noteName} · ${Math.round(ph.lastPitch.frequency)}Hz`;
+      const normX = this.width > 0 ? Math.max(0, Math.min(1, x / this.width)) : 0.5;
+      const panPercent = Math.round(Math.abs(normX - 0.5) * 200);
+      const panText = normX < 0.46 ? `L${panPercent}%` : normX > 0.54 ? `R${panPercent}%` : 'C';
+      const badgeText = `${ph.lastPitch.noteName} · ${Math.round(ph.lastPitch.frequency)}Hz · ${panText}`;
       const badgeX = x + 12;
       const badgeY = y - 16;
 

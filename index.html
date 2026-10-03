@@ -41,23 +41,82 @@
                 type="button"
                 class="seg-btn has-tooltip"
                 data-mode="edit"
-                data-tooltip="Edit Mode (V): Click any line to select it; drag to reposition across the canvas. Press Backspace to delete."
+                data-tooltip="Edit Mode (V): Click any line to select it; drag to reposition across the canvas or click a color swatch to re-voice it. Press Backspace to delete."
               >
                 Select / Move
               </button>
             </div>
           </div>
 
-          <!-- Sound Palette Selector -->
-          <div class="control-group has-tooltip" data-tooltip="Sound Palette: Selects acoustic and synthesizer models for drone, chime, and pulse textures.">
-            <label for="paletteSelect">Sound</label>
+          <!-- Color-Sound Instrument Palette -->
+          <div class="control-group">
+            <label>Sound Ink</label>
+            <div class="color-palette-bar" id="instrumentPalette">
+              <button
+                type="button"
+                class="swatch-btn active has-tooltip"
+                data-instrument="indigo"
+                style="--swatch-c: #2563eb"
+                data-tooltip="Indigo Ink (1): Bowed Cello & Strings • Warm cello drone and pizzicato plucks"
+              >
+                <span class="swatch-dot"></span>
+              </button>
+              <button
+                type="button"
+                class="swatch-btn has-tooltip"
+                data-instrument="amber"
+                style="--swatch-c: #d97706"
+                data-tooltip="Amber Ink (2): Acoustic Kalimba & Wood • Wooden thumb piano tines and temple block taps"
+              >
+                <span class="swatch-dot"></span>
+              </button>
+              <button
+                type="button"
+                class="swatch-btn has-tooltip"
+                data-instrument="spruce"
+                style="--swatch-c: #059669"
+                data-tooltip="Spruce Ink (3): Glass Organ & Flute • Pure 5th glass organ drone and droplet chimes"
+              >
+                <span class="swatch-dot"></span>
+              </button>
+              <button
+                type="button"
+                class="swatch-btn has-tooltip"
+                data-instrument="violet"
+                style="--swatch-c: #7c3aed"
+                data-tooltip="Violet Ink (4): Music Box & Bells • Crystalline music box, sparkling bells & celestial shimmer"
+              >
+                <span class="swatch-dot"></span>
+              </button>
+              <button
+                type="button"
+                class="swatch-btn has-tooltip"
+                data-instrument="rose"
+                style="--swatch-c: #e11d48"
+                data-tooltip="Rose Ink (5): Acoustic Harp & Koto • Plucked acoustic harp transients and wooden soundboard decay"
+              >
+                <span class="swatch-dot"></span>
+              </button>
+              <button
+                type="button"
+                class="swatch-btn has-tooltip"
+                data-instrument="slate"
+                style="--swatch-c: #334155"
+                data-tooltip="Slate Ink (6): Analog Moog & Sub-Bass • Vintage detuned saw/square oscillators, ladder filter & 303 acid"
+              >
+                <span class="swatch-dot"></span>
+              </button>
+            </div>
+          </div>
+
+          <!-- X-Axis Modulation Setting -->
+          <div class="control-group has-tooltip" data-tooltip="X-Axis Modulation: Governs how horizontal canvas position shapes the sound. Stereo Pan pans audio across headphones; Tone adds warm-to-bright filter opening.">
+            <label for="xAxisSelect">X-Axis</label>
             <div class="select-wrapper">
-              <select id="paletteSelect" class="minimal-select">
-                <option value="celestial" selected>Celestial Glass</option>
-                <option value="zen">Zen Acoustic</option>
-                <option value="analog">Analog Modular</option>
-                <option value="strings">Physical Strings</option>
-                <option value="deepspace">Deep Space</option>
+              <select id="xAxisSelect" class="minimal-select">
+                <option value="panAndTone" selected>Stereo Pan + Tone</option>
+                <option value="panOnly">Stereo Pan Only</option>
+                <option value="spaceDepth">Reverb Space Depth</option>
               </select>
             </div>
           </div>
@@ -165,7 +224,7 @@
 
           <!-- Action Buttons -->
           <div class="actions-group">
-            <button id="undoBtn" class="action-btn has-tooltip" data-tooltip="Undo (⌘Z / Ctrl+Z): Undo last drawn stroke or line translation.">
+            <button id="undoBtn" class="action-btn has-tooltip" data-tooltip="Undo (⌘Z / Ctrl+Z): Undo last drawn stroke, line translation, or revoicing.">
               Undo
             </button>
             <button id="playPauseBtn" class="action-btn has-tooltip" data-tooltip="Play / Pause (Spacebar): Toggle playhead motion and active audio voices.">
@@ -174,7 +233,7 @@
             <button id="clearBtn" class="action-btn text-danger has-tooltip" data-tooltip="Clear Canvas: Remove all drawn curves and stop synthesizer voices.">
               Clear
             </button>
-            <button id="infoBtn" class="action-btn text-muted has-tooltip" data-tooltip="Algorithm & Math: View equations for Arc-Length Simpson LUT and Scale Hysteresis.">
+            <button id="infoBtn" class="action-btn text-muted has-tooltip" data-tooltip="Algorithm & Math: View equations for Arc-Length Simpson LUT, Scale Hysteresis, and Stereo Panning.">
               Math
             </button>
           </div>
@@ -189,8 +248,8 @@
         <div id="audioUnlockPrompt" class="welcome-banner">
           <div class="welcome-card">
             <h3>Draw on the canvas to begin</h3>
-            <p>Vertical height governs pitch • Arc-length governs rhythm</p>
-            <span class="hint-small">Close loops or draw open lines • Switch to Select to move lines</span>
+            <p>Vertical Y governs pitch • Horizontal X governs stereo pan & tone • Arc-length governs rhythm</p>
+            <span class="hint-small">Pick colors for different instruments • Switch to Select to move or re-voice lines</span>
           </div>
         </div>
 
@@ -199,12 +258,13 @@
           <div class="status-left">
             <span id="statStrokes" class="status-chip">0 strokes</span>
             <span id="statMode" class="status-chip">Draw Mode</span>
+            <span id="statInstrument" class="status-chip">🎻 Bowed Cello</span>
             <span id="statTempo" class="status-chip">100 BPM</span>
-            <span id="statPalette" class="status-chip">Celestial Glass</span>
+            <span id="statXMod" class="status-chip">Stereo Pan + Tone</span>
             <span id="statAudio" class="status-chip chip-ready">Audio ready</span>
           </div>
           <div class="status-right">
-            <span id="contextHelp" class="context-help">Hover over any setting for details • Space: Pause • ⌘Z: Undo • V: Select/Move</span>
+            <span id="contextHelp" class="context-help">Hover over any setting for details • Space: Pause • ⌘Z: Undo • V: Select/Move • 1-6: Inks</span>
           </div>
         </footer>
       </main>
@@ -236,6 +296,13 @@
                 <li><strong>Solid Strokes:</strong> Rest comfortably in-tune on horizontal lines, while gliding with smooth microtonal portamento during vertical moves.</li>
                 <li><strong>Dotted / Striped Strokes:</strong> Strictly snapped to discrete modal scale intervals at synchronized eighth- and sixteenth-note pulses.</li>
               </ul>
+            </section>
+
+            <section>
+              <h3>3. Horizontal Axis Spatial Panning & Timbral Color</h3>
+              <p>The continuous horizontal position $x \in [0, W]$ determines stereo spatial placement and high-frequency acoustic sheen:</p>
+              <pre><code>pan = clamp(2 · (x / W) - 1, -1, 1),   cutoff = baseCutoff · (0.75 + 0.6 · (x / W))</code></pre>
+              <p>Drawing from left to right physically glides sound through the stereo field from the left channel to the right channel, providing 3D acoustic perspective.</p>
             </section>
           </div>
         </div>
