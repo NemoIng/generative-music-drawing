@@ -52,8 +52,8 @@ body, html {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  padding: 10px 24px;
+  gap: 16px;
+  padding: 16px 20px 10px;
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border-subtle);
   box-shadow: var(--shadow-sm);
@@ -334,7 +334,7 @@ body, html {
 .has-tooltip::after {
   content: attr(data-tooltip);
   position: absolute;
-  bottom: calc(100% + 8px);
+  bottom: calc(100% + 6px);
   top: auto;
   left: 50%;
   transform: translateX(-50%) translateY(3px);
@@ -342,12 +342,12 @@ body, html {
   color: #f5f5f4;
   font-size: 0.72rem;
   font-weight: 450;
-  line-height: 1.4;
-  padding: 6px 10px;
+  line-height: 1.35;
+  padding: 5px 9px;
   border-radius: 6px;
   white-space: normal;
   width: max-content;
-  max-width: 260px;
+  max-width: 250px;
   text-align: center;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
   pointer-events: none;
@@ -361,6 +361,19 @@ body, html {
   opacity: 1;
   visibility: visible;
   transform: translateX(-50%) translateY(0);
+}
+
+/* Prevent tooltip clipping on rightmost controls */
+.actions-group > .has-tooltip:last-child::after,
+#infoBtn::after {
+  left: auto;
+  right: 0;
+  transform: translateY(3px);
+}
+
+.actions-group > .has-tooltip:last-child:hover::after,
+#infoBtn:hover::after {
+  transform: translateY(0);
 }
 
 /* Toggle Buttons (e.g. Snap Pitch) */
