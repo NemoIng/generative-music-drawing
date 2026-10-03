@@ -93,4 +93,37 @@ describe('Curve Fitting & Auto-closure', () => {
     expect(smoothSpline?.segments[0].p0.x).toBeCloseTo(0, 1);
     expect(smoothSpline?.segments[0].p0.y).toBeCloseTo(100, 1);
   });
+
+  it('aggressively suppresses high-frequency hand tremors with smoothSpline', () => {
+    // Generate a horizontal gesture with rapid hand tremor noise (y oscillates around 200)
+    const raw: Point2D[] = [];
+    for (let x = 0; x <= 300; x += 4) {
+      // 4px spacing like realistic high-rate pointer events
+      // Tremor amplitude ±15px with fast wavelength (16px)
+      const tremor = Math.sin((x / 16) * 2 * Math.PI) * 15;
+      raw.push({ x, y: 200 + tremor });
+    }
+
+    const unsmoothed = fitSplineFromPoints(raw, 45, false);
+    const smoothed = fitSplineFromPoints(raw, 45, true);
+
+    expect(unsmoothed).not.toBeNull();
+    expect(smoothed).not.toBeNull();
+
+    // Smoothed spline should have fewer, cleaner segments due to decimation
+    expect(smoothed!.segments.length).toBeLessThan(unsmoothed!.segments.length);
+
+    // Endpoints must match raw points exactly
+    expect(smoothed!.segments[0].p0.x).toBeCloseTo(raw[0].x, 1);
+    expect(smoothed!.segments[0].p0.y).toBeCloseTo(raw[0].y, 1);
+    const lastSeg = smoothed!.segments[smoothed!.segments.length - 1];
+    expect(lastSeg.p3.x).toBeCloseTo(raw[raw.length - 1].x, 1);
+    expect(lastSeg.p3.y).toBeCloseTo(raw[raw.length - 1].y, 1);
+
+    // Measure maximum deviation from baseline (y = 200) across interior control points
+    const interiorPoints = smoothed!.segments.slice(1, -1).map((seg) => seg.p0.y);
+    const maxSmoothedDev = Math.max(...interiorPoints.map((y) => Math.abs(y - 200)));
+    // Raw tremor amplitude was 15; aggressive smoothing should reduce interior tremor to < 4px (over 70% reduction)
+    expect(maxSmoothedDev).toBeLessThan(4);
+  });
 });

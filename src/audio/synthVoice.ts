@@ -15,10 +15,14 @@ export class DroneVoice {
   private filter: BiquadFilterNode | null = null;
   private gainNode: GainNode | null = null;
   private pannerNode: StereoPannerNode | null = null;
-  private isPlaying = false;
+  private _isPlaying = false;
   private currentFreq = 220;
   private instrument: InstrumentDefinition = DEFAULT_INSTRUMENT;
   private volume: number = 1.0;
+
+  public get isPlaying(): boolean {
+    return this._isPlaying;
+  }
 
   public get frequency(): number {
     return this.currentFreq;
@@ -34,7 +38,7 @@ export class DroneVoice {
 
   public setVolume(volume: number): void {
     this.volume = Math.max(0, Math.min(1, volume));
-    if (this.gainNode && this.isPlaying) {
+    if (this.gainNode && this._isPlaying) {
       const now = soundEngine.context.currentTime;
       const targetGain = Math.max(0.0001, 0.26 * this.volume);
       this.gainNode.gain.setTargetAtTime(targetGain, now, 0.03);
@@ -42,7 +46,7 @@ export class DroneVoice {
   }
 
   public start(initialFreq: number, instrument?: InstrumentDefinition, volume: number = 1.0): void {
-    if (this.isPlaying || !soundEngine.isReady) return;
+    if (this._isPlaying || !soundEngine.isReady) return;
     const ctx = soundEngine.context;
     const now = ctx.currentTime;
     this.currentFreq = initialFreq;
@@ -104,12 +108,12 @@ export class DroneVoice {
     this.osc1.start(now);
     this.osc2.start(now);
     this.subOsc.start(now);
-    this.isPlaying = true;
+    this._isPlaying = true;
   }
 
   public setInstrument(instrument: InstrumentDefinition): void {
     this.instrument = instrument;
-    if (this.isPlaying && this.osc1 && this.osc2 && this.subOsc && this.filter) {
+    if (this._isPlaying && this.osc1 && this.osc2 && this.subOsc && this.filter) {
       this.osc1.type = instrument.drone.osc1Type;
       this.osc2.type = instrument.drone.osc2Type;
       this.subOsc.type = instrument.drone.subType;
@@ -133,7 +137,7 @@ export class DroneVoice {
     xModMode: XAxisModulationMode = 'panAndTone',
     volume?: number
   ): void {
-    if (!this.isPlaying || !this.filter || !this.osc1 || !this.osc2 || !this.subOsc || !this.pannerNode) return;
+    if (!this._isPlaying || !this.filter || !this.osc1 || !this.osc2 || !this.subOsc || !this.pannerNode) return;
     if (volume !== undefined && Math.abs(this.volume - volume) > 0.005) {
       this.setVolume(volume);
     }
@@ -176,7 +180,7 @@ export class DroneVoice {
   }
 
   public stop(): void {
-    if (!this.isPlaying || !this.gainNode) return;
+    if (!this._isPlaying || !this.gainNode) return;
     const ctx = soundEngine.context;
     const now = ctx.currentTime;
 
@@ -198,7 +202,7 @@ export class DroneVoice {
       }
     }, 200);
 
-    this.isPlaying = false;
+    this._isPlaying = false;
     this.osc1 = null;
     this.osc2 = null;
     this.subOsc = null;

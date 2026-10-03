@@ -111,14 +111,17 @@ export class StrokeManager {
       for (const stroke of this.strokes) {
         if (stroke.droneVoice) {
           stroke.droneVoice.stop();
+          stroke.droneVoice = null;
         }
       }
     } else {
       for (const stroke of this.strokes) {
         if (stroke.style === 'solid' && soundEngine.isReady && stroke.playhead.lastPitch && this.isStrokeAudible(stroke)) {
-          const inst = getInstrument(stroke.instrumentId);
-          stroke.droneVoice = new DroneVoice();
-          stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, stroke.volume ?? 1.0);
+          if (!stroke.droneVoice || !stroke.droneVoice.isPlaying) {
+            const inst = getInstrument(stroke.instrumentId);
+            stroke.droneVoice = new DroneVoice();
+            stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, stroke.volume ?? 1.0);
+          }
         }
       }
     }
@@ -168,10 +171,13 @@ export class StrokeManager {
 
     if (!this.isStrokeAudible(stroke) && stroke.droneVoice) {
       stroke.droneVoice.stop();
+      stroke.droneVoice = null;
     } else if (this.isStrokeAudible(stroke) && stroke.style === 'solid' && soundEngine.isReady && stroke.playhead.lastPitch && !this.isPaused) {
-      const inst = getInstrument(stroke.instrumentId);
-      stroke.droneVoice = new DroneVoice();
-      stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, stroke.volume ?? 1.0);
+      if (!stroke.droneVoice || !stroke.droneVoice.isPlaying) {
+        const inst = getInstrument(stroke.instrumentId);
+        stroke.droneVoice = new DroneVoice();
+        stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, stroke.volume ?? 1.0);
+      }
     }
     return stroke.muted ?? false;
   }
@@ -186,7 +192,8 @@ export class StrokeManager {
       const audible = this.isStrokeAudible(s);
       if (!audible && s.droneVoice) {
         s.droneVoice.stop();
-      } else if (audible && s.style === 'solid' && !s.droneVoice && soundEngine.isReady && s.playhead.lastPitch && !this.isPaused) {
+        s.droneVoice = null;
+      } else if (audible && s.style === 'solid' && (!s.droneVoice || !s.droneVoice.isPlaying) && soundEngine.isReady && s.playhead.lastPitch && !this.isPaused) {
         const inst = getInstrument(s.instrumentId);
         s.droneVoice = new DroneVoice();
         s.droneVoice.start(s.playhead.lastPitch.frequency, inst, s.volume ?? 1.0);
@@ -622,7 +629,7 @@ export class StrokeManager {
         ph.lastPitch = pitch;
 
         if (audible) {
-          if (!stroke.droneVoice && soundEngine.isReady) {
+          if ((!stroke.droneVoice || !stroke.droneVoice.isPlaying) && soundEngine.isReady) {
             stroke.droneVoice = new DroneVoice();
             stroke.droneVoice.start(pitch.frequency, instrument, strokeVol);
           } else if (stroke.droneVoice) {
@@ -637,6 +644,7 @@ export class StrokeManager {
           }
         } else if (stroke.droneVoice) {
           stroke.droneVoice.stop();
+          stroke.droneVoice = null;
         }
       } else if (stroke.style === 'dotted') {
         const pitch = quantizer.quantizeDiscrete(evalResult.point.y, canvasHeight);
@@ -687,6 +695,7 @@ export class StrokeManager {
       if (idx !== -1) {
         const [removed] = this.strokes.splice(idx, 1);
         removed.droneVoice?.stop();
+        removed.droneVoice = null;
         if (this.selectedId === removed.id) this.selectedId = null;
         this.redoStack.push({ type: 'add', stroke: removed });
       }
@@ -750,6 +759,7 @@ export class StrokeManager {
       if (idx !== -1) {
         const [removed] = this.strokes.splice(idx, 1);
         removed.droneVoice?.stop();
+        removed.droneVoice = null;
         if (this.selectedId === removed.id) this.selectedId = null;
         this.undoStack.push(action);
       }
@@ -794,6 +804,7 @@ export class StrokeManager {
     if (idx !== -1) {
       const [removed] = this.strokes.splice(idx, 1);
       removed.droneVoice?.stop();
+      removed.droneVoice = null;
       this.undoStack.push({ type: 'remove', stroke: removed, index: idx });
       this.redoStack = [];
       this.selectedId = null;
@@ -807,6 +818,7 @@ export class StrokeManager {
     if (idx !== -1) {
       const [stroke] = this.strokes.splice(idx, 1);
       stroke.droneVoice?.stop();
+      stroke.droneVoice = null;
       this.undoStack.push({ type: 'remove', stroke, index: idx });
       this.redoStack = [];
       if (this.selectedId === id) this.selectedId = null;
@@ -816,6 +828,7 @@ export class StrokeManager {
   public clearAll(): void {
     for (const stroke of this.strokes) {
       stroke.droneVoice?.stop();
+      stroke.droneVoice = null;
     }
     this.strokes = [];
     this.undoStack = [];

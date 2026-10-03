@@ -31,10 +31,10 @@ export function decimatePoints(points: Point2D[], minDistance: number = 8): Poin
  * preserving endpoints to prevent curve shrinkage or endpoint displacement.
  *
  * @param points Array of 2D points to smooth
- * @param iterations Number of smoothing passes (default 3)
- * @param weight Center weight vs neighbor weight (0.0 to 1.0, default 0.45)
+ * @param iterations Number of smoothing passes (default 6)
+ * @param weight Center weight vs neighbor weight (0.0 to 1.0, default 0.35)
  */
-export function smoothPoints(points: Point2D[], iterations: number = 3, weight: number = 0.45): Point2D[] {
+export function smoothPoints(points: Point2D[], iterations: number = 6, weight: number = 0.35): Point2D[] {
   if (points.length < 3) return points.map((p) => ({ ...p }));
 
   let pts = points.map((p) => ({ ...p }));
@@ -70,8 +70,22 @@ export function fitSplineFromPoints(
 ): SplinePath | null {
   let pointsToFit = rawPoints;
   if (smooth && rawPoints.length >= 3) {
-    const smoothed = smoothPoints(rawPoints, 3, 0.45);
-    pointsToFit = decimatePoints(smoothed, 16);
+    // 1. Initial decimation to normalize spatial point density across slow/fast hand strokes
+    const normalized = decimatePoints(rawPoints, 8);
+
+    // 2. Multi-pass aggressive Laplacian smoothing to eliminate high-frequency hand tremors
+    const smoothed = smoothPoints(normalized, 7, 0.34);
+
+    // 3. Decimate to clean spline control point intervals (24px spacing)
+    let totalDist = 0;
+    for (let i = 1; i < smoothed.length; i++) {
+      totalDist += Math.hypot(smoothed[i].x - smoothed[i - 1].x, smoothed[i].y - smoothed[i - 1].y);
+    }
+    const decimateDist = Math.min(24, Math.max(10, Math.floor(totalDist / 6)));
+    const decimated = decimatePoints(smoothed, decimateDist);
+
+    // 4. Final relaxation pass to ensure flowing, kink-free Catmull-Rom tangents
+    pointsToFit = smoothPoints(decimated, 2, 0.38);
   } else {
     pointsToFit = decimatePoints(rawPoints, 10);
   }

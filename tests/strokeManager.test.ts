@@ -1,8 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { StrokeManager } from '../src/engine/strokeManager';
 import { SplinePath } from '../src/math/types';
 import { ScaleQuantizer } from '../src/audio/scaleQuantizer';
 import { INSTRUMENTS } from '../src/audio/instruments';
+import { DroneVoice } from '../src/audio/synthVoice';
+import { soundEngine } from '../src/audio/audioContext';
 
 describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, and Undo/Redo', () => {
   const dummyPath: SplinePath = {
@@ -262,4 +264,51 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
     sm.redo();
     expect(stroke.loopQuantize).toBe('2bars');
   });
+
+  it('correctly stops and restores drone voices when toggling solo on and off without permanent silencing', () => {
+    vi.spyOn(soundEngine, 'isReady', 'get').mockReturnValue(true);
+
+    vi.spyOn(DroneVoice.prototype, 'start').mockImplementation(function (this: any) {
+      (this as any)._isPlaying = true;
+    });
+    vi.spyOn(DroneVoice.prototype, 'stop').mockImplementation(function (this: any) {
+      (this as any)._isPlaying = false;
+    });
+    vi.spyOn(DroneVoice.prototype, 'update').mockImplementation(function () {});
+
+    const sm = new StrokeManager();
+    const quantizer = new ScaleQuantizer();
+    const s1 = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+    const s2 = sm.addStroke(dummyPath, 'solid', 'amber', 100);
+
+    // Initial update starts drone voices for audible strokes
+    sm.update(0.016, 800, 600, quantizer);
+    expect(s1.droneVoice).not.toBeNull();
+    expect(s2.droneVoice).not.toBeNull();
+    expect(s1.droneVoice?.isPlaying).toBe(true);
+    expect(s2.droneVoice?.isPlaying).toBe(true);
+
+    // Solo stroke 1: stroke 2 must be stopped and nulled
+    sm.toggleSolo(s1.id);
+    expect(sm.isStrokeAudible(s1)).toBe(true);
+    expect(sm.isStrokeAudible(s2)).toBe(false);
+    expect(s2.droneVoice).toBeNull();
+
+    // Run update loop while stroke 1 is soloed
+    sm.update(0.016, 800, 600, quantizer);
+    expect(s2.droneVoice).toBeNull();
+
+    // Now unsolo stroke 1: stroke 2 MUST resume playing
+    sm.toggleSolo(s1.id);
+    expect(sm.isStrokeAudible(s1)).toBe(true);
+    expect(sm.isStrokeAudible(s2)).toBe(true);
+    expect(s2.droneVoice).not.toBeNull();
+    expect(s2.droneVoice?.isPlaying).toBe(true);
+
+    // Run update loop frame after unsolo
+    sm.update(0.016, 800, 600, quantizer);
+    expect(s1.droneVoice?.isPlaying).toBe(true);
+    expect(s2.droneVoice?.isPlaying).toBe(true);
+  });
 });
+
