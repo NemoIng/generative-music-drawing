@@ -19,8 +19,7 @@ const autoSmoothBtn = document.getElementById('autoSmoothBtn') as HTMLButtonElem
 const snapPitchBtn = document.getElementById('snapPitchBtn') as HTMLButtonElement;
 const swatchButtons = document.querySelectorAll<HTMLButtonElement>('#instrumentPalette .swatch-btn');
 const xAxisSelect = document.getElementById('xAxisSelect') as HTMLSelectElement;
-const quantizeSelect = document.getElementById('quantizeSelect') as HTMLSelectElement;
-const traversalButtons = document.querySelectorAll<HTMLButtonElement>('#traversalControl .seg-btn');
+const trackTraversalButtons = document.querySelectorAll<HTMLButtonElement>('#trackTraversalControl .seg-btn');
 const scaleSelect = document.getElementById('scaleSelect') as HTMLSelectElement;
 const rootSelect = document.getElementById('rootSelect') as HTMLSelectElement;
 const strokeModeButtons = document.querySelectorAll<HTMLButtonElement>('#strokeModeControl .seg-btn');
@@ -231,37 +230,6 @@ xAxisSelect.addEventListener('change', () => {
   strokeManager.setXAxisModulationMode(mode);
 });
 
-// Loop Measure Quantize
-quantizeSelect.addEventListener('change', () => {
-  const mode = quantizeSelect.value as LoopQuantizeMode;
-  strokeManager.setLoopQuantizeMode(mode);
-  const labels: Record<LoopQuantizeMode, string> = {
-    '1bar': '1 Bar Sync',
-    '2bars': '2 Bars Sync',
-    '4bars': '4 Bars Sync',
-    'freeform': 'Freeform',
-  };
-  statLoopSync.textContent = labels[mode] || 'Sync';
-
-  // If a stroke is selected in Edit mode, also update that stroke's loop sync!
-  if (inputHandler.currentMode === 'edit' && strokeManager.selectedStrokeId) {
-    strokeManager.setStrokeLoopQuantize(strokeManager.selectedStrokeId, mode);
-    updateTrackActionsVisibility();
-  }
-});
-
-// Traversal Mode Switching (Restart vs Ping-Pong)
-traversalButtons.forEach((btn) => {
-  btn.addEventListener('click', () => {
-    traversalButtons.forEach((b) => b.classList.remove('active'));
-    btn.classList.add('active');
-    const mode = btn.getAttribute('data-traversal') as TraversalMode;
-    if (mode) {
-      strokeManager.setTraversalMode(mode);
-    }
-  });
-});
-
 // Contextual Hover Descriptions
 const DEFAULT_HELP = 'Hover over any setting for details • Space: Pause • ⌘Z: Undo • Shift: Straight Note • M: Mute • S: Solo • 1-6: Inks';
 const tooltipElements = document.querySelectorAll<HTMLElement>('[data-tooltip]');
@@ -369,13 +337,24 @@ function updateTrackActionsVisibility(): void {
       });
 
       // Loop Sync select sync
-      trackSyncSelect.value = stroke.loopQuantize ?? strokeManager.loopQuantize;
+      trackSyncSelect.value = stroke.loopQuantize ?? '1bar';
 
-      // Also sync top bar controls to reflect selected track
+      // Traversal buttons sync
+      trackTraversalButtons.forEach((b) => {
+        b.classList.toggle('active', b.getAttribute('data-track-traversal') === (stroke.traversal ?? 'restart'));
+      });
+
+      // Also sync top bar texture to reflect selected track
       strokeModeButtons.forEach((b) => {
         b.classList.toggle('active', b.getAttribute('data-style') === stroke.style);
       });
-      quantizeSelect.value = stroke.loopQuantize ?? strokeManager.loopQuantize;
+
+      // Update statLoopSync chip in status bar
+      const syncLabel = (stroke.loopQuantize ?? '1bar') === '1bar' ? '1 Bar'
+        : (stroke.loopQuantize === '2bars' ? '2 Bars'
+        : (stroke.loopQuantize === '4bars' ? '4 Bars' : 'Freeform'));
+      const travLabel = (stroke.traversal ?? 'restart') === 'pingpong' ? 'Bounce' : 'Restart';
+      statLoopSync.textContent = `${syncLabel} • ${travLabel}`;
 
       muteBtn.classList.toggle('active-mute', !!stroke.muted);
       muteBtn.textContent = stroke.muted ? 'Unmute' : 'Mute';
@@ -385,11 +364,11 @@ function updateTrackActionsVisibility(): void {
   } else {
     trackInspectorBar.style.display = 'none';
     trackInspectorBar.classList.add('hidden');
-    // Restore top bar to global current style & quantize
+    // Restore top bar to global current style
     strokeModeButtons.forEach((b) => {
       b.classList.toggle('active', b.getAttribute('data-style') === currentStyle);
     });
-    quantizeSelect.value = strokeManager.loopQuantize;
+    statLoopSync.textContent = 'Per-Line Loops';
   }
 }
 
@@ -421,6 +400,19 @@ trackSyncSelect.addEventListener('change', () => {
     strokeManager.setStrokeLoopQuantize(selectedId, mode);
     updateTrackActionsVisibility();
   }
+});
+
+// Track Inspector Traversal Event Listeners
+trackTraversalButtons.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const selectedId = strokeManager.selectedStrokeId;
+    if (!selectedId) return;
+    const mode = btn.getAttribute('data-track-traversal') as TraversalMode;
+    if (mode) {
+      strokeManager.setStrokeTraversal(selectedId, mode);
+      updateTrackActionsVisibility();
+    }
+  });
 });
 
 // Volume Slider Event Listeners

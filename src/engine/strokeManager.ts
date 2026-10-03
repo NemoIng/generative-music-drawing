@@ -17,6 +17,7 @@ type UndoAction =
   | { type: 'volume'; strokeId: string; oldVolume: number; newVolume: number }
   | { type: 'style'; strokeId: string; oldStyle: StrokeStyle; newStyle: StrokeStyle }
   | { type: 'loopQuantize'; strokeId: string; oldLoopQuantize: LoopQuantizeMode; newLoopQuantize: LoopQuantizeMode }
+  | { type: 'traversal'; strokeId: string; oldTraversal: TraversalMode; newTraversal: TraversalMode }
   | {
       type: 'reshape';
       strokeId: string;
@@ -220,13 +221,15 @@ export class StrokeManager {
     quantizer?: ScaleQuantizer,
     canvasHeight?: number,
     volume: number = 1.0,
-    loopQuantize?: LoopQuantizeMode
+    loopQuantize?: LoopQuantizeMode,
+    traversal?: TraversalMode
   ): DrawnStroke {
     const lut = buildArcLengthLUT(path, 64);
     const id = `stroke-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const instrument = getInstrument(instrumentId);
     const strokeVolume = Math.max(0, Math.min(1, volume));
     const effectiveLoopQuantize = loopQuantize ?? this.quantizeMode;
+    const effectiveTraversal = traversal ?? this.traversalMode;
 
     let initialPitch = null;
     let initialEval = null;
@@ -249,10 +252,10 @@ export class StrokeManager {
     if (effectiveLoopQuantize !== 'freeform' && lut.totalLength > 1) {
       const beatsPerBar = effectiveLoopQuantize === '1bar' ? 4 : effectiveLoopQuantize === '2bars' ? 8 : 16;
       const cycleDuration = beatsPerBar * (60 / this.bpm);
-      const cycleDistance = this.traversalMode === 'pingpong' ? 2 * lut.totalLength : lut.totalLength;
+      const cycleDistance = effectiveTraversal === 'pingpong' ? 2 * lut.totalLength : lut.totalLength;
       const strokeSpeed = cycleDistance / cycleDuration;
       const currentCycleDist = (this.masterClockTime * strokeSpeed) % cycleDistance;
-      if (this.traversalMode === 'pingpong') {
+      if (effectiveTraversal === 'pingpong') {
         initialDist = currentCycleDist <= lut.totalLength ? currentCycleDist : 2 * lut.totalLength - currentCycleDist;
       } else {
         initialDist = (currentCycleDist % lut.totalLength + lut.totalLength) % lut.totalLength;
@@ -283,6 +286,7 @@ export class StrokeManager {
       soloed: false,
       volume: strokeVolume,
       loopQuantize: effectiveLoopQuantize,
+      traversal: effectiveTraversal,
     };
 
     this.strokes.push(stroke);
@@ -388,13 +392,14 @@ export class StrokeManager {
 
     // Immediately phase-align to musical downbeat if setting to quantized mode
     if (newLoopQuantize !== 'freeform' && stroke.lut.totalLength > 1) {
+      const strokeTraversal = stroke.traversal ?? 'restart';
       const beatsPerBar = newLoopQuantize === '1bar' ? 4 : newLoopQuantize === '2bars' ? 8 : 16;
       const cycleDuration = beatsPerBar * (60 / this.bpm);
-      const cycleDistance = this.traversalMode === 'pingpong' ? 2 * stroke.lut.totalLength : stroke.lut.totalLength;
+      const cycleDistance = strokeTraversal === 'pingpong' ? 2 * stroke.lut.totalLength : stroke.lut.totalLength;
       const strokeSpeed = cycleDistance / cycleDuration;
       const currentCycleDist = (this.masterClockTime * strokeSpeed) % cycleDistance;
 
-      if (this.traversalMode === 'pingpong') {
+      if (strokeTraversal === 'pingpong') {
         if (currentCycleDist <= stroke.lut.totalLength) {
           stroke.playhead.currentDistance = currentCycleDist;
           stroke.playhead.direction = 1;
@@ -410,6 +415,53 @@ export class StrokeManager {
 
     if (recordUndo) {
       this.undoStack.push({ type: 'loopQuantize', strokeId, oldLoopQuantize, newLoopQuantize });
+      this.redoStack = [];
+    }
+
+    return true;
+  }
+
+  /**
+   * Sets the traversal mode (restart, pingpong) of an individual stroke.
+   */
+  public setStrokeTraversal(strokeId: string, newTraversal: TraversalMode, recordUndo = true): boolean {
+    const stroke = this.strokes.find((s) => s.id === strokeId);
+    if (!stroke) return false;
+
+    const oldTraversal = stroke.traversal ?? 'restart';
+    if (oldTraversal === newTraversal) return false;
+
+    stroke.traversal = newTraversal;
+
+    // Phase-align immediately if quantized mode
+    const strokeQuantize = stroke.loopQuantize ?? '1bar';
+    if (strokeQuantize !== 'freeform' && stroke.lut.totalLength > 1) {
+      const beatsPerBar = strokeQuantize === '1bar' ? 4 : strokeQuantize === '2bars' ? 8 : 16;
+      const cycleDuration = beatsPerBar * (60 / this.bpm);
+      const cycleDistance = newTraversal === 'pingpong' ? 2 * stroke.lut.totalLength : stroke.lut.totalLength;
+      const strokeSpeed = cycleDistance / cycleDuration;
+      const currentCycleDist = (this.masterClockTime * strokeSpeed) % cycleDistance;
+
+      if (newTraversal === 'pingpong') {
+        if (currentCycleDist <= stroke.lut.totalLength) {
+          stroke.playhead.currentDistance = currentCycleDist;
+          stroke.playhead.direction = 1;
+        } else {
+          stroke.playhead.currentDistance = 2 * stroke.lut.totalLength - currentCycleDist;
+          stroke.playhead.direction = -1;
+        }
+      } else {
+        stroke.playhead.currentDistance = (currentCycleDist % stroke.lut.totalLength + stroke.lut.totalLength) % stroke.lut.totalLength;
+        stroke.playhead.direction = 1;
+      }
+    } else {
+      if (newTraversal === 'restart') {
+        stroke.playhead.direction = 1;
+      }
+    }
+
+    if (recordUndo) {
+      this.undoStack.push({ type: 'traversal', strokeId, oldTraversal, newTraversal });
       this.redoStack = [];
     }
 
@@ -600,12 +652,13 @@ export class StrokeManager {
       if (L <= 1) continue;
 
       const strokeQuantize = stroke.loopQuantize ?? this.quantizeMode;
+      const strokeTraversal = stroke.traversal ?? this.traversalMode;
       let strokeSpeed = freeformSpeed;
 
       if (strokeQuantize !== 'freeform') {
         const beatsPerCycle = strokeQuantize === '1bar' ? 4 : strokeQuantize === '2bars' ? 8 : 16;
         const cycleDuration = beatsPerCycle * (60 / this.bpm);
-        const cycleDistance = this.traversalMode === 'pingpong' ? 2 * L : L;
+        const cycleDistance = strokeTraversal === 'pingpong' ? 2 * L : L;
         strokeSpeed = cycleDistance / cycleDuration;
       }
 
@@ -619,7 +672,7 @@ export class StrokeManager {
       if (stroke.lut.isClosed) {
         nextDist = ((nextDist % L) + L) % L;
       } else {
-        if (this.traversalMode === 'restart') {
+        if (strokeTraversal === 'restart') {
           if (nextDist >= L) {
             nextDist = nextDist % L;
           } else if (nextDist < 0) {
@@ -759,6 +812,9 @@ export class StrokeManager {
     } else if (action.type === 'loopQuantize') {
       this.setStrokeLoopQuantize(action.strokeId, action.oldLoopQuantize, false);
       this.redoStack.push(action);
+    } else if (action.type === 'traversal') {
+      this.setStrokeTraversal(action.strokeId, action.oldTraversal, false);
+      this.redoStack.push(action);
     } else if (action.type === 'reshape') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) {
@@ -814,6 +870,9 @@ export class StrokeManager {
       this.undoStack.push(action);
     } else if (action.type === 'loopQuantize') {
       this.setStrokeLoopQuantize(action.strokeId, action.newLoopQuantize, false);
+      this.undoStack.push(action);
+    } else if (action.type === 'traversal') {
+      this.setStrokeTraversal(action.strokeId, action.newTraversal, false);
       this.undoStack.push(action);
     } else if (action.type === 'reshape') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);

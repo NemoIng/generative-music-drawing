@@ -265,6 +265,67 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
     expect(stroke.loopQuantize).toBe('2bars');
   });
 
+  it('supports changing individual stroke traversal mode (restart vs pingpong) with undo/redo', () => {
+    const sm = new StrokeManager();
+    const stroke = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+    expect(stroke.traversal).toBe('restart');
+
+    // Change to pingpong
+    sm.setStrokeTraversal(stroke.id, 'pingpong');
+    expect(stroke.traversal).toBe('pingpong');
+
+    // Undo reverts to restart
+    sm.undo();
+    expect(stroke.traversal).toBe('restart');
+
+    // Redo restores pingpong
+    sm.redo();
+    expect(stroke.traversal).toBe('pingpong');
+  });
+
+  it('runs multiple strokes simultaneously with independent per-line traversal and loop sync cycles', () => {
+    const sm = new StrokeManager();
+    const quantizer = new ScaleQuantizer();
+
+    // Stroke 1: 1 Bar, Restart traversal
+    const s1 = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+    sm.setStrokeLoopQuantize(s1.id, '1bar');
+    sm.setStrokeTraversal(s1.id, 'restart');
+
+    // Stroke 2: 2 Bars, Ping-Pong traversal
+    const s2 = sm.addStroke(dummyPath, 'solid', 'amber', 100);
+    sm.setStrokeLoopQuantize(s2.id, '2bars');
+    sm.setStrokeTraversal(s2.id, 'pingpong');
+
+    expect(s1.traversal).toBe('restart');
+    expect(s1.loopQuantize).toBe('1bar');
+    expect(s2.traversal).toBe('pingpong');
+    expect(s2.loopQuantize).toBe('2bars');
+
+    // With L = 100, dt = 1.8s at 100 BPM:
+    // beatDuration = 60 / 100 = 0.6s
+    // s1 (1bar Restart): cycleDist = 100, cycleDuration = 2.4s -> speed = 100 / 2.4 = 41.67 px/s
+    // s2 (2bars PingPong): cycleDist = 200, cycleDuration = 4.8s -> speed = 200 / 4.8 = 41.67 px/s
+    // Now let's test a larger dt so playhead reaches boundary and crosses it
+    s1.playhead.currentDistance = 90;
+    s1.playhead.direction = 1;
+
+    s2.playhead.currentDistance = 90;
+    s2.playhead.direction = 1;
+
+    // dt = 0.5s: deltaDist = 41.67 * 0.5 = ~20.8px
+    // nextDist before wrap = 110.8px (> 100)
+    sm.update(0.5, 800, 600, quantizer);
+
+    // Stroke 1 (Restart) wraps forward around 0 and stays direction = 1
+    expect(s1.playhead.currentDistance).toBeLessThan(100);
+    expect(s1.playhead.direction).toBe(1);
+
+    // Stroke 2 (Ping-Pong) bounces backward at 100 and reverses direction to -1
+    expect(s2.playhead.currentDistance).toBeLessThan(100);
+    expect(s2.playhead.direction).toBe(-1);
+  });
+
   it('correctly stops and restores drone voices when toggling solo on and off without permanent silencing', () => {
     vi.spyOn(soundEngine, 'isReady', 'get').mockReturnValue(true);
 

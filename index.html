@@ -186,42 +186,6 @@
             </div>
           </div>
 
-          <!-- Loop Measure Quantize -->
-          <div class="control-group has-tooltip" data-tooltip="Measure Loop Sync: Aligns line cycles to musical measures so basslines, chords, and melodies loop in locked rhythmic sync.">
-            <label for="quantizeSelect">Loop Sync</label>
-            <div class="select-wrapper">
-              <select id="quantizeSelect" class="minimal-select">
-                <option value="1bar" selected>1 Bar (4 Beats)</option>
-                <option value="2bars">2 Bars (8 Beats)</option>
-                <option value="4bars">4 Bars (16 Beats)</option>
-                <option value="freeform">Freeform</option>
-              </select>
-            </div>
-          </div>
-
-          <!-- Traversal Setting: Restart vs Ping-Pong -->
-          <div class="control-group">
-            <label>Traversal</label>
-            <div class="segmented-switch" id="traversalControl">
-              <button
-                type="button"
-                class="seg-btn active has-tooltip"
-                data-traversal="restart"
-                data-tooltip="Restart (One-Way): Always journeys start to end, then restarts from start without reversing."
-              >
-                Restart ↻
-              </button>
-              <button
-                type="button"
-                class="seg-btn has-tooltip"
-                data-traversal="pingpong"
-                data-tooltip="Ping-Pong (Bounce): Reverses direction between start and end."
-              >
-                Ping-Pong ⇄
-              </button>
-            </div>
-          </div>
-
           <!-- Scale Selector -->
           <div class="control-group has-tooltip" data-tooltip="Modal Scale: Sets musical intervals. Dorian and Lydian evoke ambient warmth; Pentatonics guarantee consonance.">
             <label for="scaleSelect">Scale</label>
@@ -368,6 +332,15 @@
               </div>
             </div>
 
+            <!-- Individual Line Traversal: Restart vs Bounce -->
+            <div class="inspector-cell has-tooltip" data-tooltip="Line Traversal: Restart (one-way wrap) vs Bounce (ping-pong reversal).">
+              <label>Traversal</label>
+              <div class="segmented-switch mini-switch" id="trackTraversalControl">
+                <button type="button" class="seg-btn active" data-track-traversal="restart">Restart ↻</button>
+                <button type="button" class="seg-btn" data-track-traversal="pingpong">Bounce ⇄</button>
+              </div>
+            </div>
+
             <!-- Mathematical Wave Restructuring -->
             <div class="inspector-cell inspector-wave-cell" id="trackWaveControl">
               <label>Shape</label>
@@ -433,7 +406,7 @@
             <span id="statMode" class="status-chip">Draw Mode</span>
             <span id="statInstrument" class="status-chip">🎻 Bowed Cello</span>
             <span id="statTempo" class="status-chip">100 BPM</span>
-            <span id="statLoopSync" class="status-chip">1 Bar Sync</span>
+            <span id="statLoopSync" class="status-chip">Per-Line Loops</span>
             <span id="statPitchSnap" class="status-chip">Snap Off</span>
             <span id="statAudio" class="status-chip chip-ready">Audio ready</span>
           </div>
