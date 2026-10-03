@@ -601,10 +601,11 @@ function animationLoop(nowMs: number): void {
   // 4. Render 4-beat visual measure tracker along the top
   renderer.drawBeatTracker(strokeManager.measureProgress, strokeManager.measureBeatIndex);
 
-  // 5. Render active strokes & playheads
+  // 5. Render active strokes & playheads (grey out non-soloed tracks when solo is active)
+  const hasSolo = strokeManager.hasSoloedStrokes;
   for (const stroke of strokeManager.activeStrokes) {
-    renderer.drawStroke(stroke);
-    renderer.drawPlayhead(stroke, nowMs);
+    renderer.drawStroke(stroke, hasSolo);
+    renderer.drawPlayhead(stroke, nowMs, hasSolo);
   }
 
   // 6. Render user's active in-flight gesture (in Draw mode)

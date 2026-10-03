@@ -143,14 +143,20 @@ export class CanvasRenderer {
   /**
    * Renders completed strokes with ink-on-paper aesthetics and mute/solo awareness.
    */
-  public drawStroke(stroke: DrawnStroke): void {
+  public drawStroke(stroke: DrawnStroke, hasSolo: boolean = false): void {
     const { path, color, style } = stroke;
     const ctx = this.ctx;
     ctx.save();
 
+    const isGreyedOut = (hasSolo && !stroke.soloed) || !!stroke.muted;
+    const effectiveColor = isGreyedOut ? '#a8a29e' : color;
     const vol = typeof stroke.volume === 'number' ? stroke.volume : 1.0;
-    if (stroke.muted) {
-      ctx.globalAlpha = 0.28;
+
+    if (hasSolo && !stroke.soloed) {
+      // Greyed out because another line is soloed
+      ctx.globalAlpha = 0.20;
+    } else if (stroke.muted) {
+      ctx.globalAlpha = 0.25;
     } else {
       ctx.globalAlpha = 0.35 + 0.65 * vol;
     }
@@ -168,13 +174,15 @@ export class CanvasRenderer {
     }
 
     // Outer glow / selection depth
-    if (stroke.selected) {
+    if (isGreyedOut) {
+      ctx.shadowBlur = 0;
+    } else if (stroke.selected) {
       ctx.shadowColor = 'rgba(37, 99, 235, 0.4)';
       ctx.shadowBlur = 12;
       ctx.shadowOffsetY = 0;
     } else if (stroke.soloed) {
-      ctx.shadowColor = 'rgba(217, 119, 6, 0.4)';
-      ctx.shadowBlur = 10;
+      ctx.shadowColor = 'rgba(217, 119, 6, 0.45)';
+      ctx.shadowBlur = 12;
       ctx.shadowOffsetY = 0;
     } else if (stroke.hovered) {
       ctx.shadowColor = 'rgba(37, 99, 235, 0.2)';
@@ -186,7 +194,7 @@ export class CanvasRenderer {
       ctx.shadowOffsetY = 2;
     }
 
-    ctx.strokeStyle = color;
+    ctx.strokeStyle = effectiveColor;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
@@ -197,7 +205,7 @@ export class CanvasRenderer {
 
       ctx.shadowBlur = 0;
       ctx.shadowOffsetY = 0;
-      ctx.strokeStyle = color;
+      ctx.strokeStyle = effectiveColor;
       ctx.lineWidth = stroke.selected ? 2.5 : 2.0;
       ctx.stroke();
     } else if (style === 'dotted') {
@@ -212,6 +220,7 @@ export class CanvasRenderer {
 
     // Selection Anchor Rings & Floating Volume Tag
     if (stroke.selected && path.segments.length > 0) {
+      ctx.globalAlpha = 1.0;
       ctx.shadowBlur = 0;
       const startPt = path.segments[0].p0;
       const endPt = path.segments[path.segments.length - 1].p3;
@@ -266,7 +275,7 @@ export class CanvasRenderer {
   /**
    * Draws animated constant-velocity playhead with trail, acoustic pulse, and clean minimal HUD tag.
    */
-  public drawPlayhead(stroke: DrawnStroke, nowMs: number): void {
+  public drawPlayhead(stroke: DrawnStroke, nowMs: number, hasSolo: boolean = false): void {
     const ph = stroke.playhead;
     if (!ph.lastEval) return;
 
@@ -274,9 +283,15 @@ export class CanvasRenderer {
     const ctx = this.ctx;
     ctx.save();
 
+    const isSoloGreyedOut = hasSolo && !stroke.soloed;
+    const isGreyedOut = isSoloGreyedOut || !!stroke.muted;
+    const effectiveColor = isGreyedOut ? '#a8a29e' : stroke.color;
     const vol = typeof stroke.volume === 'number' ? stroke.volume : 1.0;
-    if (stroke.muted) {
-      ctx.globalAlpha = 0.35;
+
+    if (isSoloGreyedOut) {
+      ctx.globalAlpha = 0.16;
+    } else if (stroke.muted) {
+      ctx.globalAlpha = 0.25;
     } else {
       ctx.globalAlpha = 0.4 + 0.6 * vol;
     }
@@ -291,24 +306,24 @@ export class CanvasRenderer {
         ctx.beginPath();
         ctx.moveTo(ptA.x, ptA.y);
         ctx.lineTo(ptB.x, ptB.y);
-        ctx.strokeStyle = stroke.color;
-        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = effectiveColor;
+        ctx.globalAlpha = isSoloGreyedOut ? 0.16 * alpha : alpha;
         ctx.lineWidth = 2.5 * (1 - i / ph.trail.length);
         ctx.lineCap = 'round';
         ctx.stroke();
       }
     }
-    ctx.globalAlpha = stroke.muted ? 0.35 : 1.0;
+    ctx.globalAlpha = isSoloGreyedOut ? 0.16 : stroke.muted ? 0.25 : 1.0;
 
-    // 2. Playhead Acoustic Pulse Ring (only if audible)
-    if (!stroke.muted) {
+    // 2. Playhead Acoustic Pulse Ring (only if audible and not solo-greyed out)
+    if (!stroke.muted && !isSoloGreyedOut) {
       const pulsePhase = (nowMs % 1400) / 1400;
       const pulseRadius = 6 + pulsePhase * 14;
       const pulseAlpha = (1 - pulsePhase) * 0.45;
 
       ctx.beginPath();
       ctx.arc(x, y, pulseRadius, 0, Math.PI * 2);
-      ctx.strokeStyle = stroke.color;
+      ctx.strokeStyle = effectiveColor;
       ctx.globalAlpha = pulseAlpha;
       ctx.lineWidth = 1.2;
       ctx.stroke();
@@ -316,24 +331,24 @@ export class CanvasRenderer {
     }
 
     // 3. Playhead Center Bead
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.15)';
-    ctx.shadowBlur = 6;
-    ctx.shadowOffsetY = 1;
+    ctx.shadowColor = isGreyedOut ? 'transparent' : 'rgba(0, 0, 0, 0.15)';
+    ctx.shadowBlur = isGreyedOut ? 0 : 6;
+    ctx.shadowOffsetY = isGreyedOut ? 0 : 1;
 
     ctx.beginPath();
     ctx.arc(x, y, 5.5, 0, Math.PI * 2);
-    ctx.fillStyle = stroke.color;
+    ctx.fillStyle = effectiveColor;
     ctx.fill();
 
     ctx.shadowBlur = 0;
     ctx.shadowOffsetY = 0;
     ctx.beginPath();
     ctx.arc(x, y, 2.5, 0, Math.PI * 2);
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = isGreyedOut ? '#e7e5e4' : '#ffffff';
     ctx.fill();
 
-    // 4. Clean Minimalist Note Tag with Pitch & Stereo Pan
-    if (ph.lastPitch) {
+    // 4. Clean Minimalist Note Tag with Pitch & Stereo Pan (only if not solo-greyed out)
+    if (!isSoloGreyedOut && ph.lastPitch) {
       const normX = this.width > 0 ? Math.max(0, Math.min(1, x / this.width)) : 0.5;
       const panPercent = Math.round(Math.abs(normX - 0.5) * 200);
       const panText = normX < 0.46 ? `L${panPercent}%` : normX > 0.54 ? `R${panPercent}%` : 'C';

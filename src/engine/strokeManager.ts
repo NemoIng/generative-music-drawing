@@ -72,6 +72,10 @@ export class StrokeManager {
     return this.hoveredId;
   }
 
+  public get hasSoloedStrokes(): boolean {
+    return this.strokes.some((s) => s.soloed);
+  }
+
   public get paused(): boolean {
     return this.isPaused;
   }

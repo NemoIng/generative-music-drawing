@@ -118,13 +118,16 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
     sm.toggleMute(s1.id);
     expect(sm.isStrokeAudible(s1)).toBe(true);
 
+    expect(sm.hasSoloedStrokes).toBe(false);
     // Solo s2
     sm.toggleSolo(s2.id);
+    expect(sm.hasSoloedStrokes).toBe(true);
     expect(sm.isStrokeAudible(s1)).toBe(false); // silenced because s2 is soloed
     expect(sm.isStrokeAudible(s2)).toBe(true);
 
     // Unsolo s2
     sm.toggleSolo(s2.id);
+    expect(sm.hasSoloedStrokes).toBe(false);
     expect(sm.isStrokeAudible(s1)).toBe(true);
     expect(sm.isStrokeAudible(s2)).toBe(true);
   });
