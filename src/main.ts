@@ -39,6 +39,8 @@ const wavePeriodVal = document.getElementById('wavePeriodVal') as HTMLSpanElemen
 const muteBtn = document.getElementById('muteBtn') as HTMLButtonElement;
 const soloBtn = document.getElementById('soloBtn') as HTMLButtonElement;
 const deleteTrackBtn = document.getElementById('deleteTrackBtn') as HTMLButtonElement;
+const trackTextureButtons = document.querySelectorAll<HTMLButtonElement>('#trackTextureControl .seg-btn');
+const trackSyncSelect = document.getElementById('trackSyncSelect') as HTMLSelectElement;
 const undoBtn = document.getElementById('undoBtn') as HTMLButtonElement;
 const playPauseBtn = document.getElementById('playPauseBtn') as HTMLButtonElement;
 const playPauseIcon = document.getElementById('playPauseIcon') as HTMLSpanElement;
@@ -228,6 +230,12 @@ quantizeSelect.addEventListener('change', () => {
     'freeform': 'Freeform',
   };
   statLoopSync.textContent = labels[mode] || 'Sync';
+
+  // If a stroke is selected in Edit mode, also update that stroke's loop sync!
+  if (inputHandler.currentMode === 'edit' && strokeManager.selectedStrokeId) {
+    strokeManager.setStrokeLoopQuantize(strokeManager.selectedStrokeId, mode);
+    updateTrackActionsVisibility();
+  }
 });
 
 // Traversal Mode Switching (Restart vs Ping-Pong)
@@ -285,6 +293,11 @@ strokeModeButtons.forEach((btn) => {
     const style = btn.getAttribute('data-style') as StrokeStyle;
     if (style) {
       currentStyle = style;
+      // If a stroke is selected in Edit mode, update that stroke's texture immediately!
+      if (inputHandler.currentMode === 'edit' && strokeManager.selectedStrokeId) {
+        strokeManager.setStrokeStyle(strokeManager.selectedStrokeId, style);
+        updateTrackActionsVisibility();
+      }
     }
   });
 });
@@ -332,6 +345,20 @@ function updateTrackActionsVisibility(): void {
         wavePeriodVal.textContent = '2.0x';
       }
 
+      // Texture buttons sync
+      trackTextureButtons.forEach((b) => {
+        b.classList.toggle('active', b.getAttribute('data-track-style') === stroke.style);
+      });
+
+      // Loop Sync select sync
+      trackSyncSelect.value = stroke.loopQuantize ?? strokeManager.loopQuantize;
+
+      // Also sync top bar controls to reflect selected track
+      strokeModeButtons.forEach((b) => {
+        b.classList.toggle('active', b.getAttribute('data-style') === stroke.style);
+      });
+      quantizeSelect.value = stroke.loopQuantize ?? strokeManager.loopQuantize;
+
       muteBtn.classList.toggle('active-mute', !!stroke.muted);
       muteBtn.textContent = stroke.muted ? 'Unmute' : 'Mute';
       soloBtn.classList.toggle('active-solo', !!stroke.soloed);
@@ -339,8 +366,38 @@ function updateTrackActionsVisibility(): void {
     }
   } else {
     trackActionsGroup.style.display = 'none';
+    // Restore top bar to global current style & quantize
+    strokeModeButtons.forEach((b) => {
+      b.classList.toggle('active', b.getAttribute('data-style') === currentStyle);
+    });
+    quantizeSelect.value = strokeManager.loopQuantize;
   }
 }
+
+// Track Inspector Texture Event Listeners
+trackTextureButtons.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const selectedId = strokeManager.selectedStrokeId;
+    if (!selectedId) return;
+    const style = btn.getAttribute('data-track-style') as StrokeStyle;
+    if (style) {
+      strokeManager.setStrokeStyle(selectedId, style);
+      currentStyle = style;
+      updateTrackActionsVisibility();
+    }
+  });
+});
+
+// Track Inspector Loop Sync Event Listener
+trackSyncSelect.addEventListener('change', () => {
+  const selectedId = strokeManager.selectedStrokeId;
+  if (!selectedId) return;
+  const mode = trackSyncSelect.value as LoopQuantizeMode;
+  if (mode) {
+    strokeManager.setStrokeLoopQuantize(selectedId, mode);
+    updateTrackActionsVisibility();
+  }
+});
 
 // Volume Slider Event Listeners
 trackVolSlider.addEventListener('input', () => {

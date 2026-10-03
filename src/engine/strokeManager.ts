@@ -15,6 +15,8 @@ type UndoAction =
   | { type: 'move'; strokeId: string; dx: number; dy: number }
   | { type: 'revoice'; strokeId: string; oldInstrumentId: string; newInstrumentId: string }
   | { type: 'volume'; strokeId: string; oldVolume: number; newVolume: number }
+  | { type: 'style'; strokeId: string; oldStyle: StrokeStyle; newStyle: StrokeStyle }
+  | { type: 'loopQuantize'; strokeId: string; oldLoopQuantize: LoopQuantizeMode; newLoopQuantize: LoopQuantizeMode }
   | {
       type: 'reshape';
       strokeId: string;
@@ -200,12 +202,14 @@ export class StrokeManager {
     baseVelocity: number = 140,
     quantizer?: ScaleQuantizer,
     canvasHeight?: number,
-    volume: number = 1.0
+    volume: number = 1.0,
+    loopQuantize?: LoopQuantizeMode
   ): DrawnStroke {
     const lut = buildArcLengthLUT(path, 64);
     const id = `stroke-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const instrument = getInstrument(instrumentId);
     const strokeVolume = Math.max(0, Math.min(1, volume));
+    const effectiveLoopQuantize = loopQuantize ?? this.quantizeMode;
 
     let initialPitch = null;
     let initialEval = null;
@@ -225,11 +229,17 @@ export class StrokeManager {
 
     // Align initial playhead distance to measure downbeat if quantizing
     let initialDist = 0;
-    if (this.quantizeMode !== 'freeform' && lut.totalLength > 1) {
-      const beatsPerBar = this.quantizeMode === '1bar' ? 4 : this.quantizeMode === '2bars' ? 8 : 16;
-      const cycleLength = beatsPerBar * StrokeManager.BEAT_DISTANCE;
-      const currentCycleDist = (this.currentBeat * StrokeManager.BEAT_DISTANCE) % cycleLength;
-      initialDist = (currentCycleDist % lut.totalLength + lut.totalLength) % lut.totalLength;
+    if (effectiveLoopQuantize !== 'freeform' && lut.totalLength > 1) {
+      const beatsPerBar = effectiveLoopQuantize === '1bar' ? 4 : effectiveLoopQuantize === '2bars' ? 8 : 16;
+      const cycleDuration = beatsPerBar * (60 / this.bpm);
+      const cycleDistance = this.traversalMode === 'pingpong' ? 2 * lut.totalLength : lut.totalLength;
+      const strokeSpeed = cycleDistance / cycleDuration;
+      const currentCycleDist = (this.masterClockTime * strokeSpeed) % cycleDistance;
+      if (this.traversalMode === 'pingpong') {
+        initialDist = currentCycleDist <= lut.totalLength ? currentCycleDist : 2 * lut.totalLength - currentCycleDist;
+      } else {
+        initialDist = (currentCycleDist % lut.totalLength + lut.totalLength) % lut.totalLength;
+      }
     }
 
     const stroke: DrawnStroke = {
@@ -255,6 +265,7 @@ export class StrokeManager {
       muted: false,
       soloed: false,
       volume: strokeVolume,
+      loopQuantize: effectiveLoopQuantize,
     };
 
     this.strokes.push(stroke);
@@ -310,6 +321,78 @@ export class StrokeManager {
 
     if (recordUndo) {
       this.undoStack.push({ type: 'revoice', strokeId, oldInstrumentId, newInstrumentId });
+      this.redoStack = [];
+    }
+
+    return true;
+  }
+
+  /**
+   * Sets the texture / stroke style (solid, dotted, striped) of an individual stroke.
+   */
+  public setStrokeStyle(strokeId: string, newStyle: StrokeStyle, recordUndo = true): boolean {
+    const stroke = this.strokes.find((s) => s.id === strokeId);
+    if (!stroke || stroke.style === newStyle) return false;
+
+    const oldStyle = stroke.style;
+    stroke.style = newStyle;
+
+    // Manage drone voice lifecycle when toggling between continuous drone and staccato pulses
+    if (oldStyle === 'solid' && newStyle !== 'solid') {
+      stroke.droneVoice?.stop();
+      stroke.droneVoice = null;
+    } else if (newStyle === 'solid' && oldStyle !== 'solid') {
+      if (soundEngine.isReady && stroke.playhead.lastPitch && this.isStrokeAudible(stroke) && !this.isPaused) {
+        const inst = getInstrument(stroke.instrumentId);
+        stroke.droneVoice = new DroneVoice();
+        stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, stroke.volume ?? 1.0);
+      }
+    }
+
+    if (recordUndo) {
+      this.undoStack.push({ type: 'style', strokeId, oldStyle, newStyle });
+      this.redoStack = [];
+    }
+
+    return true;
+  }
+
+  /**
+   * Sets the loop sync mode (1bar, 2bars, 4bars, freeform) of an individual stroke.
+   */
+  public setStrokeLoopQuantize(strokeId: string, newLoopQuantize: LoopQuantizeMode, recordUndo = true): boolean {
+    const stroke = this.strokes.find((s) => s.id === strokeId);
+    if (!stroke) return false;
+
+    const oldLoopQuantize = stroke.loopQuantize ?? this.quantizeMode;
+    if (oldLoopQuantize === newLoopQuantize) return false;
+
+    stroke.loopQuantize = newLoopQuantize;
+
+    // Immediately phase-align to musical downbeat if setting to quantized mode
+    if (newLoopQuantize !== 'freeform' && stroke.lut.totalLength > 1) {
+      const beatsPerBar = newLoopQuantize === '1bar' ? 4 : newLoopQuantize === '2bars' ? 8 : 16;
+      const cycleDuration = beatsPerBar * (60 / this.bpm);
+      const cycleDistance = this.traversalMode === 'pingpong' ? 2 * stroke.lut.totalLength : stroke.lut.totalLength;
+      const strokeSpeed = cycleDistance / cycleDuration;
+      const currentCycleDist = (this.masterClockTime * strokeSpeed) % cycleDistance;
+
+      if (this.traversalMode === 'pingpong') {
+        if (currentCycleDist <= stroke.lut.totalLength) {
+          stroke.playhead.currentDistance = currentCycleDist;
+          stroke.playhead.direction = 1;
+        } else {
+          stroke.playhead.currentDistance = 2 * stroke.lut.totalLength - currentCycleDist;
+          stroke.playhead.direction = -1;
+        }
+      } else {
+        stroke.playhead.currentDistance = (currentCycleDist % stroke.lut.totalLength + stroke.lut.totalLength) % stroke.lut.totalLength;
+        stroke.playhead.direction = 1;
+      }
+    }
+
+    if (recordUndo) {
+      this.undoStack.push({ type: 'loopQuantize', strokeId, oldLoopQuantize, newLoopQuantize });
       this.redoStack = [];
     }
 
@@ -467,8 +550,8 @@ export class StrokeManager {
     const DOT_SPACING = 40;   // 1/8th note (2 triggers per beat)
     const STRIPE_SPACING = 20; // 1/16th note (4 triggers per beat)
 
-    // Constant traversal velocity in pixels/second
-    const speed = (this.bpm / 60) * StrokeManager.BEAT_DISTANCE;
+    // Constant traversal velocity in pixels/second for freeform
+    const freeformSpeed = (this.bpm / 60) * StrokeManager.BEAT_DISTANCE;
 
     for (const stroke of this.strokes) {
       if (!stroke.active) continue;
@@ -476,8 +559,19 @@ export class StrokeManager {
       const L = stroke.lut.totalLength;
       if (L <= 1) continue;
 
+      const strokeQuantize = stroke.loopQuantize ?? this.quantizeMode;
+      let strokeSpeed = freeformSpeed;
+
+      if (strokeQuantize !== 'freeform') {
+        const beatsPerCycle = strokeQuantize === '1bar' ? 4 : strokeQuantize === '2bars' ? 8 : 16;
+        const cycleDuration = beatsPerCycle * (60 / this.bpm);
+        const cycleDistance = this.traversalMode === 'pingpong' ? 2 * L : L;
+        strokeSpeed = cycleDistance / cycleDuration;
+      }
+
       const ph = stroke.playhead;
-      const deltaDist = ph.direction * speed * dt;
+      ph.velocity = strokeSpeed;
+      const deltaDist = ph.direction * strokeSpeed * dt;
       const prevDist = ph.currentDistance;
       let nextDist = prevDist + deltaDist;
 
@@ -617,6 +711,12 @@ export class StrokeManager {
         stroke.droneVoice?.setVolume(action.oldVolume);
       }
       this.redoStack.push(action);
+    } else if (action.type === 'style') {
+      this.setStrokeStyle(action.strokeId, action.oldStyle, false);
+      this.redoStack.push(action);
+    } else if (action.type === 'loopQuantize') {
+      this.setStrokeLoopQuantize(action.strokeId, action.oldLoopQuantize, false);
+      this.redoStack.push(action);
     } else if (action.type === 'reshape') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) {
@@ -665,6 +765,12 @@ export class StrokeManager {
         stroke.volume = action.newVolume;
         stroke.droneVoice?.setVolume(action.newVolume);
       }
+      this.undoStack.push(action);
+    } else if (action.type === 'style') {
+      this.setStrokeStyle(action.strokeId, action.newStyle, false);
+      this.undoStack.push(action);
+    } else if (action.type === 'loopQuantize') {
+      this.setStrokeLoopQuantize(action.strokeId, action.newLoopQuantize, false);
       this.undoStack.push(action);
     } else if (action.type === 'reshape') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);

@@ -243,11 +243,16 @@ export class CanvasRenderer {
         ctx.stroke();
       }
 
-      // Floating pill badge above start point with Volume & Wave info
+      // Floating pill badge above start point with Volume, Texture & Loop Sync info
       const volPercent = Math.round(vol * 100);
-      let tagText = `${volPercent}% vol`;
+      const styleName = stroke.style.charAt(0).toUpperCase() + stroke.style.slice(1);
+      const syncLabel = (stroke.loopQuantize ?? '1bar') === '1bar' ? '1 Bar'
+        : (stroke.loopQuantize === '2bars' ? '2 Bars'
+        : (stroke.loopQuantize === '4bars' ? '4 Bars' : 'Free'));
+
+      let tagText = `${volPercent}% vol • ${styleName} • ${syncLabel}`;
       if (stroke.waveParams && stroke.waveParams.amplitude > 0) {
-        tagText = `${volPercent}% vol • ~Sine ${Math.round(stroke.waveParams.amplitude)}px (${stroke.waveParams.periods}x)`;
+        tagText = `${volPercent}% vol • ~Sine • ${styleName} • ${syncLabel}`;
       }
 
       ctx.font = '600 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';

@@ -293,6 +293,29 @@
               <span id="trackVolVal" class="track-vol-val">100%</span>
             </div>
 
+            <!-- Line Texture Control (Solid / Dotted / Striped) -->
+            <div class="track-prop-control has-tooltip" data-tooltip="Line Texture: Switch audio voice between continuous solid drone, 8th-note dotted chimes, and 16th-note striped pulses.">
+              <label>Texture</label>
+              <div class="segmented-switch mini-switch" id="trackTextureControl">
+                <button type="button" class="seg-btn active" data-track-style="solid">Solid</button>
+                <button type="button" class="seg-btn" data-track-style="dotted">Dotted</button>
+                <button type="button" class="seg-btn" data-track-style="striped">Striped</button>
+              </div>
+            </div>
+
+            <!-- Line Loop Sync (1 Bar / 2 Bars / 4 Bars / Freeform) -->
+            <div class="track-prop-control has-tooltip" data-tooltip="Line Loop Sync: Aligns loop cycle to musical bars. Locked tracks loop in rhythmic unison regardless of length.">
+              <label for="trackSyncSelect">Sync</label>
+              <div class="select-wrapper mini-select-wrapper">
+                <select id="trackSyncSelect" class="minimal-select track-mini-select">
+                  <option value="1bar">1 Bar</option>
+                  <option value="2bars">2 Bars</option>
+                  <option value="4bars">4 Bars</option>
+                  <option value="freeform">Freeform</option>
+                </select>
+              </div>
+            </div>
+
             <!-- Wave Restructuring (Sine Wave, Amplitude, Period) -->
             <div class="track-wave-control" id="trackWaveControl">
               <button

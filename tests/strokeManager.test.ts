@@ -209,4 +209,57 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
     sm.redo();
     expect(stroke.waveParams?.amplitude).toBe(30);
   });
+
+  it('supports changing individual stroke texture/style with undo/redo', () => {
+    const sm = new StrokeManager();
+    const stroke = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+    expect(stroke.style).toBe('solid');
+
+    // Change to dotted
+    sm.setStrokeStyle(stroke.id, 'dotted');
+    expect(stroke.style).toBe('dotted');
+    expect(stroke.droneVoice).toBeNull();
+
+    // Change to striped
+    sm.setStrokeStyle(stroke.id, 'striped');
+    expect(stroke.style).toBe('striped');
+
+    // Undo reverts to dotted
+    sm.undo();
+    expect(stroke.style).toBe('dotted');
+
+    // Undo reverts to solid
+    sm.undo();
+    expect(stroke.style).toBe('solid');
+
+    // Redo restores dotted
+    sm.redo();
+    expect(stroke.style).toBe('dotted');
+  });
+
+  it('supports changing individual stroke loop sync (1bar, 2bars, 4bars, freeform) with undo/redo', () => {
+    const sm = new StrokeManager();
+    const stroke = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+    expect(stroke.loopQuantize).toBe('1bar');
+
+    // Change to 2bars
+    sm.setStrokeLoopQuantize(stroke.id, '2bars');
+    expect(stroke.loopQuantize).toBe('2bars');
+
+    // Change to freeform
+    sm.setStrokeLoopQuantize(stroke.id, 'freeform');
+    expect(stroke.loopQuantize).toBe('freeform');
+
+    // Undo reverts to 2bars
+    sm.undo();
+    expect(stroke.loopQuantize).toBe('2bars');
+
+    // Undo reverts to 1bar
+    sm.undo();
+    expect(stroke.loopQuantize).toBe('1bar');
+
+    // Redo restores 2bars
+    sm.redo();
+    expect(stroke.loopQuantize).toBe('2bars');
+  });
 });
