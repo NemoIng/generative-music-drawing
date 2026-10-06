@@ -40,7 +40,6 @@
                   <option value="ambientDawn">Ambient Dawn (88 BPM)</option>
                   <option value="zenMeditation">Zen Meditation (54 BPM)</option>
                   <option value="minimalGroove">Minimal Groove (112 BPM)</option>
-                  <option value="electro808">Analog 808 Groove (110 BPM)</option>
                 </optgroup>
                 <optgroup label="My Saved Grooves" id="savedTemplatesGroup" style="display:none"></optgroup>
               </select>
@@ -133,7 +132,7 @@
                 type="button"
                 class="seg-btn has-tooltip"
                 data-app-mode="live"
-                data-tooltip="Live Play Mode (P): Click to play notes instantly, drag to leave disappearing trails with 50% reverb."
+                data-tooltip="Live Play Mode (L): Click to play notes instantly, drag to leave disappearing trails with 50% reverb."
               >
                 Live Play
               </button>
@@ -181,27 +180,18 @@
               <button id="randomizePlayheadsBtn" class="action-btn has-tooltip" data-tooltip="Randomize Lines (Shift+R): Scatters moving dots to random positions along all drawn lines for generative polyrhythms.">
                 Randomize
               </button>
+              <button id="playPauseBtn" class="action-btn has-tooltip" data-tooltip="Play / Pause (Space / P): Toggle playback.">
+                <span id="playPauseText">Pause</span><span id="playPauseIcon" style="display:none"></span>
+              </button>
               <button id="undoBtn" class="action-btn has-tooltip" data-tooltip="Undo (⌘Z / Ctrl+Z): Undo last action.">
                 Undo
               </button>
-              <button id="playPauseBtn" class="action-btn has-tooltip" data-tooltip="Play / Pause (Spacebar): Toggle playback.">
-                <span id="playPauseText">Pause</span><span id="playPauseIcon" style="display:none"></span>
-              </button>
-              <button id="clearBtn" class="action-btn text-danger has-tooltip" data-tooltip="Clear Canvas: Remove all curves.">
-                Clear
-              </button>
-              <button id="fullscreenBtn" class="action-btn has-tooltip" data-tooltip="Fullscreen (F): Expand canvas to fill entire screen.">
-                Fullscreen
-              </button>
-              <button id="themeToggleBtn" class="action-btn has-tooltip" data-tooltip="Theme (T): Toggle Dark / Light canvas appearance.">
-                <span id="themeText">Dark</span><span id="themeIcon" style="display:none"></span>
+              <button id="recordModalBtn" class="action-btn btn-record has-tooltip" data-tooltip="Record & MP3 Export: Live record or simulate a time period straight to MP3.">
+                Record
               </button>
               <button id="drawerToggleBtn" class="action-btn btn-settings has-tooltip" data-tooltip="Toggle Advanced Controls Drawer (Scale, Root, Space Reverb, Sliders).">
                 Controls<span id="drawerToggleArrow" style="display:none"></span>
               </button>
-              <a href="guide.html" target="_blank" class="action-btn has-tooltip" data-tooltip="User Guide & Tips: Open beginner-friendly guide in new tab." style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center;">
-                Guide
-              </a>
             </div>
           </div>
         </div>
@@ -444,6 +434,81 @@
                 Math & Algorithm
               </button>
             </div>
+
+            <!-- 6. Keyboard Shortcuts Card -->
+            <div class="drawer-card">
+              <span class="drawer-card-label">Keyboard Shortcuts</span>
+              <div class="drawer-shortcuts-list">
+                <div class="shortcut-row">
+                  <span class="shortcut-desc">Play / Pause</span>
+                  <kbd class="shortcut-key">Space / P</kbd>
+                </div>
+                <div class="shortcut-row">
+                  <span class="shortcut-desc">Sync Playheads</span>
+                  <kbd class="shortcut-key">R</kbd>
+                </div>
+                <div class="shortcut-row">
+                  <span class="shortcut-desc">Randomize Playheads</span>
+                  <kbd class="shortcut-key">Shift + R</kbd>
+                </div>
+                <div class="shortcut-row">
+                  <span class="shortcut-desc">Switch Mode (Draw / Live)</span>
+                  <kbd class="shortcut-key">L</kbd>
+                </div>
+                <div class="shortcut-row">
+                  <span class="shortcut-desc">Undo / Redo</span>
+                  <kbd class="shortcut-key">⌘Z / ⌘⇧Z</kbd>
+                </div>
+                <div class="shortcut-row">
+                  <span class="shortcut-desc">Draw Straight Note</span>
+                  <kbd class="shortcut-key">Shift (Hold)</kbd>
+                </div>
+                <div class="shortcut-row">
+                  <span class="shortcut-desc">Select Inks 1–7</span>
+                  <kbd class="shortcut-key">1 – 7</kbd>
+                </div>
+                <div class="shortcut-row">
+                  <span class="shortcut-desc">Duplicate Selected Line</span>
+                  <kbd class="shortcut-key">⌘D</kbd>
+                </div>
+                <div class="shortcut-row">
+                  <span class="shortcut-desc">Copy / Paste Line</span>
+                  <kbd class="shortcut-key">⌘C / ⌘V</kbd>
+                </div>
+                <div class="shortcut-row">
+                  <span class="shortcut-desc">Mute / Solo Line</span>
+                  <kbd class="shortcut-key">M / S</kbd>
+                </div>
+                <div class="shortcut-row">
+                  <span class="shortcut-desc">Line Volume Up / Down</span>
+                  <kbd class="shortcut-key">[ / ]</kbd>
+                </div>
+                <div class="shortcut-row">
+                  <span class="shortcut-desc">Delete Line</span>
+                  <kbd class="shortcut-key">Backspace</kbd>
+                </div>
+                <div class="shortcut-row">
+                  <span class="shortcut-desc">Scroll Pitch Register</span>
+                  <kbd class="shortcut-key">PgUp / PgDn</kbd>
+                </div>
+                <div class="shortcut-row">
+                  <span class="shortcut-desc">Center Pitch View</span>
+                  <kbd class="shortcut-key">Home</kbd>
+                </div>
+                <div class="shortcut-row">
+                  <span class="shortcut-desc">Toggle Theme</span>
+                  <kbd class="shortcut-key">T</kbd>
+                </div>
+                <div class="shortcut-row">
+                  <span class="shortcut-desc">Toggle Fullscreen</span>
+                  <kbd class="shortcut-key">F</kbd>
+                </div>
+                <div class="shortcut-row">
+                  <span class="shortcut-desc">Deselect / Close</span>
+                  <kbd class="shortcut-key">Esc</kbd>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </header>
@@ -638,7 +703,7 @@
           </div>
         </div>
 
-        <!-- Minimal Bottom Status Bar with Contextual Hover Description & Shortcuts -->
+        <!-- Bottom Status Bar with Contextual Help & Secondary Utility Actions -->
         <footer class="bottom-bar">
           <div class="status-left">
             <span id="statStrokes" class="status-chip">0 strokes</span>
@@ -649,8 +714,22 @@
             <span id="statPitchSnap" class="status-chip">Snap Off</span>
             <span id="statAudio" class="status-chip chip-ready">Audio ready</span>
           </div>
-          <div class="status-right">
-            <span id="contextHelp" class="context-help">Hover over any setting for details • Space: Pause • P: Live Play • ⌘Z: Undo • Shift: Straight Note • 1-7: Inks</span>
+          <div class="status-center">
+            <span id="contextHelp" class="context-help">Hover over any setting for details</span>
+          </div>
+          <div class="bottom-bar-actions">
+            <button type="button" id="clearBtn" class="action-btn action-btn-sm text-danger has-tooltip" data-tooltip="Clear Canvas: Remove all curves.">
+              Clear
+            </button>
+            <button type="button" id="themeToggleBtn" class="action-btn action-btn-sm has-tooltip" data-tooltip="Theme (T): Toggle Dark / Light canvas appearance.">
+              <span id="themeText">Dark</span><span id="themeIcon" style="display:none"></span>
+            </button>
+            <button type="button" id="fullscreenBtn" class="action-btn action-btn-sm has-tooltip" data-tooltip="Fullscreen (F): Expand canvas to fill entire screen.">
+              Fullscreen
+            </button>
+            <a href="guide.html" target="_blank" class="action-btn action-btn-sm btn-guide has-tooltip" data-tooltip="User Guide & Tips: Open beginner-friendly guide in new tab.">
+              Guide
+            </a>
           </div>
         </footer>
       </main>
@@ -735,6 +814,105 @@
                 <input type="checkbox" id="saveExportJsonCheck" />
                 <span>Also download backup .json file</span>
               </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Floating Live Recording Banner -->
+      <div id="liveRecordingBanner" class="live-rec-banner hidden">
+        <div class="live-rec-indicator">
+          <span class="rec-dot"></span>
+          <span class="rec-label">REC</span>
+          <span id="liveRecTimer" class="rec-timer">00:00</span>
+        </div>
+        <div class="live-rec-actions">
+          <button type="button" id="stopLiveRecBtn" class="action-btn action-btn-primary btn-stop-rec">
+            Stop &amp; Export MP3
+          </button>
+          <button type="button" id="cancelLiveRecBtn" class="action-btn btn-subtle">
+            Cancel
+          </button>
+        </div>
+      </div>
+
+      <!-- Record & MP3 Export Modal -->
+      <div id="recordModal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-card record-modal-card">
+          <div class="modal-head">
+            <h2>Record &amp; MP3 Export</h2>
+            <button id="closeRecordModalBtn" class="close-btn" aria-label="Close modal">Close</button>
+          </div>
+          <div class="modal-content record-modal-content">
+            <div class="record-tabs">
+              <button type="button" id="tabSimulateBtn" class="record-tab-btn active">Simulate Time Period</button>
+              <button type="button" id="tabLiveBtn" class="record-tab-btn">Live Record</button>
+            </div>
+
+            <!-- Tab 1: Simulate Time Period (Instant MP3 Conversion) -->
+            <div id="tabSimulatePane" class="record-tab-pane">
+              <p class="record-pane-desc">
+                Simulate and render your composition faster than real time, converting straight to a high-quality 192kbps MP3 file.
+              </p>
+
+              <div class="record-input-group">
+                <label for="simDurationInput" class="record-input-label">Duration (seconds)</label>
+                <div class="record-duration-control">
+                  <input
+                    type="number"
+                    id="simDurationInput"
+                    class="record-duration-input"
+                    value="30"
+                    min="5"
+                    max="600"
+                    step="5"
+                  />
+                  <span class="duration-unit">sec</span>
+                </div>
+                <div class="duration-presets">
+                  <button type="button" class="duration-pill-btn" data-sec="15">15s</button>
+                  <button type="button" class="duration-pill-btn active" data-sec="30">30s</button>
+                  <button type="button" class="duration-pill-btn" data-sec="60">60s</button>
+                  <button type="button" class="duration-pill-btn" data-sec="120">2 min</button>
+                  <button type="button" class="duration-pill-btn" data-sec="300">5 min</button>
+                </div>
+              </div>
+
+              <!-- Simulation Progress Bar -->
+              <div id="simProgressWrap" class="sim-progress-wrap hidden">
+                <div class="progress-bar-bg">
+                  <div id="simProgressBar" class="progress-bar-fill" style="width: 0%"></div>
+                </div>
+                <span id="simProgressStatus" class="progress-status-text">Simulating score...</span>
+              </div>
+
+              <div class="record-action-footer">
+                <button type="button" id="startSimulateBtn" class="action-btn action-btn-primary btn-record-action">
+                  Simulate &amp; Convert to MP3
+                </button>
+              </div>
+            </div>
+
+            <!-- Tab 2: Live Record -->
+            <div id="tabLivePane" class="record-tab-pane hidden">
+              <p class="record-pane-desc">
+                Record master audio in real-time while you draw, modify parameters, switch instruments, and interact with the canvas.
+              </p>
+
+              <div class="live-rec-instructions">
+                <ul>
+                  <li>Click <strong>Start Live Recording</strong> below to begin capturing audio.</li>
+                  <li>A floating recording bar with a live timer will appear on screen.</li>
+                  <li>When finished, click <strong>Stop &amp; Export MP3</strong> to immediately download your MP3.</li>
+                </ul>
+              </div>
+
+              <div class="record-action-footer">
+                <button type="button" id="startLiveRecBtn" class="action-btn action-btn-primary btn-record-action">
+                  Start Live Recording
+                </button>
+              </div>
             </div>
           </div>
         </div>

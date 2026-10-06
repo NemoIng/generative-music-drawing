@@ -9,6 +9,7 @@ import { INSTRUMENTS, DEFAULT_INSTRUMENT, getInstrument, getInstrumentColor } fr
 import { TEMPLATES, buildTemplateStrokes } from './audio/templates';
 import { soundEngine } from './audio/audioContext';
 import { SplinePath, Point2D } from './math/types';
+import { LiveRecorder, simulateAndExportMp3, downloadBlob } from './audio/mp3Export';
 
 // DOM Elements
 const canvasEl = document.getElementById('musicCanvas') as HTMLCanvasElement;
@@ -24,6 +25,29 @@ const overwritePresetBtn = document.getElementById('overwritePresetBtn') as HTML
 const saveNewVersionBtn = document.getElementById('saveNewVersionBtn') as HTMLButtonElement;
 const saveCustomNameBtn = document.getElementById('saveCustomNameBtn') as HTMLButtonElement;
 const saveExportJsonCheck = document.getElementById('saveExportJsonCheck') as HTMLInputElement;
+
+// Record & MP3 Export Controls
+const recordModalBtn = document.getElementById('recordModalBtn') as HTMLButtonElement | null;
+const recordModal = document.getElementById('recordModal') as HTMLElement | null;
+const closeRecordModalBtn = document.getElementById('closeRecordModalBtn') as HTMLButtonElement | null;
+const tabSimulateBtn = document.getElementById('tabSimulateBtn') as HTMLButtonElement | null;
+const tabLiveBtn = document.getElementById('tabLiveBtn') as HTMLButtonElement | null;
+const tabSimulatePane = document.getElementById('tabSimulatePane') as HTMLElement | null;
+const tabLivePane = document.getElementById('tabLivePane') as HTMLElement | null;
+const simDurationInput = document.getElementById('simDurationInput') as HTMLInputElement | null;
+const durationPillBtns = document.querySelectorAll<HTMLButtonElement>('.duration-pill-btn');
+const simProgressWrap = document.getElementById('simProgressWrap') as HTMLElement | null;
+const simProgressBar = document.getElementById('simProgressBar') as HTMLElement | null;
+const simProgressStatus = document.getElementById('simProgressStatus') as HTMLElement | null;
+const startSimulateBtn = document.getElementById('startSimulateBtn') as HTMLButtonElement | null;
+const startLiveRecBtn = document.getElementById('startLiveRecBtn') as HTMLButtonElement | null;
+const liveRecordingBanner = document.getElementById('liveRecordingBanner') as HTMLElement | null;
+const liveRecTimer = document.getElementById('liveRecTimer') as HTMLElement | null;
+const stopLiveRecBtn = document.getElementById('stopLiveRecBtn') as HTMLButtonElement | null;
+const cancelLiveRecBtn = document.getElementById('cancelLiveRecBtn') as HTMLButtonElement | null;
+
+let liveRecorder: LiveRecorder | null = null;
+let isSimulating = false;
 
 let currentLoadedPresetName: string | null = 'Deep Cosmic Drone';
 const shapeButtons = document.querySelectorAll<HTMLButtonElement>('#shapeControl .seg-btn');
@@ -141,6 +165,9 @@ quantizer.setScrollEnabled(true);
 
 const strokeManager = new StrokeManager();
 const renderer = new CanvasRenderer(canvasEl);
+
+let prevCanvasWidth = 0;
+let prevCanvasHeight = 0;
 
 let currentStyle: StrokeStyle = 'solid';
 let currentInstrumentId: string = DEFAULT_INSTRUMENT.id;
@@ -427,6 +454,10 @@ function refreshSavedTemplatesDropdown(): void {
 }
 
 async function loadComposition(comp: SavedComposition): Promise<void> {
+  renderer.resize();
+  prevCanvasWidth = renderer.width;
+  prevCanvasHeight = renderer.height;
+
   if (!soundEngine.isReady) {
     await soundEngine.init();
     statAudio.textContent = 'Audio: Active';
@@ -483,7 +514,7 @@ async function loadComposition(comp: SavedComposition): Promise<void> {
   }
   updatePitchNavigator();
 
-  strokeManager.importComposition(comp, quantizer, renderer.height);
+  strokeManager.importComposition(comp, quantizer, renderer.height, renderer.width);
   currentLoadedPresetName = comp.name || 'Custom Preset';
   updateStats();
   updateTrackActionsVisibility();
@@ -535,7 +566,13 @@ function executeSavePreset(nameToSave: string, downloadJson: boolean): void {
   const cleanName = nameToSave.trim();
   if (!cleanName) return;
 
-  const comp = strokeManager.exportComposition(cleanName, scaleSelect.value, rootSelect.value);
+  const comp = strokeManager.exportComposition(
+    cleanName,
+    scaleSelect.value,
+    rootSelect.value,
+    renderer.width,
+    renderer.height
+  );
   comp.spaceReverb = parseFloat(spaceSlider.value) / 100;
   comp.octaveSpan = parseInt(octavesSlider.value, 10);
   comp.scrollY = quantizer.scrollY;
@@ -603,6 +640,192 @@ savePresetNameInput?.addEventListener('keydown', (e) => {
   }
 });
 
+// ==========================================================================
+// Record & MP3 Export Handlers
+// ==========================================================================
+function openRecordModal(): void {
+  if (recordModal) {
+    recordModal.classList.remove('hidden');
+    switchRecordTab('simulate');
+    if (simProgressWrap) simProgressWrap.classList.add('hidden');
+    if (simProgressBar) simProgressBar.style.width = '0%';
+    if (startSimulateBtn) {
+      startSimulateBtn.disabled = false;
+      startSimulateBtn.textContent = 'Simulate & Convert to MP3';
+    }
+  }
+}
+
+function closeRecordModal(): void {
+  if (recordModal) {
+    recordModal.classList.add('hidden');
+  }
+}
+
+function switchRecordTab(tab: 'simulate' | 'live'): void {
+  if (tab === 'simulate') {
+    tabSimulateBtn?.classList.add('active');
+    tabLiveBtn?.classList.remove('active');
+    tabSimulatePane?.classList.remove('hidden');
+    tabLivePane?.classList.add('hidden');
+  } else {
+    tabLiveBtn?.classList.add('active');
+    tabSimulateBtn?.classList.remove('active');
+    tabLivePane?.classList.remove('hidden');
+    tabSimulatePane?.classList.add('hidden');
+  }
+}
+
+durationPillBtns.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    durationPillBtns.forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    const sec = btn.getAttribute('data-sec');
+    if (sec && simDurationInput) {
+      simDurationInput.value = sec;
+    }
+  });
+});
+
+simDurationInput?.addEventListener('input', () => {
+  const val = simDurationInput.value;
+  durationPillBtns.forEach((b) => {
+    b.classList.toggle('active', b.getAttribute('data-sec') === val);
+  });
+});
+
+tabSimulateBtn?.addEventListener('click', () => switchRecordTab('simulate'));
+tabLiveBtn?.addEventListener('click', () => switchRecordTab('live'));
+
+recordModalBtn?.addEventListener('click', openRecordModal);
+closeRecordModalBtn?.addEventListener('click', closeRecordModal);
+recordModal?.querySelector('.modal-backdrop')?.addEventListener('click', closeRecordModal);
+
+// Simulate & Convert to MP3
+startSimulateBtn?.addEventListener('click', async () => {
+  if (isSimulating) return;
+  if (strokeManager.activeStrokes.length === 0) {
+    alert('Draw or load some lines before simulating.');
+    return;
+  }
+
+  const duration = Math.max(5, Math.min(600, parseInt(simDurationInput?.value || '30', 10) || 30));
+  isSimulating = true;
+  if (startSimulateBtn) {
+    startSimulateBtn.disabled = true;
+    startSimulateBtn.textContent = 'Simulating & Converting...';
+  }
+  if (simProgressWrap) simProgressWrap.classList.remove('hidden');
+  if (simProgressBar) simProgressBar.style.width = '5%';
+  if (simProgressStatus) simProgressStatus.textContent = 'Starting offline simulation...';
+
+  try {
+    const presetName = currentLoadedPresetName || (templateSelect?.value ? templateSelect.value : 'generative-drawing');
+    const cleanPreset = presetName.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+    const filename = `${cleanPreset}-${duration}s.mp3`;
+
+    await simulateAndExportMp3({
+      durationSeconds: duration,
+      strokeManager,
+      quantizer,
+      canvasWidth: renderer.width,
+      canvasHeight: renderer.height,
+      onProgress: (status, percent) => {
+        if (simProgressBar) simProgressBar.style.width = `${percent}%`;
+        if (simProgressStatus) simProgressStatus.textContent = `${status}`;
+      },
+    }, filename);
+
+    if (simProgressStatus) simProgressStatus.textContent = `Export complete! Downloaded ${filename}`;
+    setTimeout(() => {
+      closeRecordModal();
+    }, 1400);
+  } catch (err) {
+    console.error('Simulation export error:', err);
+    alert('An error occurred during MP3 simulation. Check browser console for details.');
+  } finally {
+    isSimulating = false;
+    if (startSimulateBtn) {
+      startSimulateBtn.disabled = false;
+      startSimulateBtn.textContent = 'Simulate & Convert to MP3';
+    }
+  }
+});
+
+// Start Live Recording
+startLiveRecBtn?.addEventListener('click', async () => {
+  if (!soundEngine.isReady) {
+    await soundEngine.init();
+    strokeManager.activateAudioVoices();
+    statAudio.textContent = 'Audio: Active';
+    statAudio.classList.add('chip-ready');
+    audioUnlockPrompt.classList.add('hidden');
+  }
+
+  closeRecordModal();
+
+  if (!liveRecorder) {
+    liveRecorder = new LiveRecorder();
+  }
+
+  if (liveRecorder.recording) {
+    liveRecorder.cancel();
+  }
+
+  if (liveRecTimer) liveRecTimer.textContent = '00:00';
+  if (liveRecordingBanner) liveRecordingBanner.classList.remove('hidden');
+
+  try {
+    liveRecorder.start(soundEngine, (elapsedSec) => {
+      const m = Math.floor(elapsedSec / 60).toString().padStart(2, '0');
+      const s = Math.floor(elapsedSec % 60).toString().padStart(2, '0');
+      if (liveRecTimer) liveRecTimer.textContent = `${m}:${s}`;
+    });
+  } catch (err) {
+    console.error('Live record start error:', err);
+    alert('Could not start live recording.');
+    liveRecordingBanner?.classList.add('hidden');
+  }
+});
+
+// Stop Live Recording & Export MP3
+stopLiveRecBtn?.addEventListener('click', async () => {
+  if (!liveRecorder || !liveRecorder.recording) return;
+
+  if (stopLiveRecBtn) {
+    stopLiveRecBtn.disabled = true;
+    stopLiveRecBtn.textContent = 'Encoding MP3...';
+  }
+
+  try {
+    const presetName = currentLoadedPresetName || (templateSelect?.value ? templateSelect.value : 'generative-drawing');
+    const cleanPreset = presetName.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+    const now = new Date();
+    const timeStr = `${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`;
+    const filename = `${cleanPreset}-live-${timeStr}.mp3`;
+
+    const mp3Blob = await liveRecorder.stopAndExport();
+    downloadBlob(mp3Blob, filename);
+  } catch (err) {
+    console.error('Live record export error:', err);
+    alert('Could not export live recording MP3.');
+  } finally {
+    liveRecordingBanner?.classList.add('hidden');
+    if (stopLiveRecBtn) {
+      stopLiveRecBtn.disabled = false;
+      stopLiveRecBtn.textContent = 'Stop & Export MP3';
+    }
+  }
+});
+
+// Cancel Live Recording
+cancelLiveRecBtn?.addEventListener('click', () => {
+  if (liveRecorder) {
+    liveRecorder.cancel();
+  }
+  liveRecordingBanner?.classList.add('hidden');
+});
+
 // Load Groove File Button
 loadTemplateFileBtn?.addEventListener('click', () => {
   loadFileInput?.click();
@@ -639,6 +862,10 @@ loadFileInput?.addEventListener('change', async () => {
 async function loadTemplate(tId: string, initAudio = true): Promise<void> {
   const template = TEMPLATES[tId];
   if (!template) return;
+
+  renderer.resize();
+  prevCanvasWidth = renderer.width;
+  prevCanvasHeight = renderer.height;
 
   currentLoadedPresetName = template.name;
   templateSelect.value = tId;
@@ -793,7 +1020,7 @@ xAxisSelect.addEventListener('change', () => {
 });
 
 // Global Floating Tooltip Popover & Contextual Hover Descriptions
-const DEFAULT_HELP = 'Hover over any setting for details • Space: Pause • ⌘Z: Undo • ⌘C/⌘V: Copy/Paste • R: Sync • Shift+R: Randomize • T: Dark/Light • M: Mute • S: Solo • 1-7: Inks';
+const DEFAULT_HELP = 'Hover over any setting for details';
 const floatingTooltip = document.getElementById('floatingTooltip') as HTMLDivElement | null;
 
 function showTooltip(el: HTMLElement) {
@@ -1565,9 +1792,6 @@ function toggleFullscreen(): void {
   }
 }
 
-let prevCanvasWidth = 0;
-let prevCanvasHeight = 0;
-
 function handleResize(): void {
   const oldW = prevCanvasWidth;
   const oldH = prevCanvasHeight;
@@ -1622,14 +1846,22 @@ breathingSelect?.addEventListener('change', () => {
 
 // Global Keyboard Shortcuts
 window.addEventListener('keydown', (e: KeyboardEvent) => {
-  const targetTag = (e.target as HTMLElement)?.tagName?.toLowerCase();
-  if (targetTag === 'input' || targetTag === 'select' || targetTag === 'textarea') {
+  const target = e.target as HTMLElement | null;
+  const isTextInput = target && (
+    (target.tagName === 'INPUT' && (target as HTMLInputElement).type !== 'range' && (target as HTMLInputElement).type !== 'checkbox') ||
+    target.tagName === 'TEXTAREA' ||
+    target.isContentEditable
+  );
+  if (isTextInput) {
     return;
   }
 
-  // 1. Spacebar: Play / Pause
-  if (e.code === 'Space') {
+  // 1. Play / Pause toggle shortcuts: Spacebar or P
+  if (e.code === 'Space' || e.key.toLowerCase() === 'p') {
     e.preventDefault();
+    if (document.activeElement instanceof HTMLElement && document.activeElement !== document.body) {
+      document.activeElement.blur();
+    }
     togglePlayPause();
     return;
   }
@@ -1707,8 +1939,12 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     }
   }
 
-  // 4. Escape: Deselect active stroke
+  // 4. Escape: Close record modal or deselect active stroke
   if (e.key === 'Escape') {
+    if (recordModal && !recordModal.classList.contains('hidden')) {
+      closeRecordModal();
+      return;
+    }
     if (strokeManager.selectedStrokeId) {
       strokeManager.selectStroke(null);
       updateTrackActionsVisibility();
@@ -1727,8 +1963,8 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     return;
   }
 
-  // Live Play mode toggle shortcut: P
-  if (e.key.toLowerCase() === 'p') {
+  // Live Play mode toggle shortcut: L
+  if (e.key.toLowerCase() === 'l') {
     e.preventDefault();
     const nextMode = inputHandler.appMode === 'draw' ? 'live' : 'draw';
     setAppMode(nextMode);
@@ -1826,6 +2062,21 @@ window.addEventListener('pointerdown', async () => {
 window.addEventListener('pointerup', () => {
   if (strokeManager.selectedStrokeId) {
     updateTrackActionsVisibility();
+  }
+  // Auto-blur clicked buttons and range sliders so keyboard shortcuts (Space / P) are never trapped
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && active !== document.body) {
+    if (active.tagName === 'BUTTON' || (active.tagName === 'INPUT' && (active as HTMLInputElement).type === 'range')) {
+      active.blur();
+    }
+  }
+});
+
+// Auto-blur select dropdowns on change
+document.addEventListener('change', (e) => {
+  const t = e.target as HTMLElement | null;
+  if (t && t.tagName === 'SELECT') {
+    t.blur();
   }
 });
 

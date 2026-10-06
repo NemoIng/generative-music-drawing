@@ -1,4 +1,4 @@
-import { soundEngine } from './audioContext';
+import { soundEngine, SoundEngine } from './audioContext';
 import { InstrumentDefinition, DEFAULT_INSTRUMENT } from './instruments';
 import { BreathingModulation } from './breathing';
 
@@ -10,6 +10,8 @@ export type XAxisModulationMode = 'panAndTone' | 'panOnly' | 'spaceDepth' | 'non
  * Features native stereo panning and timbral brightness modulation.
  */
 export class DroneVoice {
+  private engine: SoundEngine;
+
   // Bank A
   private osc1A: OscillatorNode | null = null;
   private osc2A: OscillatorNode | null = null;
@@ -39,6 +41,10 @@ export class DroneVoice {
   private instrument: InstrumentDefinition = DEFAULT_INSTRUMENT;
   private volume: number = 1.0;
   private reverb: number = 0.4;
+
+  constructor(engine: SoundEngine = soundEngine) {
+    this.engine = engine;
+  }
 
   public get isPlaying(): boolean {
     return this._isPlaying;
@@ -76,19 +82,20 @@ export class DroneVoice {
     return this.reverb;
   }
 
-  public setVolume(volume: number): void {
+  public setVolume(volume: number, scheduledTime?: number): void {
     this.volume = Math.max(0, Math.min(1, volume));
     if (this.masterGainNode && this._isPlaying) {
-      const now = soundEngine.context.currentTime;
+      const now = scheduledTime !== undefined ? scheduledTime : this.engine.context.currentTime;
       const targetGain = Math.max(0.0001, 0.26 * this.volume);
       this.masterGainNode.gain.setTargetAtTime(targetGain, now, 0.03);
     }
   }
 
-  public setReverb(reverb: number): void {
+  public setReverb(reverb: number, scheduledTime?: number): void {
     this.reverb = Math.max(0, Math.min(1, reverb));
-    if (this.reverbSendGain && this._isPlaying && soundEngine.isReady) {
-      this.reverbSendGain.gain.setTargetAtTime(this.reverb, soundEngine.context.currentTime, 0.05);
+    if (this.reverbSendGain && this._isPlaying && this.engine.isReady) {
+      const now = scheduledTime !== undefined ? scheduledTime : this.engine.context.currentTime;
+      this.reverbSendGain.gain.setTargetAtTime(this.reverb, now, 0.05);
     }
   }
 
@@ -96,11 +103,12 @@ export class DroneVoice {
     initialFreq: number,
     instrument?: InstrumentDefinition,
     volume: number = 1.0,
-    reverb: number = 0.4
+    reverb: number = 0.4,
+    startTime?: number
   ): void {
-    if (this._isPlaying || !soundEngine.isReady) return;
-    const ctx = soundEngine.context;
-    const now = ctx.currentTime;
+    if (this._isPlaying || !this.engine.isReady) return;
+    const ctx = this.engine.context;
+    const now = startTime !== undefined ? startTime : ctx.currentTime;
     this.currentFreq = initialFreq;
     this.volume = Math.max(0, Math.min(1, volume));
     this.reverb = Math.max(0, Math.min(1, reverb));
@@ -118,7 +126,7 @@ export class DroneVoice {
     this.pannerNode.pan.setValueAtTime(0, now);
 
     this.masterGainNode.connect(this.pannerNode);
-    const sends = soundEngine.connectVoice(this.pannerNode, 0.35, this.reverb);
+    const sends = this.engine.connectVoice(this.pannerNode, 0.35, this.reverb);
     this.reverbSendGain = sends.reverbSendGain ?? null;
 
     // --- Helper to build an oscillator bank ---
@@ -191,7 +199,7 @@ export class DroneVoice {
   public setInstrument(instrument: InstrumentDefinition): void {
     this.instrument = instrument;
     if (this._isPlaying) {
-      const now = soundEngine.context.currentTime;
+      const now = this.engine.context.currentTime;
       const p = instrument.drone;
       const updateBankTypes = (
         osc1: OscillatorNode | null,
@@ -230,7 +238,8 @@ export class DroneVoice {
     volume?: number,
     chordFrequencies?: number[],
     chordGains?: number[],
-    breathingMod?: BreathingModulation
+    breathingMod?: BreathingModulation,
+    scheduledTime?: number
   ): void {
     if (
       !this._isPlaying ||
@@ -245,10 +254,10 @@ export class DroneVoice {
     }
 
     if (volume !== undefined && Math.abs(this.volume - volume) > 0.005) {
-      this.setVolume(volume);
+      this.setVolume(volume, scheduledTime);
     }
-    const ctx = soundEngine.context;
-    const now = ctx.currentTime;
+    const ctx = this.engine.context;
+    const now = scheduledTime !== undefined ? scheduledTime : ctx.currentTime;
     const timeConstant = 0.035;
     const p = this.instrument.drone;
 
@@ -308,7 +317,7 @@ export class DroneVoice {
 
     // --- 3. Spatial & Timbral Modulations (with Macro Filter Breathing) ---
     const filterMultiplier = breathingMod ? breathingMod.filterMultiplier : 1.0;
-    this.applyModulations(x, canvasWidth, xModMode, curvature, freqA, freqB, filterMultiplier);
+    this.applyModulations(x, canvasWidth, xModMode, curvature, freqA, freqB, filterMultiplier, scheduledTime);
 
     // --- 4. Chord Harmony Voicing (Octave, Sub-Octave, Dual Octave) ---
     if (this.masterGainNode && chordFrequencies && chordFrequencies.length > 1) {
@@ -363,15 +372,16 @@ export class DroneVoice {
     xModMode: XAxisModulationMode = 'panAndTone',
     volume?: number,
     secondFreq?: number,
-    blend: number = 0
+    blend: number = 0,
+    scheduledTime?: number
   ): void {
     if (secondFreq !== undefined && secondFreq > 0) {
       const clampedBlend = Math.max(0, Math.min(1, blend));
       const gA = Math.cos(clampedBlend * 0.5 * Math.PI);
       const gB = Math.sin(clampedBlend * 0.5 * Math.PI);
-      this.updateDual(freq, secondFreq, gA, gB, curvature, x, canvasWidth, xModMode, volume);
+      this.updateDual(freq, secondFreq, gA, gB, curvature, x, canvasWidth, xModMode, volume, undefined, undefined, undefined, scheduledTime);
     } else {
-      this.updateDual(freq, freq, 1.0, 0.0, curvature, x, canvasWidth, xModMode, volume);
+      this.updateDual(freq, freq, 1.0, 0.0, curvature, x, canvasWidth, xModMode, volume, undefined, undefined, undefined, scheduledTime);
     }
   }
 
@@ -382,10 +392,11 @@ export class DroneVoice {
     curvature: number,
     freqA: number,
     freqB: number,
-    filterMultiplier: number = 1.0
+    filterMultiplier: number = 1.0,
+    scheduledTime?: number
   ): void {
     if (!this.pannerNode || !this.filterA) return;
-    const now = soundEngine.context.currentTime;
+    const now = scheduledTime !== undefined ? scheduledTime : this.engine.context.currentTime;
     const p = this.instrument.drone;
 
     // 1. Horizontal Stereo Panning
@@ -423,10 +434,10 @@ export class DroneVoice {
     }
   }
 
-  public stop(releaseTime: number = 0.2): void {
+  public stop(releaseTime: number = 0.2, stopTime?: number): void {
     if (!this._isPlaying || !this.masterGainNode) return;
-    const ctx = soundEngine.context;
-    const now = ctx.currentTime;
+    const ctx = this.engine.context;
+    const now = stopTime !== undefined ? stopTime : ctx.currentTime;
     const actualRelease = Math.max(0.05, releaseTime);
 
     this.masterGainNode.gain.cancelScheduledValues(now);
@@ -442,6 +453,21 @@ export class DroneVoice {
 
     const oldHarmony = this.harmonyVoices;
     this.harmonyVoices = [];
+
+    // Schedule exact stop time on oscillators
+    try {
+      oldOsc1A?.stop(now + actualRelease + 0.05);
+      oldOsc2A?.stop(now + actualRelease + 0.05);
+      oldSubA?.stop(now + actualRelease + 0.05);
+      oldOsc1B?.stop(now + actualRelease + 0.05);
+      oldOsc2B?.stop(now + actualRelease + 0.05);
+      oldSubB?.stop(now + actualRelease + 0.05);
+      for (const h of oldHarmony) {
+        h.osc.stop(now + actualRelease + 0.05);
+      }
+    } catch {
+      // Ignored if already stopped
+    }
 
     setTimeout(() => {
       try {
@@ -497,11 +523,14 @@ export class PulseVoice {
     timeOffset: number = 0,
     reverb: number = 0.45,
     filterMultiplier: number = 1.0,
-    volumeMultiplier: number = 1.0
+    volumeMultiplier: number = 1.0,
+    engine: SoundEngine = soundEngine,
+    baseTime?: number
   ): void {
-    if (!soundEngine.isReady || velocity <= 0.001) return;
-    const ctx = soundEngine.context;
-    const now = ctx.currentTime + timeOffset;
+    if (!engine.isReady || velocity <= 0.001) return;
+    const ctx = engine.context;
+    const rawNow = (baseTime !== undefined ? baseTime : ctx.currentTime) + timeOffset;
+    const now = Math.max(rawNow, ctx.currentTime + timeOffset);
 
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -533,7 +562,7 @@ export class PulseVoice {
       osc.connect(filter);
       filter.connect(gain);
       gain.connect(panner);
-      soundEngine.connectVoice(panner, 0.25, Math.min(1, reverb * 0.7));
+      engine.connectVoice(panner, 0.25, Math.min(1, reverb * 0.7));
 
       osc.start(now);
       osc.stop(now + p.stripedDecay + 0.02);
@@ -555,7 +584,7 @@ export class PulseVoice {
       osc.connect(filter);
       filter.connect(gain);
       gain.connect(panner);
-      soundEngine.connectVoice(panner, 0.35, reverb);
+      engine.connectVoice(panner, 0.35, reverb);
 
       osc.start(now);
       osc.stop(now + p.dottedDecay + 0.03);
@@ -574,9 +603,11 @@ export class PulseVoice {
     xModMode: XAxisModulationMode = 'panAndTone',
     reverb: number = 0.45,
     filterMultiplier: number = 1.0,
-    volumeMultiplier: number = 1.0
+    volumeMultiplier: number = 1.0,
+    engine: SoundEngine = soundEngine,
+    baseTime?: number
   ): void {
-    if (!soundEngine.isReady || velocity <= 0.001) return;
+    if (!engine.isReady || velocity <= 0.001) return;
     const count = 3;
     const intervalSec = 0.045;
     for (let i = 0; i < count; i++) {
@@ -593,7 +624,9 @@ export class PulseVoice {
         offset,
         reverb,
         filterMultiplier,
-        volumeMultiplier
+        volumeMultiplier,
+        engine,
+        baseTime
       );
     }
   }

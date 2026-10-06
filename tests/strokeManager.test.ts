@@ -2,8 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { StrokeManager, getNextVersionName } from '../src/engine/strokeManager';
 import { SplinePath } from '../src/math/types';
 import { ScaleQuantizer } from '../src/audio/scaleQuantizer';
-import { INSTRUMENTS } from '../src/audio/instruments';
-import { DroneVoice } from '../src/audio/synthVoice';
+import { INSTRUMENTS, DEFAULT_INSTRUMENT } from '../src/audio/instruments';
+import { DroneVoice, PulseVoice } from '../src/audio/synthVoice';
 import { soundEngine } from '../src/audio/audioContext';
 
 describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, and Undo/Redo', () => {
@@ -1138,6 +1138,148 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
     };
     expect(getNextVersionName('Ambient Dawn', mockSaved)).toBe('Ambient Dawn (v4)');
     expect(getNextVersionName('Ambient Dawn (v2)', mockSaved)).toBe('Ambient Dawn (v4)');
+  });
+
+  it('exports canvas dimensions and proportionally scales strokes upon import on different viewport widths', () => {
+    const sm = new StrokeManager();
+    const widePath: SplinePath = {
+      segments: [
+        {
+          p0: { x: 100, y: 200 },
+          p1: { x: 500, y: 200 },
+          p2: { x: 1000, y: 200 },
+          p3: { x: 1500, y: 200 },
+        },
+      ],
+      isClosed: false,
+    };
+    sm.addStroke(widePath, 'solid', 'indigo', 100);
+
+    // Exported from a 1600px wide canvas
+    const exported = sm.exportComposition('Wide Viewport Preset', 'dorian', 'D3', 1600, 900);
+    expect(exported.canvasWidth).toBe(1600);
+    expect(exported.canvasHeight).toBe(900);
+
+    // Import into a 1200px wide canvas (scaleX = 1200 / 1600 = 0.75)
+    const sm2 = new StrokeManager();
+    sm2.importComposition(exported, undefined, 900, 1200);
+
+    expect(sm2.activeStrokes.length).toBe(1);
+    const stroke = sm2.activeStrokes[0];
+    expect(stroke.path.segments[0].p0.x).toBeCloseTo(75, 1);
+    expect(stroke.path.segments[0].p3.x).toBeCloseTo(1125, 1);
+  });
+
+  it('safely auto-fits legacy saved presets without canvasWidth that exceed screen width', () => {
+    const sm = new StrokeManager();
+    // Simulate legacy saved preset from a 1920px screen loaded on a 1000px screen
+    const legacyComp = {
+      version: 1 as const,
+      name: 'Legacy Preset',
+      timestamp: Date.now(),
+      bpm: 80,
+      strokes: [
+        {
+          id: 's1',
+          instrumentId: 'indigo',
+          style: 'solid' as const,
+          path: {
+            segments: [
+              {
+                p0: { x: 100, y: 200 },
+                p1: { x: 500, y: 200 },
+                p2: { x: 1000, y: 200 },
+                p3: { x: 1400, y: 200 }, // 1400 > 1000 * 0.88 (880)
+              },
+            ],
+            isClosed: false,
+          },
+        },
+      ],
+    };
+
+    sm.importComposition(legacyComp, undefined, 700, 1000);
+    expect(sm.activeStrokes.length).toBe(1);
+    const stroke = sm.activeStrokes[0];
+    // Max x should be scaled to canvasWidth * 0.86 = 860
+    expect(stroke.path.segments[0].p3.x).toBeCloseTo(860, 1);
+    expect(stroke.path.segments[0].p0.x).toBeLessThan(stroke.path.segments[0].p3.x);
+  });
+
+  it('triggers PulseVoice for dotted strokes in live playback without past timestamp scheduling', () => {
+    const sm = new StrokeManager();
+    sm.addStroke(dummyPath, 'dotted', 'amber', 100);
+    const quantizer = new ScaleQuantizer();
+
+    let triggerCalled = false;
+    let receivedBaseTime: number | undefined = 999;
+    const origTrigger = PulseVoice.trigger;
+    PulseVoice.trigger = (
+      _freq,
+      _isStriped,
+      _velocity,
+      _instrument,
+      _x,
+      _canvasWidth,
+      _xModMode,
+      _timeOffset,
+      _reverb,
+      _filterMult,
+      _volumeMult,
+      _engine,
+      baseTime
+    ) => {
+      triggerCalled = true;
+      receivedBaseTime = baseTime;
+    };
+
+    try {
+      // Advance by sufficient dt to cross a dot boundary
+      sm.update(0.5, 800, 600, quantizer); // live play (scheduledTime is undefined)
+      expect(triggerCalled).toBe(true);
+      // In live play, baseTime passed to PulseVoice MUST be undefined so Web Audio uses live ctx.currentTime
+      expect(receivedBaseTime).toBeUndefined();
+    } finally {
+      PulseVoice.trigger = origTrigger;
+    }
+  });
+
+  it('clamps PulseVoice note scheduling to at least ctx.currentTime preventing past node termination', () => {
+    let startedAt = 0;
+    const mockCtx = {
+      currentTime: 10.0,
+      sampleRate: 44100,
+      createOscillator: () => ({
+        type: 'sine',
+        frequency: { setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() },
+        connect: vi.fn(),
+        start: (t: number) => { startedAt = t; },
+        stop: vi.fn(),
+      }),
+      createGain: () => ({
+        gain: { setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() },
+        connect: vi.fn(),
+      }),
+      createBiquadFilter: () => ({
+        type: 'lowpass',
+        frequency: { setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() },
+        Q: { setValueAtTime: vi.fn() },
+        connect: vi.fn(),
+      }),
+      createStereoPanner: () => ({
+        pan: { setValueAtTime: vi.fn() },
+        connect: vi.fn(),
+      }),
+    };
+    const mockEngine = {
+      isReady: true,
+      context: mockCtx as any,
+      connectVoice: vi.fn(),
+    } as any;
+
+    PulseVoice.trigger(440, false, 0.8, DEFAULT_INSTRUMENT, 0, 800, 'panAndTone', 0, 0.4, 1.0, 1.0, mockEngine, 2.0);
+    // Should be clamped to mockCtx.currentTime = 10.0, NOT scheduled in the past at 2.0
+    expect(startedAt).toBeGreaterThanOrEqual(10.0);
   });
 });
 

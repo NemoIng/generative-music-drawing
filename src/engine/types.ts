@@ -57,6 +57,8 @@ export interface SavedComposition {
   name: string;
   timestamp: number;
   bpm: number;
+  canvasWidth?: number;
+  canvasHeight?: number;
   scaleId?: string;
   rootId?: string;
   xAxisModulationMode?: XAxisModulationMode;

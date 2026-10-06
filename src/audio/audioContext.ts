@@ -1,8 +1,11 @@
 /**
  * Web Audio Context Manager with Master Bus, Reverb, and Delay FX
  */
-class SoundEngine {
-  private ctx: AudioContext | null = null;
+/**
+ * Web Audio Context Manager with Master Bus, Reverb, and Delay FX
+ */
+export class SoundEngine {
+  private ctx: BaseAudioContext | null = null;
   private masterGain: GainNode | null = null;
   private delayNode: DelayNode | null = null;
   private delayFeedbackGain: GainNode | null = null;
@@ -12,48 +15,64 @@ class SoundEngine {
   private wetReverbGain: GainNode | null = null;
   private isInitialized = false;
 
-  public async init(): Promise<void> {
-    if (this.isInitialized && this.ctx) {
-      if (this.ctx.state === 'suspended') {
+  private _masterVolume = 0.65;
+  private _reverbMix = 0.32;
+  private _delayMix = 0.28;
+
+  public async init(existingCtx?: BaseAudioContext): Promise<void> {
+    if (this.isInitialized && this.ctx && !existingCtx) {
+      if (this.ctx instanceof AudioContext && this.ctx.state === 'suspended') {
         await this.ctx.resume();
       }
       return;
     }
 
-    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    this.ctx = new AudioContextClass();
+    if (existingCtx) {
+      this.ctx = existingCtx;
+    } else {
+      const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      this.ctx = new AudioContextClass();
+    }
 
+    this.setupAudioGraph(this.ctx);
+    this.isInitialized = true;
+    if (this.ctx instanceof AudioContext && this.ctx.state === 'suspended') {
+      await this.ctx.resume();
+    }
+  }
+
+  public setupAudioGraph(ctx: BaseAudioContext): void {
     // Master Output & Limiter
-    this.masterGain = this.ctx.createGain();
-    this.masterGain.gain.setValueAtTime(0.65, this.ctx.currentTime);
+    this.masterGain = ctx.createGain();
+    this.masterGain.gain.setValueAtTime(this._masterVolume, 0);
 
     // Soft limiter using WaveShaper to prevent clipping
-    const limiter = this.ctx.createWaveShaper();
+    const limiter = ctx.createWaveShaper();
     limiter.curve = this.createSoftClipperCurve();
     limiter.oversample = '2x';
 
     // Delay Bus (Stereo Ping-Pong / Feedback delay)
-    this.delayNode = this.ctx.createDelay(2.0);
-    this.delayNode.delayTime.setValueAtTime(0.35, this.ctx.currentTime);
-    this.delayFeedbackGain = this.ctx.createGain();
-    this.delayFeedbackGain.gain.setValueAtTime(0.38, this.ctx.currentTime);
+    this.delayNode = ctx.createDelay(2.0);
+    this.delayNode.delayTime.setValueAtTime(0.35, 0);
+    this.delayFeedbackGain = ctx.createGain();
+    this.delayFeedbackGain.gain.setValueAtTime(0.38, 0);
 
     this.delayNode.connect(this.delayFeedbackGain);
     this.delayFeedbackGain.connect(this.delayNode);
 
     // Reverb Bus (Algorithmic Impulse Response)
-    this.reverbNode = this.ctx.createConvolver();
-    this.reverbNode.buffer = this.createSyntheticImpulse(this.ctx, 2.8, 2.2);
+    this.reverbNode = ctx.createConvolver();
+    this.reverbNode.buffer = this.createSyntheticImpulse(ctx, 2.8, 2.2);
 
     // Mix Gains
-    this.dryGain = this.ctx.createGain();
-    this.dryGain.gain.setValueAtTime(0.85, this.ctx.currentTime);
+    this.dryGain = ctx.createGain();
+    this.dryGain.gain.setValueAtTime(0.85, 0);
 
-    this.wetDelayGain = this.ctx.createGain();
-    this.wetDelayGain.gain.setValueAtTime(0.28, this.ctx.currentTime);
+    this.wetDelayGain = ctx.createGain();
+    this.wetDelayGain.gain.setValueAtTime(this._delayMix, 0);
 
-    this.wetReverbGain = this.ctx.createGain();
-    this.wetReverbGain.gain.setValueAtTime(0.32, this.ctx.currentTime);
+    this.wetReverbGain = ctx.createGain();
+    this.wetReverbGain.gain.setValueAtTime(this._reverbMix, 0);
 
     // Routing
     this.delayNode.connect(this.wetDelayGain);
@@ -64,23 +83,40 @@ class SoundEngine {
     this.wetReverbGain.connect(limiter);
 
     limiter.connect(this.masterGain);
-    this.masterGain.connect(this.ctx.destination);
-
-    this.isInitialized = true;
-    if (this.ctx.state === 'suspended') {
-      await this.ctx.resume();
-    }
+    this.masterGain.connect(ctx.destination);
   }
 
-  public get context(): AudioContext {
+  /**
+   * Spawns an isolated offline SoundEngine configured for faster-than-realtime rendering.
+   */
+  public createOfflineEngine(offlineCtx: OfflineAudioContext): SoundEngine {
+    const engine = new SoundEngine();
+    engine.ctx = offlineCtx;
+    engine._masterVolume = this._masterVolume;
+    engine._reverbMix = this._reverbMix;
+    engine._delayMix = this._delayMix;
+    engine.setupAudioGraph(offlineCtx);
+    engine.isInitialized = true;
+    return engine;
+  }
+
+  public get context(): BaseAudioContext {
     if (!this.ctx) {
       throw new Error('AudioContext not initialized. Call soundEngine.init() on user interaction first.');
     }
     return this.ctx;
   }
 
+  public get masterOutputNode(): GainNode | null {
+    return this.masterGain;
+  }
+
   public get isReady(): boolean {
-    return this.isInitialized && this.ctx !== null && this.ctx.state === 'running';
+    if (!this.isInitialized || !this.ctx) return false;
+    if (this.ctx instanceof AudioContext) {
+      return this.ctx.state === 'running';
+    }
+    return true;
   }
 
   /**
@@ -98,7 +134,7 @@ class SoundEngine {
     let dSend: GainNode | undefined;
     if (delaySend > 0) {
       dSend = this.ctx.createGain();
-      dSend.gain.setValueAtTime(delaySend, this.ctx.currentTime);
+      dSend.gain.setValueAtTime(delaySend, this.ctx.currentTime || 0);
       sourceNode.connect(dSend);
       dSend.connect(this.delayNode);
     }
@@ -106,7 +142,7 @@ class SoundEngine {
     let rSend: GainNode | undefined;
     if (reverbSend >= 0) {
       rSend = this.ctx.createGain();
-      rSend.gain.setValueAtTime(reverbSend, this.ctx.currentTime);
+      rSend.gain.setValueAtTime(reverbSend, this.ctx.currentTime || 0);
       sourceNode.connect(rSend);
       rSend.connect(this.reverbNode);
     }
@@ -115,29 +151,30 @@ class SoundEngine {
   }
 
   public setMasterVolume(val: number): void {
+    this._masterVolume = Math.max(0, Math.min(1, val));
     if (this.masterGain && this.ctx) {
-      this.masterGain.gain.setTargetAtTime(Math.max(0, Math.min(1, val)), this.ctx.currentTime, 0.05);
+      this.masterGain.gain.setTargetAtTime(this._masterVolume, this.ctx.currentTime || 0, 0.05);
     }
   }
 
   public setReverbMix(val: number): void {
-    const clamped = Math.max(0, Math.min(1, val));
+    this._reverbMix = Math.max(0, Math.min(1, val));
     if (this.wetReverbGain && this.ctx) {
-      this.wetReverbGain.gain.setTargetAtTime(clamped, this.ctx.currentTime, 0.05);
+      this.wetReverbGain.gain.setTargetAtTime(this._reverbMix, this.ctx.currentTime || 0, 0.05);
     }
   }
 
   public setDelayMix(val: number): void {
-    const clamped = Math.max(0, Math.min(1, val));
+    this._delayMix = Math.max(0, Math.min(1, val));
     if (this.wetDelayGain && this.ctx) {
-      this.wetDelayGain.gain.setTargetAtTime(clamped, this.ctx.currentTime, 0.05);
+      this.wetDelayGain.gain.setTargetAtTime(this._delayMix, this.ctx.currentTime || 0, 0.05);
     }
   }
 
   /**
    * Generates a lush algorithmic stereo impulse response for the convolver reverb.
    */
-  private createSyntheticImpulse(ctx: AudioContext, duration: number, decay: number): AudioBuffer {
+  private createSyntheticImpulse(ctx: BaseAudioContext, duration: number, decay: number): AudioBuffer {
     const rate = ctx.sampleRate;
     const length = Math.floor(rate * duration);
     const impulse = ctx.createBuffer(2, length, rate);

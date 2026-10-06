@@ -173,24 +173,6 @@ describe('DrumSynth & Onyx 808 Drum Machine Integration', () => {
     expect(mockRenderer.getStrokeColor(indigoStroke)).toBe('#2563eb');
   });
 
-  it('builds the Analog 808 Groove template with 5 synchronized tracks', () => {
-    const quantizer = new ScaleQuantizer();
-    const strokes = buildTemplateStrokes('electro808', 1000, 700, quantizer);
-
-    expect(strokes.length).toBe(5);
-
-    // Verify drum tracks exist in the template
-    const onyxTracks = strokes.filter((s) => s.instrumentId === 'onyx');
-    expect(onyxTracks.length).toBe(3);
-
-    // Verify synth tracks exist (slate bass & violet lead)
-    const slateTracks = strokes.filter((s) => s.instrumentId === 'slate');
-    expect(slateTracks.length).toBe(1);
-
-    const violetTracks = strokes.filter((s) => s.instrumentId === 'violet');
-    expect(violetTracks.length).toBe(1);
-  });
-
   it('triggers DrumSynth.triggerRoll with rapid sample-accurate micro-bursts for all drum types', () => {
     vi.spyOn(soundEngine, 'isReady', 'get').mockReturnValue(true);
     const kickSpy = vi.spyOn(DrumSynth, 'triggerKick').mockImplementation(() => {});

@@ -55,6 +55,12 @@ describe('Starter Musical Groove Templates', () => {
           expect(seg.p0.y).toBeLessThanOrEqual(height);
           expect(seg.p3.y).toBeGreaterThanOrEqual(0);
           expect(seg.p3.y).toBeLessThanOrEqual(height);
+
+          // Horizontal margins: lines must remain comfortably inside canvas and not fall off the right side
+          expect(seg.p0.x).toBeGreaterThanOrEqual(width * 0.05);
+          expect(seg.p0.x).toBeLessThanOrEqual(width * 0.88);
+          expect(seg.p3.x).toBeGreaterThanOrEqual(width * 0.05);
+          expect(seg.p3.x).toBeLessThanOrEqual(width * 0.88);
         }
       }
     }

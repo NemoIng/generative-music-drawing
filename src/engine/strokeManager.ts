@@ -7,7 +7,7 @@ import { ScaleQuantizer } from '../audio/scaleQuantizer';
 import { DroneVoice, PulseVoice, XAxisModulationMode } from '../audio/synthVoice';
 import { DrumSynth } from '../audio/drumSynth';
 import { getInstrument, DEFAULT_INSTRUMENT } from '../audio/instruments';
-import { soundEngine } from '../audio/audioContext';
+import { soundEngine, SoundEngine } from '../audio/audioContext';
 import { DrawnStroke, StrokeStyle, TraversalMode, TimingMode, LoopQuantizeMode, SpeedMode, HarmonizerMode, SavedComposition } from './types';
 import { getHarmonizerFrequencies } from '../audio/harmony';
 import { calculateBreathing, BreathingMode } from '../audio/breathing';
@@ -100,6 +100,7 @@ export interface StrokeClipboardData {
 }
 
 export class StrokeManager {
+  private engine: SoundEngine;
   private strokes: DrawnStroke[] = [];
   private clipboard: StrokeClipboardData | null = null;
   private pasteCount = 0;
@@ -118,6 +119,10 @@ export class StrokeManager {
   // History stacks
   private undoStack: UndoAction[] = [];
   private redoStack: UndoAction[] = [];
+
+  constructor(engine: SoundEngine = soundEngine) {
+    this.engine = engine;
+  }
 
   /** Constant pixel distance representing one quarter-note beat */
   public static readonly BEAT_DISTANCE = 80;
@@ -274,10 +279,10 @@ export class StrokeManager {
       }
     } else {
       for (const stroke of this.strokes) {
-        if (stroke.style === 'solid' && soundEngine.isReady && stroke.playhead.lastPitch && this.isStrokeAudible(stroke)) {
+        if (stroke.style === 'solid' && this.engine.isReady && stroke.playhead.lastPitch && this.isStrokeAudible(stroke)) {
           if (!stroke.droneVoice || !stroke.droneVoice.isPlaying) {
             const inst = getInstrument(stroke.instrumentId);
-            stroke.droneVoice = new DroneVoice();
+            stroke.droneVoice = new DroneVoice(this.engine);
             stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, stroke.volume ?? 1.0, stroke.reverb ?? this.defaultReverb);
           }
         }
@@ -330,10 +335,10 @@ export class StrokeManager {
     if (!this.isStrokeAudible(stroke) && stroke.droneVoice) {
       stroke.droneVoice.stop();
       stroke.droneVoice = null;
-    } else if (this.isStrokeAudible(stroke) && stroke.style === 'solid' && soundEngine.isReady && stroke.playhead.lastPitch && !this.isPaused) {
+    } else if (this.isStrokeAudible(stroke) && stroke.style === 'solid' && this.engine.isReady && stroke.playhead.lastPitch && !this.isPaused) {
       if (!stroke.droneVoice || !stroke.droneVoice.isPlaying) {
         const inst = getInstrument(stroke.instrumentId);
-        stroke.droneVoice = new DroneVoice();
+        stroke.droneVoice = new DroneVoice(this.engine);
         stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, stroke.volume ?? 1.0, stroke.reverb ?? this.defaultReverb);
       }
     }
@@ -351,9 +356,9 @@ export class StrokeManager {
       if (!audible && s.droneVoice) {
         s.droneVoice.stop();
         s.droneVoice = null;
-      } else if (audible && s.style === 'solid' && (!s.droneVoice || !s.droneVoice.isPlaying) && soundEngine.isReady && s.playhead.lastPitch && !this.isPaused) {
+      } else if (audible && s.style === 'solid' && (!s.droneVoice || !s.droneVoice.isPlaying) && this.engine.isReady && s.playhead.lastPitch && !this.isPaused) {
         const inst = getInstrument(s.instrumentId);
-        s.droneVoice = new DroneVoice();
+        s.droneVoice = new DroneVoice(this.engine);
         s.droneVoice.start(s.playhead.lastPitch.frequency, inst, s.volume ?? 1.0, s.reverb ?? this.defaultReverb);
       }
     }
@@ -403,8 +408,8 @@ export class StrokeManager {
     }
 
     let droneVoice: DroneVoice | null = null;
-    if (style === 'solid' && soundEngine.isReady && initialPitch && !this.isPaused) {
-      droneVoice = new DroneVoice();
+    if (style === 'solid' && this.engine.isReady && initialPitch && !this.isPaused) {
+      droneVoice = new DroneVoice(this.engine);
       droneVoice.start(initialPitch.frequency, instrument, strokeVolume, strokeReverb);
     }
 
@@ -568,9 +573,9 @@ export class StrokeManager {
       stroke.droneVoice?.stop();
       stroke.droneVoice = null;
     } else if (newStyle === 'solid' && oldStyle !== 'solid') {
-      if (soundEngine.isReady && stroke.playhead.lastPitch && this.isStrokeAudible(stroke) && !this.isPaused) {
+      if (this.engine.isReady && stroke.playhead.lastPitch && this.isStrokeAudible(stroke) && !this.isPaused) {
         const inst = getInstrument(stroke.instrumentId);
-        stroke.droneVoice = new DroneVoice();
+        stroke.droneVoice = new DroneVoice(this.engine);
         stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, stroke.volume ?? 1.0);
       }
     }
@@ -1216,12 +1221,12 @@ export class StrokeManager {
    * Activates audio voices once AudioContext unlocks.
    */
   public activateAudioVoices(): void {
-    if (!soundEngine.isReady || this.isPaused) return;
+    if (!this.engine.isReady || this.isPaused) return;
 
     for (const stroke of this.strokes) {
       if (stroke.style === 'solid' && !stroke.droneVoice && stroke.playhead.lastPitch && this.isStrokeAudible(stroke)) {
         const inst = getInstrument(stroke.instrumentId);
-        stroke.droneVoice = new DroneVoice();
+        stroke.droneVoice = new DroneVoice(this.engine);
         stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, stroke.volume ?? 1.0, stroke.reverb ?? this.defaultReverb);
       }
     }
@@ -1230,13 +1235,20 @@ export class StrokeManager {
   /**
    * Main per-frame update loop.
    */
-  public update(dt: number, canvasWidth: number, canvasHeight: number, quantizer: ScaleQuantizer): void {
+  public update(dt: number, canvasWidth: number, canvasHeight: number, quantizer: ScaleQuantizer, scheduledTime?: number): void {
     if (canvasWidth > 0) {
       this.lastCanvasWidth = canvasWidth;
     }
     if (this.isPaused || dt <= 0) return;
 
-    this.masterClockTime += dt;
+    if (scheduledTime !== undefined) {
+      this.masterClockTime = scheduledTime;
+    } else {
+      this.masterClockTime += dt;
+    }
+
+    // Explicit audio timestamp ONLY during offline simulation; undefined in live play so Web Audio uses live currentTime
+    const audioTime = scheduledTime;
 
     const DOT_SPACING = 40;   // 1/8th note (2 triggers per beat)
     const ROLL_SPACING = 40;  // 1/8th note roll burst interval (rapid multi-hit bursts)
@@ -1371,9 +1383,9 @@ export class StrokeManager {
 
         if (audible) {
           const chord = getHarmonizerFrequencies(stroke.harmonizer, pitch.frequency, pitch.scaleDegree, quantizer);
-          if ((!stroke.droneVoice || !stroke.droneVoice.isPlaying) && soundEngine.isReady) {
-            stroke.droneVoice = new DroneVoice();
-            stroke.droneVoice.start(pitch.frequency, instrument, effectiveVol, strokeReverb);
+          if ((!stroke.droneVoice || !stroke.droneVoice.isPlaying) && this.engine.isReady) {
+            stroke.droneVoice = new DroneVoice(this.engine);
+            stroke.droneVoice.start(pitch.frequency, instrument, effectiveVol, strokeReverb, audioTime);
           } else if (stroke.droneVoice) {
             stroke.droneVoice.updateDual(
               pitch.freqA ?? pitch.freq1 ?? pitch.frequency,
@@ -1387,7 +1399,8 @@ export class StrokeManager {
               effectiveVol,
               chord.frequencies,
               chord.gains,
-              breathing
+              breathing,
+              audioTime
             );
           }
         } else if (stroke.droneVoice) {
@@ -1395,8 +1408,9 @@ export class StrokeManager {
           stroke.droneVoice = null;
         }
       } else if (stroke.style === 'dotted') {
-        const prevIndex = Math.floor(prevDist / DOT_SPACING);
-        const nextIndex = Math.floor(nextDist / DOT_SPACING);
+        const dotSpacing = Math.min(DOT_SPACING, Math.max(12, L / 2));
+        const prevIndex = Math.floor(prevDist / dotSpacing);
+        const nextIndex = Math.floor(nextDist / dotSpacing);
         const isTriggerHit = prevIndex !== nextIndex && audible;
 
         const PITCH_FLUCTUATION_OFFSET = 52;
@@ -1411,14 +1425,14 @@ export class StrokeManager {
           if (stroke.instrumentId === 'onyx') {
             const normY = canvasHeight > 0 ? triggerY / canvasHeight : 0.5;
             if (normY >= 0.72) {
-              DrumSynth.triggerKick(0.95 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode, 0, strokeReverb);
+              DrumSynth.triggerKick(0.95 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode, 0, strokeReverb, this.engine, audioTime);
             } else if (normY >= 0.48) {
-              DrumSynth.triggerSnare(0.9 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode, 0, strokeReverb);
+              DrumSynth.triggerSnare(0.9 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode, 0, strokeReverb, this.engine, audioTime);
             } else if (normY >= 0.25) {
               const tomFreq = 100 + (1 - (normY - 0.25) / 0.23) * 120;
-              DrumSynth.triggerTom(tomFreq, 0.85 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode, 0, strokeReverb);
+              DrumSynth.triggerTom(tomFreq, 0.85 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode, 0, strokeReverb, this.engine, audioTime);
             } else {
-              DrumSynth.triggerHiHat(true, 0.85 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode, 0, strokeReverb);
+              DrumSynth.triggerHiHat(true, 0.85 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode, 0, strokeReverb, this.engine, audioTime);
             }
           } else {
             // Apply subtle organic microtonal detune (+/- 35 cents) for vintage acoustic tone flutter
@@ -1442,14 +1456,17 @@ export class StrokeManager {
                 strumDelay,
                 strokeReverb,
                 breathing.filterMultiplier,
-                breathing.volumeMultiplier
+                breathing.volumeMultiplier,
+                this.engine,
+                audioTime
               );
             });
           }
         }
       } else if (stroke.style === 'striped') {
-        const prevIndex = Math.floor(prevDist / ROLL_SPACING);
-        const nextIndex = Math.floor(nextDist / ROLL_SPACING);
+        const rollSpacing = Math.min(ROLL_SPACING, Math.max(12, L / 2));
+        const prevIndex = Math.floor(prevDist / rollSpacing);
+        const nextIndex = Math.floor(nextDist / rollSpacing);
         const isTriggerHit = prevIndex !== nextIndex && audible;
 
         const PITCH_FLUCTUATION_OFFSET = 44;
@@ -1464,16 +1481,16 @@ export class StrokeManager {
           if (stroke.instrumentId === 'onyx') {
             const normY = canvasHeight > 0 ? triggerY / canvasHeight : 0.5;
             if (normY >= 0.72) {
-              DrumSynth.triggerRoll('kick', 0.95 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode, 120, strokeReverb);
+              DrumSynth.triggerRoll('kick', 0.95 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode, 120, strokeReverb, this.engine, audioTime);
             } else if (normY >= 0.58) {
-              DrumSynth.triggerRoll('snare', 0.9 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode, 120, strokeReverb);
+              DrumSynth.triggerRoll('snare', 0.9 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode, 120, strokeReverb, this.engine, audioTime);
             } else if (normY >= 0.48) {
-              DrumSynth.triggerRoll('clap', 0.85 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode, 120, strokeReverb);
+              DrumSynth.triggerRoll('clap', 0.85 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode, 120, strokeReverb, this.engine, audioTime);
             } else if (normY >= 0.25) {
               const tomFreq = 100 + (1 - (normY - 0.25) / 0.23) * 120;
-              DrumSynth.triggerRoll('tom', 0.85 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode, tomFreq, strokeReverb);
+              DrumSynth.triggerRoll('tom', 0.85 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode, tomFreq, strokeReverb, this.engine, audioTime);
             } else {
-              DrumSynth.triggerRoll('hihat', 0.85 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode, 120, strokeReverb);
+              DrumSynth.triggerRoll('hihat', 0.85 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode, 120, strokeReverb, this.engine, audioTime);
             }
           } else {
             const microCents = strokeFluctuation > 0
@@ -1493,7 +1510,9 @@ export class StrokeManager {
                 this.xModMode,
                 strokeReverb,
                 breathing.filterMultiplier,
-                breathing.volumeMultiplier
+                breathing.volumeMultiplier,
+                this.engine,
+                audioTime
               );
             });
           }
@@ -1517,9 +1536,9 @@ export class StrokeManager {
       }
     } else if (action.type === 'remove') {
       this.strokes.splice(action.index, 0, action.stroke);
-      if (action.stroke.style === 'solid' && soundEngine.isReady && action.stroke.playhead.lastPitch && this.isStrokeAudible(action.stroke)) {
+      if (action.stroke.style === 'solid' && this.engine.isReady && action.stroke.playhead.lastPitch && this.isStrokeAudible(action.stroke)) {
         const inst = getInstrument(action.stroke.instrumentId);
-        action.stroke.droneVoice = new DroneVoice();
+        action.stroke.droneVoice = new DroneVoice(this.engine);
         action.stroke.droneVoice.start(action.stroke.playhead.lastPitch.frequency, inst, action.stroke.volume ?? 1.0, action.stroke.reverb ?? this.defaultReverb);
       }
       this.redoStack.push({ type: 'remove', stroke: action.stroke, index: action.index });
@@ -1605,9 +1624,9 @@ export class StrokeManager {
 
     if (action.type === 'add') {
       this.strokes.push(action.stroke);
-      if (action.stroke.style === 'solid' && soundEngine.isReady && action.stroke.playhead.lastPitch && this.isStrokeAudible(action.stroke)) {
+      if (action.stroke.style === 'solid' && this.engine.isReady && action.stroke.playhead.lastPitch && this.isStrokeAudible(action.stroke)) {
         const inst = getInstrument(action.stroke.instrumentId);
-        action.stroke.droneVoice = new DroneVoice();
+        action.stroke.droneVoice = new DroneVoice(this.engine);
         action.stroke.droneVoice.start(action.stroke.playhead.lastPitch.frequency, inst, action.stroke.volume ?? 1.0, action.stroke.reverb ?? this.defaultReverb);
       }
       this.undoStack.push(action);
@@ -1747,9 +1766,9 @@ export class StrokeManager {
       stroke.playhead.lastTriggerDistance = 0;
       stroke.playhead.finished = false;
       stroke.playhead.trail = [];
-      if (stroke.style === 'solid' && !stroke.droneVoice && soundEngine.isReady && stroke.playhead.lastPitch && this.isStrokeAudible(stroke) && !this.isPaused) {
+      if (stroke.style === 'solid' && !stroke.droneVoice && this.engine.isReady && stroke.playhead.lastPitch && this.isStrokeAudible(stroke) && !this.isPaused) {
         const inst = getInstrument(stroke.instrumentId);
-        stroke.droneVoice = new DroneVoice();
+        stroke.droneVoice = new DroneVoice(this.engine);
         stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, stroke.volume ?? 1.0, stroke.reverb ?? this.defaultReverb);
       }
     }
@@ -1781,9 +1800,9 @@ export class StrokeManager {
         });
         stroke.playhead.lastEval = evalResult;
 
-        if (stroke.style === 'solid' && !stroke.droneVoice && soundEngine.isReady && stroke.playhead.lastPitch && this.isStrokeAudible(stroke) && !this.isPaused) {
+        if (stroke.style === 'solid' && !stroke.droneVoice && this.engine.isReady && stroke.playhead.lastPitch && this.isStrokeAudible(stroke) && !this.isPaused) {
           const inst = getInstrument(stroke.instrumentId);
-          stroke.droneVoice = new DroneVoice();
+          stroke.droneVoice = new DroneVoice(this.engine);
           stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, stroke.volume ?? 1.0, stroke.reverb ?? this.defaultReverb);
         }
       }
@@ -1793,12 +1812,20 @@ export class StrokeManager {
   /**
    * Exports the current composition as a portable JSON-serializable object.
    */
-  public exportComposition(name = 'My Custom Groove', scaleId = 'dorian', rootId = 'D2'): SavedComposition {
+  public exportComposition(
+    name = 'My Custom Groove',
+    scaleId = 'dorian',
+    rootId = 'D2',
+    canvasWidth?: number,
+    canvasHeight?: number
+  ): SavedComposition {
     return {
       version: 1,
       name,
       timestamp: Date.now(),
       bpm: this.bpm,
+      canvasWidth,
+      canvasHeight,
       scaleId,
       rootId,
       xAxisModulationMode: this.xModMode,
@@ -1842,11 +1869,13 @@ export class StrokeManager {
 
   /**
    * Imports a saved composition, restoring all lines, volumes, loop syncs, wave parameters, and tempo.
+   * Proportionally scales coordinates when loading across different window resolutions or if lines fall off screen.
    */
   public importComposition(
     data: SavedComposition,
     quantizer?: ScaleQuantizer,
-    canvasHeight?: number
+    canvasHeight?: number,
+    canvasWidth?: number
   ): void {
     this.clearAll();
     this.setBpm(data.bpm);
@@ -1857,9 +1886,44 @@ export class StrokeManager {
       this.setBreathingMode(data.breathingMode);
     }
 
+    // Determine horizontal scale factor to prevent lines falling off the right window margin
+    let scaleX = 1.0;
+    if (canvasWidth && canvasWidth > 0) {
+      if (typeof data.canvasWidth === 'number' && data.canvasWidth > 0) {
+        scaleX = canvasWidth / data.canvasWidth;
+      } else {
+        // Older file without canvasWidth: detect if points extend past or crowd the right edge
+        let maxStrokeX = 0;
+        for (const s of data.strokes) {
+          for (const seg of s.path.segments) {
+            maxStrokeX = Math.max(maxStrokeX, seg.p0.x, seg.p1.x, seg.p2.x, seg.p3.x);
+          }
+        }
+        if (maxStrokeX > canvasWidth * 0.88) {
+          scaleX = (canvasWidth * 0.86) / maxStrokeX;
+        }
+      }
+    }
+
     for (const s of data.strokes) {
+      const clonedPath: SplinePath = {
+        isClosed: s.path.isClosed,
+        segments: s.path.segments.map((seg) => ({
+          p0: { x: seg.p0.x * scaleX, y: seg.p0.y },
+          p1: { x: seg.p1.x * scaleX, y: seg.p1.y },
+          p2: { x: seg.p2.x * scaleX, y: seg.p2.y },
+          p3: { x: seg.p3.x * scaleX, y: seg.p3.y },
+        })),
+      };
+
+      const clonedWave = s.waveParams ? {
+        ...s.waveParams,
+        baseP0: { x: s.waveParams.baseP0.x * scaleX, y: s.waveParams.baseP0.y },
+        baseP1: { x: s.waveParams.baseP1.x * scaleX, y: s.waveParams.baseP1.y },
+      } : undefined;
+
       const stroke = this.addStroke(
-        s.path,
+        clonedPath,
         s.style,
         s.instrumentId,
         140,
@@ -1877,7 +1941,7 @@ export class StrokeManager {
         s.harmonizer
       );
       if (s.muted) stroke.muted = true;
-      if (s.waveParams) stroke.waveParams = s.waveParams;
+      if (clonedWave) stroke.waveParams = clonedWave;
     }
     this.resyncAllPlayheads();
   }

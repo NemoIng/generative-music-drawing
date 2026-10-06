@@ -359,5 +359,125 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
       expect(emojiRegex.test(opt.textContent || '')).toBe(false);
     }
   });
+
+  it('contains Record button, Record modal with Simulate and Live tabs, and Live Recording Banner', () => {
+    // Record top bar button
+    const recordModalBtn = doc.getElementById('recordModalBtn') as HTMLButtonElement;
+    expect(recordModalBtn).toBeDefined();
+    expect(recordModalBtn.textContent?.trim()).toBe('Record');
+
+    // Record modal
+    const recordModal = doc.getElementById('recordModal');
+    expect(recordModal).toBeDefined();
+    expect(recordModal?.classList.contains('hidden')).toBe(true);
+
+    // Tab buttons
+    const tabSimulateBtn = doc.getElementById('tabSimulateBtn');
+    const tabLiveBtn = doc.getElementById('tabLiveBtn');
+    expect(tabSimulateBtn).toBeDefined();
+    expect(tabLiveBtn).toBeDefined();
+
+    // Panes
+    const simPane = doc.getElementById('tabSimulatePane');
+    const livePane = doc.getElementById('tabLivePane');
+    expect(simPane).toBeDefined();
+    expect(livePane).toBeDefined();
+
+    // Duration input and preset buttons
+    const durationInput = doc.getElementById('simDurationInput') as HTMLInputElement;
+    expect(durationInput).toBeDefined();
+    expect(durationInput.value).toBe('30');
+    expect(parseInt(durationInput.min, 10)).toBe(5);
+
+    const durationPills = doc.querySelectorAll('.duration-pill-btn');
+    expect(durationPills.length).toBeGreaterThanOrEqual(4);
+    const secs = Array.from(durationPills).map((p) => p.getAttribute('data-sec'));
+    expect(secs).toContain('15');
+    expect(secs).toContain('30');
+    expect(secs).toContain('60');
+
+    // Action buttons inside modal
+    const startSimBtn = doc.getElementById('startSimulateBtn');
+    const startLiveBtn = doc.getElementById('startLiveRecBtn');
+    expect(startSimBtn).toBeDefined();
+    expect(startLiveBtn).toBeDefined();
+
+    // Floating Live Recording Banner
+    const liveBanner = doc.getElementById('liveRecordingBanner');
+    expect(liveBanner).toBeDefined();
+    expect(liveBanner?.classList.contains('hidden')).toBe(true);
+
+    const liveRecTimer = doc.getElementById('liveRecTimer');
+    expect(liveRecTimer).toBeDefined();
+    expect(liveRecTimer?.textContent?.trim()).toBe('00:00');
+
+    const stopLiveRecBtn = doc.getElementById('stopLiveRecBtn');
+    const cancelLiveRecBtn = doc.getElementById('cancelLiveRecBtn');
+    expect(stopLiveRecBtn).toBeDefined();
+    expect(cancelLiveRecBtn).toBeDefined();
+
+    // Verify all button texts are strictly emoji-free
+    const emojiRegex = /[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u;
+    const testElements = [recordModalBtn, tabSimulateBtn, tabLiveBtn, startSimBtn, startLiveBtn, stopLiveRecBtn, cancelLiveRecBtn];
+    for (const el of testElements) {
+      if (el) {
+        expect(emojiRegex.test(el.textContent || '')).toBe(false);
+      }
+    }
+  });
+
+  it('declutters the top bar actions and places secondary utility controls and guide in the bottom bar', () => {
+    const topActions = doc.querySelector('.top-actions-group .actions-group');
+    expect(topActions).toBeDefined();
+
+    // Top actions bar should contain only core playback/transport & controls buttons
+    const topButtons = Array.from(topActions?.children || []).map((el) => el.id);
+    expect(topButtons).toEqual([
+      'resyncBtn',
+      'randomizePlayheadsBtn',
+      'playPauseBtn',
+      'undoBtn',
+      'recordModalBtn',
+      'drawerToggleBtn',
+    ]);
+
+    // Bottom bar actions container exists
+    const bottomActions = doc.querySelector('.bottom-bar .bottom-bar-actions');
+    expect(bottomActions).toBeDefined();
+
+    // Contains Clear, Theme, Fullscreen, and Guide
+    const clearBtn = bottomActions?.querySelector('#clearBtn');
+    const themeBtn = bottomActions?.querySelector('#themeToggleBtn');
+    const fsBtn = bottomActions?.querySelector('#fullscreenBtn');
+    const guideBtn = bottomActions?.querySelector('.btn-guide') as HTMLAnchorElement;
+
+    expect(clearBtn).toBeDefined();
+    expect(themeBtn).toBeDefined();
+    expect(fsBtn).toBeDefined();
+    expect(guideBtn).toBeDefined();
+
+    // Guide button is at the end of bottom-bar-actions (bottom right corner)
+    expect(bottomActions?.lastElementChild).toBe(guideBtn);
+    expect(guideBtn.getAttribute('href')).toBe('guide.html');
+    expect(guideBtn.textContent?.trim()).toBe('Guide');
+  });
+
+  it('provides dedicated Keyboard Shortcuts card inside Controls drawer', () => {
+    const drawer = doc.getElementById('advancedDrawer');
+    expect(drawer).toBeDefined();
+
+    const shortcutsList = drawer?.querySelector('.drawer-shortcuts-list');
+    expect(shortcutsList).toBeDefined();
+
+    const shortcutRows = shortcutsList?.querySelectorAll('.shortcut-row');
+    expect(shortcutRows && shortcutRows.length).toBeGreaterThanOrEqual(10);
+
+    // Verify key shortcuts are listed (Space / P, R, Shift + R, L, Esc, etc.)
+    const keysText = Array.from(shortcutRows || []).map((r) => r.textContent || '');
+    expect(keysText.some((t) => t.includes('Space / P'))).toBe(true);
+    expect(keysText.some((t) => t.includes('Shift + R'))).toBe(true);
+    expect(keysText.some((t) => t.includes('L'))).toBe(true);
+    expect(keysText.some((t) => t.includes('Esc'))).toBe(true);
+  });
 });
 

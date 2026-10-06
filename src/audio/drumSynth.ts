@@ -1,4 +1,4 @@
-import { soundEngine } from './audioContext';
+import { soundEngine, SoundEngine } from './audioContext';
 import { XAxisModulationMode } from './synthVoice';
 
 /**
@@ -17,7 +17,7 @@ export class DrumSynth {
   /**
    * Generates or retrieves a shared white noise buffer for snare, hi-hat, and clap synthesis.
    */
-  private static getNoiseBuffer(ctx: AudioContext): AudioBuffer {
+  private static getNoiseBuffer(ctx: BaseAudioContext): AudioBuffer {
     if (this.cachedNoiseBuffer && this.cachedNoiseBuffer.sampleRate === ctx.sampleRate) {
       return this.cachedNoiseBuffer;
     }
@@ -49,11 +49,14 @@ export class DrumSynth {
     canvasWidth: number = 1,
     xModMode: XAxisModulationMode = 'panAndTone',
     timeOffset: number = 0,
-    reverb: number = 0.0
+    reverb: number = 0.0,
+    engine: SoundEngine = soundEngine,
+    baseTime?: number
   ): void {
-    if (!soundEngine.isReady || velocity <= 0.001) return;
-    const ctx = soundEngine.context;
-    const now = ctx.currentTime + timeOffset;
+    if (!engine.isReady || velocity <= 0.001) return;
+    const ctx = engine.context;
+    const rawNow = (baseTime !== undefined ? baseTime : ctx.currentTime) + timeOffset;
+    const now = Math.max(rawNow, ctx.currentTime + timeOffset);
 
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -88,7 +91,7 @@ export class DrumSynth {
     gain.connect(panner);
 
     // Kicks are routed primarily dry with optional subtle sub-reverb
-    soundEngine.connectVoice(panner, 0.0, Math.min(1, reverb * 0.25));
+    engine.connectVoice(panner, 0.0, Math.min(1, reverb * 0.25));
 
     osc.start(now);
     clickOsc.start(now);
@@ -105,11 +108,14 @@ export class DrumSynth {
     canvasWidth: number = 1,
     xModMode: XAxisModulationMode = 'panAndTone',
     timeOffset: number = 0,
-    reverb: number = 0.35
+    reverb: number = 0.35,
+    engine: SoundEngine = soundEngine,
+    baseTime?: number
   ): void {
-    if (!soundEngine.isReady || velocity <= 0.001) return;
-    const ctx = soundEngine.context;
-    const now = ctx.currentTime + timeOffset;
+    if (!engine.isReady || velocity <= 0.001) return;
+    const ctx = engine.context;
+    const rawNow = (baseTime !== undefined ? baseTime : ctx.currentTime) + timeOffset;
+    const now = Math.max(rawNow, ctx.currentTime + timeOffset);
 
     const pan = this.getPan(x, canvasWidth, xModMode);
     const panner = ctx.createStereoPanner();
@@ -154,7 +160,7 @@ export class DrumSynth {
     masterSnareGain.connect(panner);
 
     // Snares have subtle reverb send for acoustic space
-    soundEngine.connectVoice(panner, 0.15, reverb);
+    engine.connectVoice(panner, 0.15, reverb);
 
     bodyOsc.start(now);
     noiseSource.start(now);
@@ -172,11 +178,14 @@ export class DrumSynth {
     canvasWidth: number = 1,
     xModMode: XAxisModulationMode = 'panAndTone',
     timeOffset: number = 0,
-    reverb: number = 0.25
+    reverb: number = 0.25,
+    engine: SoundEngine = soundEngine,
+    baseTime?: number
   ): void {
-    if (!soundEngine.isReady || velocity <= 0.001) return;
-    const ctx = soundEngine.context;
-    const now = ctx.currentTime + timeOffset;
+    if (!engine.isReady || velocity <= 0.001) return;
+    const ctx = engine.context;
+    const rawNow = (baseTime !== undefined ? baseTime : ctx.currentTime) + timeOffset;
+    const now = Math.max(rawNow, ctx.currentTime + timeOffset);
 
     const pan = this.getPan(x, canvasWidth, xModMode);
     const panner = ctx.createStereoPanner();
@@ -203,7 +212,7 @@ export class DrumSynth {
     filter.connect(gain);
     gain.connect(panner);
 
-    soundEngine.connectVoice(panner, isClosed ? 0.08 : 0.25, isClosed ? Math.min(1, reverb * 0.6) : reverb);
+    engine.connectVoice(panner, isClosed ? 0.08 : 0.25, isClosed ? Math.min(1, reverb * 0.6) : reverb);
 
     noiseSource.start(now);
     noiseSource.stop(now + decayTime + 0.02);
@@ -218,11 +227,14 @@ export class DrumSynth {
     canvasWidth: number = 1,
     xModMode: XAxisModulationMode = 'panAndTone',
     timeOffset: number = 0,
-    reverb: number = 0.55
+    reverb: number = 0.55,
+    engine: SoundEngine = soundEngine,
+    baseTime?: number
   ): void {
-    if (!soundEngine.isReady || velocity <= 0.001) return;
-    const ctx = soundEngine.context;
-    const now = ctx.currentTime + timeOffset;
+    if (!engine.isReady || velocity <= 0.001) return;
+    const ctx = engine.context;
+    const rawNow = (baseTime !== undefined ? baseTime : ctx.currentTime) + timeOffset;
+    const now = Math.max(rawNow, ctx.currentTime + timeOffset);
 
     const pan = this.getPan(x, canvasWidth, xModMode);
     const panner = ctx.createStereoPanner();
@@ -252,7 +264,7 @@ export class DrumSynth {
     filter.connect(gain);
     gain.connect(panner);
 
-    soundEngine.connectVoice(panner, 0.2, reverb);
+    engine.connectVoice(panner, 0.2, reverb);
 
     noiseSource.start(now);
     noiseSource.stop(now + 0.26);
@@ -268,11 +280,14 @@ export class DrumSynth {
     canvasWidth: number = 1,
     xModMode: XAxisModulationMode = 'panAndTone',
     timeOffset: number = 0,
-    reverb: number = 0.3
+    reverb: number = 0.3,
+    engine: SoundEngine = soundEngine,
+    baseTime?: number
   ): void {
-    if (!soundEngine.isReady || velocity <= 0.001) return;
-    const ctx = soundEngine.context;
-    const now = ctx.currentTime + timeOffset;
+    if (!engine.isReady || velocity <= 0.001) return;
+    const ctx = engine.context;
+    const rawNow = (baseTime !== undefined ? baseTime : ctx.currentTime) + timeOffset;
+    const now = Math.max(rawNow, ctx.currentTime + timeOffset);
 
     const pan = this.getPan(x, canvasWidth, xModMode);
     const panner = ctx.createStereoPanner();
@@ -295,7 +310,7 @@ export class DrumSynth {
     osc.connect(gain);
     gain.connect(panner);
 
-    soundEngine.connectVoice(panner, 0.18, reverb);
+    engine.connectVoice(panner, 0.18, reverb);
 
     osc.start(now);
     osc.stop(now + 0.3);
@@ -311,9 +326,11 @@ export class DrumSynth {
     canvasWidth: number = 1,
     xModMode: XAxisModulationMode = 'panAndTone',
     baseFreq: number = 120,
-    reverb: number = 0.35
+    reverb: number = 0.35,
+    engine: SoundEngine = soundEngine,
+    baseTime?: number
   ): void {
-    if (!soundEngine.isReady || velocity <= 0.001) return;
+    if (!engine.isReady || velocity <= 0.001) return;
     const burstCount = drumType === 'hihat' ? 4 : 3;
     const intervalSec = drumType === 'hihat' ? 0.035 : 0.045;
     for (let i = 0; i < burstCount; i++) {
@@ -321,19 +338,19 @@ export class DrumSynth {
       const hitVel = velocity * (0.7 + 0.3 * (i / (burstCount - 1 || 1)));
       switch (drumType) {
         case 'kick':
-          this.triggerKick(hitVel, x, canvasWidth, xModMode, offset, reverb);
+          this.triggerKick(hitVel, x, canvasWidth, xModMode, offset, reverb, engine, baseTime);
           break;
         case 'snare':
-          this.triggerSnare(hitVel, x, canvasWidth, xModMode, offset, reverb);
+          this.triggerSnare(hitVel, x, canvasWidth, xModMode, offset, reverb, engine, baseTime);
           break;
         case 'hihat':
-          this.triggerHiHat(i === burstCount - 1 ? false : true, hitVel, x, canvasWidth, xModMode, offset, reverb);
+          this.triggerHiHat(i === burstCount - 1 ? false : true, hitVel, x, canvasWidth, xModMode, offset, reverb, engine, baseTime);
           break;
         case 'tom':
-          this.triggerTom(baseFreq, hitVel, x, canvasWidth, xModMode, offset, reverb);
+          this.triggerTom(baseFreq, hitVel, x, canvasWidth, xModMode, offset, reverb, engine, baseTime);
           break;
         case 'clap':
-          this.triggerClap(hitVel, x, canvasWidth, xModMode, offset, reverb);
+          this.triggerClap(hitVel, x, canvasWidth, xModMode, offset, reverb, engine, baseTime);
           break;
       }
     }
