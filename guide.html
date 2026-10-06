@@ -1,0 +1,1185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Harmonic Geometry • Beginner's Guide & Tips</title>
+  <style>
+    :root {
+      --bg: #090d16;
+      --bg-card: rgba(18, 25, 42, 0.75);
+      --bg-card-hover: rgba(26, 36, 60, 0.85);
+      --border: rgba(255, 255, 255, 0.08);
+      --border-accent: rgba(99, 102, 241, 0.35);
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --accent-indigo: #38bdf8;
+      --accent-purple: #818cf8;
+      --accent-amber: #fbbf24;
+      --accent-emerald: #34d399;
+      --accent-rose: #fb7185;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    [data-theme="light"] {
+      --bg: #f8fafc;
+      --bg-card: rgba(255, 255, 255, 0.85);
+      --bg-card-hover: rgba(241, 245, 249, 0.95);
+      --border: rgba(0, 0, 0, 0.08);
+      --border-accent: rgba(99, 102, 241, 0.3);
+      --text: #0f172a;
+      --text-muted: #475569;
+      --text-dim: #94a3b8;
+      --accent-indigo: #0284c7;
+      --accent-purple: #6366f1;
+      --accent-amber: #d97706;
+      --accent-emerald: #059669;
+      --accent-rose: #e11d48;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      line-height: 1.65;
+      padding: 0;
+      transition: background-color 0.3s ease, color 0.3s ease;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Top Navigation Header */
+    header.guide-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      background: rgba(9, 13, 22, 0.8);
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    [data-theme="light"] header.guide-header {
+      background: rgba(248, 250, 252, 0.85);
+    }
+
+    .brand-wrap {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .brand-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #6366f1, #38bdf8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 1.1rem;
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+    }
+
+    .brand-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-badge {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      background: rgba(99, 102, 241, 0.15);
+      color: var(--accent-purple);
+      border: 1px solid var(--border-accent);
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-weight: 600;
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      padding: 0.5rem 0.95rem;
+      border-radius: 8px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.2s ease;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text);
+    }
+
+    .btn:hover {
+      background: var(--bg-card-hover);
+      transform: translateY(-1px);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #6366f1, #4f46e5);
+      border-color: #4f46e5;
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(79, 70, 229, 0.3);
+    }
+
+    .btn-primary:hover {
+      box-shadow: 0 6px 18px rgba(79, 70, 229, 0.45);
+    }
+
+    /* Container Layout */
+    .container {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 2.5rem 1.5rem 5rem;
+    }
+
+    /* Hero Banner */
+    .hero {
+      text-align: center;
+      padding: 3.5rem 1rem 2.5rem;
+      max-width: 780px;
+      margin: 0 auto;
+    }
+
+    .hero-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: rgba(56, 189, 248, 0.1);
+      color: var(--accent-indigo);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      padding: 4px 14px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin-bottom: 1.25rem;
+    }
+
+    .hero h1 {
+      font-size: clamp(2.2rem, 5vw, 3.2rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: 1rem;
+      background: linear-gradient(135deg, #ffffff 40%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    [data-theme="light"] .hero h1 {
+      background: linear-gradient(135deg, #0f172a 40%, #475569 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero p {
+      font-size: 1.15rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* Table of Contents Bar */
+    .toc-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      justify-content: center;
+      margin: 2rem 0 3rem;
+      padding: 0.75rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      backdrop-filter: blur(10px);
+    }
+
+    .toc-item {
+      font-size: 0.825rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-decoration: none;
+      padding: 0.35rem 0.75rem;
+      border-radius: 6px;
+      transition: all 0.15s ease;
+    }
+
+    .toc-item:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    /* Card & Section Styles */
+    section {
+      margin-bottom: 3.5rem;
+      scroll-margin-top: 6rem;
+    }
+
+    .section-header {
+      margin-bottom: 1.5rem;
+    }
+
+    .section-tag {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent-purple);
+      margin-bottom: 0.25rem;
+      display: block;
+    }
+
+    .section-title {
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.75rem;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+      transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+
+    [data-theme="light"] .card {
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.05);
+    }
+
+    .card:hover {
+      border-color: var(--border-accent);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1.25rem;
+    }
+
+    /* Step Badge & Timeline */
+    .step-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .step-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 1.25rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.25rem 1.5rem;
+    }
+
+    .step-number {
+      width: 36px;
+      height: 36px;
+      flex-shrink: 0;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #6366f1, #38bdf8);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 1rem;
+      box-shadow: 0 4px 10px rgba(99, 102, 241, 0.3);
+    }
+
+    .step-content h3 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 0.3rem;
+    }
+
+    .step-content p {
+      color: var(--text-muted);
+      font-size: 0.925rem;
+    }
+
+    /* Instrument Cards */
+    .instrument-card {
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .instrument-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 4px;
+      background: var(--card-color, #6366f1);
+    }
+
+    .instrument-top {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .instrument-avatar {
+      font-size: 1.6rem;
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.05);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--border);
+    }
+
+    .instrument-name {
+      font-size: 1.1rem;
+      font-weight: 700;
+    }
+
+    .instrument-desc {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+    }
+
+    .instrument-tip {
+      font-size: 0.8rem;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 0.4rem 0.75rem;
+      border-radius: 6px;
+      color: var(--text-dim);
+      border-left: 2px solid var(--card-color, #6366f1);
+    }
+
+    /* Callouts */
+    .callout {
+      background: rgba(99, 102, 241, 0.08);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      border-left: 4px solid var(--accent-purple);
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      margin: 1.5rem 0;
+    }
+
+    .callout-title {
+      font-weight: 700;
+      font-size: 1rem;
+      margin-bottom: 0.35rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--accent-purple);
+    }
+
+    .callout p {
+      font-size: 0.925rem;
+      color: var(--text-muted);
+    }
+
+    /* Shortcut Table */
+    .shortcut-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+
+    .shortcut-table th,
+    .shortcut-table td {
+      padding: 0.85rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .shortcut-table th {
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      letter-spacing: 0.06em;
+    }
+
+    .shortcut-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    kbd {
+      display: inline-block;
+      padding: 2px 7px;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      box-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
+    }
+
+    /* Recipe Cards */
+    .recipe-card {
+      border-left: 4px solid var(--recipe-accent, #38bdf8);
+    }
+
+    .recipe-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .recipe-steps {
+      list-style-type: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+    }
+
+    .recipe-steps li {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      position: relative;
+      padding-left: 1.5rem;
+    }
+
+    .recipe-steps li::before {
+      content: "➔";
+      position: absolute;
+      left: 0;
+      color: var(--recipe-accent, #38bdf8);
+      font-size: 0.8rem;
+    }
+
+    /* Footer */
+    footer.guide-footer {
+      border-top: 1px solid var(--border);
+      padding: 3rem 1.5rem;
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 0.875rem;
+    }
+
+    footer a {
+      color: var(--accent-purple);
+      text-decoration: none;
+    }
+
+    footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Sticky Header -->
+  <header class="guide-header">
+    <div class="brand-wrap">
+      <div class="brand-icon">♫</div>
+      <div>
+        <span class="brand-title">Harmonic Geometry</span>
+        <span class="brand-badge">User Guide</span>
+      </div>
+    </div>
+    <div class="nav-actions">
+      <button id="themeBtn" class="btn" onclick="toggleTheme()" title="Toggle Theme">
+        <span id="themeBtnText">Theme</span>
+      </button>
+      <a href="index.html" class="btn btn-primary">
+        Launch App
+      </a>
+    </div>
+  </header>
+
+  <div class="container">
+    <!-- Hero Section -->
+    <div class="hero">
+      <div class="hero-pill">✨ The Noob-Friendly Music Drawing Manual</div>
+      <h1>Turn Doodles into Ethereal Ambient Music</h1>
+      <p>
+        No music theory required. No piano lessons needed. If you can draw a line on a screen, you can compose lush, cinematic soundscapes. Here is how it all works!
+      </p>
+    </div>
+
+    <!-- Table of Contents -->
+    <div class="toc-bar">
+      <a href="#quickstart" class="toc-item">🚀 30-Sec Quickstart</a>
+      <a href="#core-magic" class="toc-item">🎨 How It Works</a>
+      <a href="#textures" class="toc-item">🖌️ 3 Line Textures</a>
+      <a href="#live-play" class="toc-item">✨ Live Play Mode</a>
+      <a href="#instruments" class="toc-item">🌈 7 Sound Inks</a>
+      <a href="#inspector" class="toc-item">🎛️ Line Controls</a>
+      <a href="#harmony" class="toc-item">🌌 Chord Progressions</a>
+      <a href="#tips" class="toc-item">💡 10 Golden Tips</a>
+      <a href="#recipes" class="toc-item">🥣 Instant Recipes</a>
+      <a href="#shortcuts" class="toc-item">⌨️ Shortcuts</a>
+    </div>
+
+    <!-- 1. Quickstart -->
+    <section id="quickstart">
+      <div class="section-header">
+        <span class="section-tag">Step-by-Step</span>
+        <h2 class="section-title">🚀 30 Seconds to Your First Song</h2>
+      </div>
+
+      <div class="step-list">
+        <div class="step-item">
+          <div class="step-number">1</div>
+          <div class="step-content">
+            <h3>Pick a Sound Ink (Color)</h3>
+            <p>At the top of the screen, click on one of the colorful ink circles. Try <strong>Indigo</strong> (🎻 Bowed Cello) or <strong>Amber</strong> (🪵 Acoustic Kalimba).</p>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-number">2</div>
+          <div class="step-content">
+            <h3>Draw a Line Across the Canvas</h3>
+            <p>Click and drag your mouse from left to right. Draw a gentle wave, a straight line, or a mountain curve. As soon as you release, it turns into a glowing musical track!</p>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-number">3</div>
+          <div class="step-content">
+            <h3>Press Spacebar (Play / Pause)</h3>
+            <p>Watch the little glowing orb (the <em>playhead</em>) ride along your line like a train on a track. Hear it sing notes continuously!</p>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-number">4</div>
+          <div class="step-content">
+            <h3>Draw a Second Line Above It</h3>
+            <p>Switch to <strong>Violet</strong> (🔔 Shimmer Bells), select the <strong>Dotted (• • •)</strong> texture, and draw another curve near the top. Both lines now play together in harmony!</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Core Magic -->
+    <section id="core-magic">
+      <div class="section-header">
+        <span class="section-tag">The Fundamentals</span>
+        <h2 class="section-title">🎨 How Drawing Makes Sound</h2>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <h3 style="margin-bottom: 0.5rem;">↕️ Up & Down = Pitch (High vs Low)</h3>
+          <p style="color: var(--text-muted); font-size: 0.95rem;">
+            Think of the canvas like a harp stood upright:
+          </p>
+          <ul style="margin: 0.75rem 0 0 1.25rem; color: var(--text-muted); font-size: 0.9rem;">
+            <li><strong>Bottom of screen:</strong> Deep, warm bass notes (like a cello or sub-bass).</li>
+            <li><strong>Middle of screen:</strong> Cozy melodies, guitars, and kalimba tines.</li>
+            <li><strong>Top of screen:</strong> Sparkling high bells, crystal chimes, and flutes.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom: 0.5rem;">↔️ Left & Right = Time & Stereo Panning</h3>
+          <p style="color: var(--text-muted); font-size: 0.95rem;">
+            Left-to-right controls both when the note plays and where you hear it in your ears:
+          </p>
+          <ul style="margin: 0.75rem 0 0 1.25rem; color: var(--text-muted); font-size: 0.9rem;">
+            <li><strong>Stereo Placement:</strong> Lines on the left edge sound in your left headphone; lines on the right sound in your right headphone!</li>
+            <li><strong>Looping:</strong> The playhead travels from start to finish, looping seamlessly.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="callout">
+        <div class="callout-title">🛡️ Why You Can Never Play a "Wrong Note" (The Safety Net)</div>
+        <p>
+          In traditional instruments like pianos, pressing the wrong key sounds harsh. In <em>Harmonic Geometry</em>, the canvas is automatically locked to ancient harmonious scales (like <strong>Dorian</strong>, <strong>Lydian</strong>, and <strong>Pentatonic</strong>). Every single millimeter you draw snaps to harmonious musical degrees. Whatever you draw will sound serene and in-tune!
+        </p>
+      </div>
+
+      <div class="card" style="margin-top: 1.25rem;">
+        <h3 style="margin-bottom: 0.5rem;">🌌 The Scrollable 8-Octave Universe</h3>
+        <p style="color: var(--text-muted); font-size: 0.925rem;">
+          The screen isn't just one page — it's an <strong>8-octave infinite sky</strong>! Scroll your mouse wheel (or drag the mini-map on the right edge) to travel from sub-bass vibrations at the bottom all the way up to celestial frequencies at the top.
+        </p>
+      </div>
+    </section>
+
+    <!-- 3. Line Textures -->
+    <section id="textures">
+      <div class="section-header">
+        <span class="section-tag">Stroke Types</span>
+        <h2 class="section-title">🖌️ The 3 Line Textures</h2>
+      </div>
+
+      <div class="grid-3">
+        <div class="card">
+          <div style="font-size: 1.8rem; margin-bottom: 0.5rem;">―</div>
+          <h3 style="margin-bottom: 0.4rem;">Solid Drone</h3>
+          <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.75rem;">
+            Continuous singing tone (like a bowed cello, synthesizer pad, or glass organ).
+          </p>
+          <div style="font-size: 0.8rem; color: var(--accent-indigo); background: rgba(56, 189, 248, 0.08); padding: 0.5rem 0.75rem; border-radius: 6px;">
+            ✨ <strong>Smooth Legato Transition:</strong> When your curve slopes from note to note, both notes sound simultaneously in a lush, warm chord before crossfading!
+          </div>
+        </div>
+
+        <div class="card">
+          <div style="font-size: 1.8rem; margin-bottom: 0.5rem;">• • •</div>
+          <h3 style="margin-bottom: 0.4rem;">Dotted Chime</h3>
+          <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.75rem;">
+            Plucked rhythmic notes (like a thumb piano, music box, or acoustic harp).
+          </p>
+          <div style="font-size: 0.8rem; color: var(--accent-amber); background: rgba(251, 191, 36, 0.08); padding: 0.5rem 0.75rem; border-radius: 6px;">
+            ✨ <strong>Acoustic Resonance:</strong> Every dot rings out with generous decay tails that naturally overlap with following notes like ringing singing bowls!
+          </div>
+        </div>
+
+        <div class="card">
+          <div style="font-size: 1.8rem; margin-bottom: 0.5rem;">❙❙❙</div>
+          <h3 style="margin-bottom: 0.4rem;">Roll / Ratchet</h3>
+          <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.75rem;">
+            Rapid multi-trigger bursts (like trap hi-hat rolls, drum ruffs, or modular synth ratchets).
+          </p>
+          <div style="font-size: 0.8rem; color: var(--accent-emerald); background: rgba(52, 211, 153, 0.08); padding: 0.5rem 0.75rem; border-radius: 6px;">
+            ✨ <strong>Rhythmic Energy:</strong> Perfect for adding kinetic movement, rolling shakers, and snappy texture to ambient beats!
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Live Play Mode -->
+    <section id="live-play">
+      <div class="section-header">
+        <span class="section-tag">Interactive Theremin</span>
+        <h2 class="section-title">✨ Live Play Mode: The Musical Wand</h2>
+      </div>
+
+      <div class="card" style="margin-bottom: 2rem;">
+        <p style="font-size: 1.05rem; margin-bottom: 1.25rem;">
+          In addition to composing looping scores with <strong>✏️ Draw Mode</strong>, Harmonic Geometry includes an expressive <strong>✨ Live Play Mode</strong>. Instead of permanently adding lines to your score, clicking and dragging acts like an acoustic musical wand or optical theremin!
+        </p>
+
+        <div class="grid-2" style="margin-top: 1rem; gap: 1rem;">
+          <div class="card" style="padding: 1.25rem; background: var(--bg-card);">
+            <h4 style="color: var(--accent-indigo); margin-bottom: 0.5rem;">✨ Disappearing Ribbon Trail</h4>
+            <p style="color: var(--text-muted); font-size: 0.92rem;">
+              When you click or drag across the canvas, the note sounds instantly beneath your cursor, leaving behind a glowing, tapering ribbon that smoothly evaporates over 1 second. No permanent strokes clutter your score.
+            </p>
+          </div>
+          <div class="card" style="padding: 1.25rem; background: var(--bg-card);">
+            <h4 style="color: var(--accent-purple); margin-bottom: 0.5rem;">🌌 Customizable Live Reverb & Mix</h4>
+            <p style="color: var(--text-muted); font-size: 0.92rem;">
+              Live notes default to a standard <strong>50% cathedral reverb</strong>, but you can dial it anywhere from 0% dry to 100% ambient wash in <strong>⚙ Controls</strong>, alongside a dedicated <strong>Live Volume</strong> slider to balance against background music.
+            </p>
+          </div>
+          <div class="card" style="padding: 1.25rem; background: var(--bg-card);">
+            <h4 style="color: var(--accent-emerald); margin-bottom: 0.5rem;">🎵 Live Scale Lock & Theremin Glide</h4>
+            <p style="color: var(--text-muted); font-size: 0.92rem;">
+              Switch between <strong>Free Glide</strong> (continuous microtonal portamento) and <strong>Scale Lock</strong> (locks onto active scale notes and chord progression tones). In Scale Lock, every touch is guaranteed 100% in tune with your background loops!
+            </p>
+          </div>
+          <div class="card" style="padding: 1.25rem; background: var(--bg-card);">
+            <h4 style="color: var(--accent-amber); margin-bottom: 0.5rem;">🪄 Sustain Tail & Trail Life</h4>
+            <p style="color: var(--text-muted); font-size: 0.92rem;">
+              Tailor the acoustic release from 0.05s (tight keys) up to 2.5s (soaring ambient pad washes that resonate after lifting your hand). Adjust Trail Life to choose how long the glowing visual ribbon lingers.
+            </p>
+          </div>
+        </div>
+
+        <div style="margin-top: 1.5rem; padding: 0.85rem 1.15rem; background: var(--bg-card-hover); border-radius: 8px; border-left: 3px solid var(--accent-indigo);">
+          <strong>💡 Pro Tip:</strong> Press <kbd>P</kbd> to toggle between <strong>✏️ Draw Score Mode</strong> and <strong>✨ Live Play Mode</strong>. Open <strong>⚙ Controls</strong> at any time—the drawer floats as an overlay without shrinking the canvas or detuning your playing music!
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. Instruments -->
+    <section id="instruments">
+      <div class="section-header">
+        <span class="section-tag">Color Inks</span>
+        <h2 class="section-title">🌈 Meet Your 7 Instruments</h2>
+      </div>
+
+      <div class="grid-2">
+        <!-- Indigo -->
+        <div class="card instrument-card" style="--card-color: #2563eb;">
+          <div class="instrument-top">
+            <div class="instrument-avatar">🎻</div>
+            <div>
+              <div class="instrument-name">Indigo • Bowed Cello & Strings</div>
+              <div style="font-size: 0.8rem; color: var(--text-dim);">Shortcut: [1]</div>
+            </div>
+          </div>
+          <p class="instrument-desc">
+            Rich, warm cello drone with acoustic body resonance and woody pizzicato plucks. Perfect for deep, emotional foundations and melancholic melodies.
+          </p>
+          <div class="instrument-tip">💡 <strong>Best use:</strong> Draw long solid curves near the bottom for cinematic basslines.</div>
+        </div>
+
+        <!-- Amber -->
+        <div class="card instrument-card" style="--card-color: #d97706;">
+          <div class="instrument-top">
+            <div class="instrument-avatar">🪵</div>
+            <div>
+              <div class="instrument-name">Amber • Acoustic Kalimba & Wood</div>
+              <div style="font-size: 0.8rem; color: var(--text-dim);">Shortcut: [2]</div>
+            </div>
+          </div>
+          <p class="instrument-desc">
+            Resonant wooden thumb piano (kalimba) with warm organic tines and temple block taps. Super cozy, grounded, and peaceful.
+          </p>
+          <div class="instrument-tip">💡 <strong>Best use:</strong> Dotted lines in the middle register for cheerful, relaxing African & Lo-Fi melodies.</div>
+        </div>
+
+        <!-- Spruce -->
+        <div class="card instrument-card" style="--card-color: #059669;">
+          <div class="instrument-top">
+            <div class="instrument-avatar">🫧</div>
+            <div>
+              <div class="instrument-name">Spruce • Glass Organ & Flute</div>
+              <div style="font-size: 0.8rem; color: var(--text-dim);">Shortcut: [3]</div>
+            </div>
+          </div>
+          <p class="instrument-desc">
+            Pure fifth-harmonic glass organ with breathy flute air and soft droplet chimes. Evokes misty forests and sacred cathedrals.
+          </p>
+          <div class="instrument-tip">💡 <strong>Best use:</strong> Slow solid drone waves with high reverb for instant Brian Eno ambiance.</div>
+        </div>
+
+        <!-- Violet -->
+        <div class="card instrument-card" style="--card-color: #7c3aed;">
+          <div class="instrument-top">
+            <div class="instrument-avatar">🔔</div>
+            <div>
+              <div class="instrument-name">Violet • Music Box & Shimmer Bells</div>
+              <div style="font-size: 0.8rem; color: var(--text-dim);">Shortcut: [4]</div>
+            </div>
+          </div>
+          <p class="instrument-desc">
+            Sparkling clockwork music box, crystalline bells, and celestial shimmer. Sounds like twinkling stars and childhood wonder.
+          </p>
+          <div class="instrument-tip">💡 <strong>Best use:</strong> High dotted arches near the top for magical night-sky chimes.</div>
+        </div>
+
+        <!-- Rose -->
+        <div class="card instrument-card" style="--card-color: #e11d48;">
+          <div class="instrument-top">
+            <div class="instrument-avatar">🪕</div>
+            <div>
+              <div class="instrument-name">Rose • Acoustic Harp & Koto</div>
+              <div style="font-size: 0.8rem; color: var(--text-dim);">Shortcut: [5]</div>
+            </div>
+          </div>
+          <p class="instrument-desc">
+            Plucked acoustic concert harp and Japanese koto with soundboard resonance. Delicate, elegant, and poetic.
+          </p>
+          <div class="instrument-tip">💡 <strong>Best use:</strong> Slanted dotted lines that cascade downwards like water flowing down a stream.</div>
+        </div>
+
+        <!-- Slate -->
+        <div class="card instrument-card" style="--card-color: #eab308;">
+          <div class="instrument-top">
+            <div class="instrument-avatar">⚡</div>
+            <div>
+              <div class="instrument-name">Yellow • Solar Acid & Sub-Bass</div>
+              <div style="font-size: 0.8rem; color: var(--text-dim);">Shortcut: [6]</div>
+            </div>
+          </div>
+          <p class="instrument-desc">
+            Detuned analog saw oscillators with a resonant 24dB ladder filter and 303 acid squelch. Energetic, punchy, and modern.
+          </p>
+          <div class="instrument-tip">💡 <strong>Best use:</strong> Sharp zigzag curves for resonant filter sweeps and hypnotic bass riffs.</div>
+        </div>
+
+        <!-- Onyx (Full Width) -->
+        <div class="card instrument-card" style="--card-color: #18181b; grid-column: 1 / -1;">
+          <div class="instrument-top">
+            <div class="instrument-avatar">🥁</div>
+            <div>
+              <div class="instrument-name">Onyx • 808 Analog Drum Machine</div>
+              <div style="font-size: 0.8rem; color: var(--text-dim);">Shortcut: [7]</div>
+            </div>
+          </div>
+          <p class="instrument-desc">
+            A full vintage drum kit built into a single ink color! What sound you get depends on where you draw on the canvas:
+          </p>
+          <div class="grid-3" style="margin-top: 0.5rem;">
+            <div style="background: rgba(255,255,255,0.03); padding: 0.75rem; border-radius: 8px;">
+              <strong>Bottom Zone:</strong> Deep 808 Sub Kick 💣
+            </div>
+            <div style="background: rgba(255,255,255,0.03); padding: 0.75rem; border-radius: 8px;">
+              <strong>Middle Zone:</strong> Snappy Snare & Clap 👏
+            </div>
+            <div style="background: rgba(255,255,255,0.03); padding: 0.75rem; border-radius: 8px;">
+              <strong>Top Zone:</strong> Tuned Toms & Crisp Hi-Hats 🥢
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. Inspector Controls -->
+    <section id="inspector">
+      <div class="section-header">
+        <span class="section-tag">Fine-Tuning</span>
+        <h2 class="section-title">🎛️ The Line Inspector: Sculpting Every Track</h2>
+      </div>
+
+      <div class="card">
+        <p style="color: var(--text-muted); margin-bottom: 1.25rem;">
+          Click on any line on the canvas to select it. A glowing Inspector panel appears on the right with powerful controls for that specific line:
+        </p>
+
+        <div class="grid-2">
+          <div>
+            <h4 style="margin-bottom: 0.25rem;">🔊 Volume & 🫧 Reverb</h4>
+            <p style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 1rem;">
+              Set the individual loudness and reverb room size for each stroke. Give your lead melodies high reverb and your bass clean punch!
+            </p>
+
+            <h4 style="margin-bottom: 0.25rem;">⏱️ Speed vs Bars Mode</h4>
+            <p style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 1rem;">
+              Choose between <strong>Speed</strong> (travels at a constant pace) or <strong>Bars</strong> (locks the travel time to exactly 1, 2, 4, or 8 musical measures).
+            </p>
+
+            <h4 style="margin-bottom: 0.25rem;">🎲 Tone Fluctuation (Humanize)</h4>
+            <p style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 1rem;">
+              Adds subtle organic micro-variations to the pitch and dot scattering. Set it to 15-30% for that vintage, nostalgic cassette tape warmth.
+            </p>
+          </div>
+
+          <div>
+            <h4 style="margin-bottom: 0.25rem;">🌊 Wavify (Sine Wave Restructure)</h4>
+            <p style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 1rem;">
+              Want rolling arpeggios without drawing wavy lines by hand? Click <strong>Sine Wave</strong> in the inspector to turn any straight line into undulating sinusoidal peaks and valleys!
+            </p>
+
+            <h4 style="margin-bottom: 0.25rem;">📋 Copy, Paste & Duplicate</h4>
+            <p style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 1rem;">
+              Select a line and press <kbd>⌘C</kbd> / <kbd>⌘V</kbd> or <kbd>⌘D</kbd> (or click <strong>Duplicate</strong>). It clones your curve with all volume, instrument, and speed settings preserved!
+            </p>
+
+            <h4 style="margin-bottom: 0.25rem;">🔀 Traversal: Restart vs Bounce</h4>
+            <p style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 0.75rem;">
+              Set how the playhead moves: <strong>Restart ↻</strong> (loops from the beginning of your line) or <strong>Bounce ⇄</strong> (smoothly oscillates back and forth).
+            </p>
+
+            <h4 style="margin-bottom: 0.25rem;">⏱ Timing: Speed vs Timer</h4>
+            <p style="font-size: 0.875rem; color: var(--text-muted);">
+              Control pacing with <strong>Speed</strong> (velocity multiplier ¼x to 4x) or <strong>Timer</strong> (set exact duration from 1s up to 300s). For long meditative drones, simply set the timer high (e.g. 60s, 120s, or 300s).
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. Harmonic Progressions -->
+    <section id="harmony">
+      <div class="section-header">
+        <span class="section-tag">Musical Progression</span>
+        <h2 class="section-title">🌌 Ambient Chord Progressions</h2>
+      </div>
+
+      <div class="card">
+        <p style="color: var(--text-muted); margin-bottom: 1rem;">
+          In traditional music apps, you have to manually record chord changes. Here, the built-in <strong>Harmonic Engine</strong> shifts the harmony automatically behind your drawing!
+        </p>
+        <p style="color: var(--text-muted); margin-bottom: 1rem;">
+          Open <strong>⚙ Controls</strong> and select a progression under <em>Harmonic Progression</em>:
+        </p>
+
+        <div class="grid-3">
+          <div style="background: rgba(255,255,255,0.03); padding: 1rem; border-radius: 10px; border: 1px solid var(--border);">
+            <h4 style="color: var(--accent-indigo); margin-bottom: 0.25rem;">Neo-Riemannian Ambient</h4>
+            <p style="font-size: 0.825rem; color: var(--text-muted);">D Dorian → F Lydian → C Major → A Minor. Dreamy, cinematic modal interchange that feels like flying over mountains.</p>
+          </div>
+          <div style="background: rgba(255,255,255,0.03); padding: 1rem; border-radius: 10px; border: 1px solid var(--border);">
+            <h4 style="color: var(--accent-amber); margin-bottom: 0.25rem;">Eno Modal Drift</h4>
+            <p style="font-size: 0.825rem; color: var(--text-muted);">A slow 4-measure pendulum between Dm7 and G9 with continuous fifths. Pure 1970s tape ambient drift.</p>
+          </div>
+          <div style="background: rgba(255,255,255,0.03); padding: 1rem; border-radius: 10px; border: 1px solid var(--border);">
+            <h4 style="color: var(--accent-purple); margin-bottom: 0.25rem;">Cathedral Swell</h4>
+            <p style="font-size: 0.825rem; color: var(--text-muted);">F Lydian → Am9 → Cmaj7 → Dm7. Majestic, uplifting, spiritual harmonies that resonate like sunlight through stained glass.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7. 10 Golden Tips -->
+    <section id="tips">
+      <div class="section-header">
+        <span class="section-tag">Pro Advice</span>
+        <h2 class="section-title">💡 10 Golden Tips for Beginners</h2>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <h4>1. 🏔️ The "Horizon Bass" Trick</h4>
+          <p style="font-size: 0.9rem; color: var(--text-muted); margin-top: 0.25rem;">
+            Draw one long, straight solid line near the bottom of the screen with <strong>Indigo (Cello)</strong>. This acts as your grounding root tone, giving all other melodies a rich, warm foundation to sit upon.
+          </p>
+        </div>
+
+        <div class="card">
+          <h4>2. ✨ The "Constellation Melody"</h4>
+          <p style="font-size: 0.9rem; color: var(--text-muted); margin-top: 0.25rem;">
+            Draw short, gentle curved arches in the top half using <strong>Violet (Bells)</strong> or <strong>Amber (Kalimba)</strong> with <strong>Dotted (• • •)</strong> mode. They will sound like constellations twinkling in the night sky.
+          </p>
+        </div>
+
+        <div class="card">
+          <h4>3. ⏳ Slow Down the Tempo (24 to 40 BPM)</h4>
+          <p style="font-size: 0.9rem; color: var(--text-muted); margin-top: 0.25rem;">
+            Pop music runs fast (120 BPM), but ambient music lives in slow time. Set the tempo slider to 28-36 BPM and let the notes ring and breathe.
+          </p>
+        </div>
+
+        <div class="card">
+          <h4>4. 🎧 Use Stereo Space (Spread Left & Right)</h4>
+          <p style="font-size: 0.9rem; color: var(--text-muted); margin-top: 0.25rem;">
+            Draw your bass line across the center, one melody on the left half, and another melody on the right half. When wearing headphones, you'll be enveloped in a 3D audio sphere!
+          </p>
+        </div>
+
+        <div class="card">
+          <h4>5. 📋 The "Duplicate & Harmony" Hack</h4>
+          <p style="font-size: 0.9rem; color: var(--text-muted); margin-top: 0.25rem;">
+            Draw a melody you love. Select it, press <kbd>⌘D</kbd> to duplicate it, then drag it up by exactly 2 or 4 guideline steps. You just created a perfect two-part harmonic duet!
+          </p>
+        </div>
+
+        <div class="card">
+          <h4>6. 🥁 The 808 Drum Blueprint</h4>
+          <p style="font-size: 0.9rem; color: var(--text-muted); margin-top: 0.25rem;">
+            Select <strong>Onyx</strong>. Draw a dotted line near the bottom for your kick drum rhythm, a dotted line in the middle for your snare clap, and a striped roll line near the top for hi-hat rolls.
+          </p>
+        </div>
+
+        <div class="card">
+          <h4>7. 📼 Add Fluctuation for Analog Warmth</h4>
+          <p style="font-size: 0.9rem; color: var(--text-muted); margin-top: 0.25rem;">
+            Computers can sound too perfect. Select your dotted lines and slide <strong>Fluctuation</strong> to 25%. You'll immediately hear vintage micro-flutter that sounds like an acoustic recording.
+          </p>
+        </div>
+
+        <div class="card">
+          <h4>8. 🌊 Wavify to Generate Arpeggios</h4>
+          <p style="font-size: 0.9rem; color: var(--text-muted); margin-top: 0.25rem;">
+            Draw a flat horizontal bar. Select it, and in the inspector set <em>Wave Amp</em> to 40 and <em>Periods</em> to 3. Instant rolling harp arpeggios with zero drawing struggle!
+          </p>
+        </div>
+
+        <div class="card">
+          <h4>9. Hit "Sync" to Lock, or "Randomize" to Scatter</h4>
+          <p style="font-size: 0.9rem; color: var(--text-muted); margin-top: 0.25rem;">
+            Press <kbd>R</kbd> or click <strong>Sync</strong> to align all moving playhead dots to line starts simultaneously. Click <strong>Randomize</strong> (or press <kbd>Shift+R</kbd>) to scatter all moving dots to random positions along each line for generative polyrhythms and evolving phase patterns.
+          </p>
+        </div>
+
+        <div class="card">
+          <h4>10. 📁 Save and Share Your Scores</h4>
+          <p style="font-size: 0.9rem; color: var(--text-muted); margin-top: 0.25rem;">
+            Created something magical? Open <strong>⚙ Controls</strong> and click <strong>Save File</strong> to download your song as a tiny JSON file. You can load it anytime or share it with friends!
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 8. Instant Recipes -->
+    <section id="recipes">
+      <div class="section-header">
+        <span class="section-tag">Recipes</span>
+        <h2 class="section-title">🥣 3 Instant Starter Recipes</h2>
+      </div>
+
+      <div class="grid-3">
+        <!-- Recipe 1 -->
+        <div class="card recipe-card" style="--recipe-accent: #38bdf8;">
+          <div class="recipe-title">🌌 Deep Space Voyager</div>
+          <p style="font-size: 0.85rem; color: var(--text-muted);">Vibe: Interstellar ambient drift (Brian Eno / Stars of the Lid)</p>
+          <ul class="recipe-steps">
+            <li>Tempo: 28 BPM, Scale: Dorian, Reverb: 80%</li>
+            <li>Line 1: Indigo (Solid) straight line at the bottom</li>
+            <li>Line 2: Spruce (Solid) gentle wave in the middle</li>
+            <li>Line 3: Violet (Dotted) arch near the top (Fluctuation: 20%)</li>
+            <li>Progression: Neo-Riemannian Ambient</li>
+          </ul>
+        </div>
+
+        <!-- Recipe 2 -->
+        <div class="card recipe-card" style="--recipe-accent: #34d399;">
+          <div class="recipe-title">🎋 Zen Bamboo Garden</div>
+          <p style="font-size: 0.85rem; color: var(--text-muted);">Vibe: Peaceful Japanese garden (Joe Hisaishi / Ghibli)</p>
+          <ul class="recipe-steps">
+            <li>Tempo: 48 BPM, Scale: Minor Pentatonic, Reverb: 55%</li>
+            <li>Line 1: Amber (Dotted) kalimba phrase in mid register</li>
+            <li>Line 2: Rose (Dotted) harp cascades in upper register</li>
+            <li>Line 3: Spruce (Solid) flute drone at bottom register (Bounce ⇄)</li>
+            <li>Line 4: Timing: Timer mode (duration: 36s)</li>
+          </ul>
+        </div>
+
+        <!-- Recipe 3 -->
+        <div class="card recipe-card" style="--recipe-accent: #fb7185;">
+          <div class="recipe-title">☕ Lo-Fi Midnight Study</div>
+          <p style="font-size: 0.85rem; color: var(--text-muted);">Vibe: Relaxing coffee-shop beat & warm chords</p>
+          <ul class="recipe-steps">
+            <li>Tempo: 76 BPM, Scale: Lydian, Reverb: 40%</li>
+            <li>Line 1: Onyx (Dotted) kick at bottom & snare in middle</li>
+            <li>Line 2: Onyx (Roll) hi-hat line at top</li>
+            <li>Line 3: Amber (Dotted) kalimba melody (Fluctuation: 35%)</li>
+            <li>Line 4: Indigo (Solid) warm cello bass bar</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 9. Keyboard Shortcuts -->
+    <section id="shortcuts">
+      <div class="section-header">
+        <span class="section-tag">Cheat Sheet</span>
+        <h2 class="section-title">⌨️ Keyboard Shortcuts Reference</h2>
+      </div>
+
+      <div class="card" style="padding: 0.5rem 1rem;">
+        <table class="shortcut-table">
+          <thead>
+            <tr>
+              <th>Action</th>
+              <th>Shortcut</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Play / Pause</td>
+              <td><kbd>Spacebar</kbd></td>
+              <td>Starts or pauses all playheads on the canvas</td>
+            </tr>
+            <tr>
+              <td>Resync All Lines</td>
+              <td><kbd>R</kbd></td>
+              <td>Snaps all playheads back to line starts simultaneously</td>
+            </tr>
+            <tr>
+              <td>Undo / Redo</td>
+              <td><kbd>⌘Z</kbd> / <kbd>⌘Y</kbd></td>
+              <td>Undo or redo drawing, moving, or parameter changes</td>
+            </tr>
+            <tr>
+              <td>Copy / Paste</td>
+              <td><kbd>⌘C</kbd> / <kbd>⌘V</kbd></td>
+              <td>Copies selected line and pastes with all settings preserved</td>
+            </tr>
+            <tr>
+              <td>Duplicate Selected</td>
+              <td><kbd>⌘D</kbd></td>
+              <td>Instantly clones the selected line offset by 24px</td>
+            </tr>
+            <tr>
+              <td>Delete Selected</td>
+              <td><kbd>Backspace</kbd> / <kbd>Del</kbd></td>
+              <td>Removes the selected stroke from the canvas</td>
+            </tr>
+            <tr>
+              <td>Select Inks (1 - 7)</td>
+              <td><kbd>1</kbd> to <kbd>7</kbd></td>
+              <td>Quickly switches between Indigo, Amber, Spruce, Violet, Rose, Slate, Onyx</td>
+            </tr>
+            <tr>
+              <td>Texture Modes</td>
+              <td><kbd>Q</kbd> / <kbd>W</kbd> / <kbd>E</kbd></td>
+              <td>Switch between Solid (Q), Dotted (W), and Roll (E) textures</td>
+            </tr>
+            <tr>
+              <td>Draw Straight Bar</td>
+              <td>Hold <kbd>Shift</kbd></td>
+              <td>Draws a perfectly horizontal note bar while dragging</td>
+            </tr>
+            <tr>
+              <td>Scroll Pitch Field</td>
+              <td><kbd>Mouse Wheel</kbd></td>
+              <td>Scrolls through the 8-octave frequency world</td>
+            </tr>
+            <tr>
+              <td>Toggle Dark / Light</td>
+              <td><kbd>T</kbd></td>
+              <td>Toggles between Dark and Light visual themes</td>
+            </tr>
+            <tr>
+              <td>Toggle Draw / Live Mode</td>
+              <td><kbd>P</kbd></td>
+              <td>Toggles between Draw Score Mode (✏️) and Live Play Wand Mode (✨)</td>
+            </tr>
+            <tr>
+              <td>Toggle Fullscreen</td>
+              <td><kbd>F</kbd></td>
+              <td>Expands canvas to fill your entire display</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+
+  <footer class="guide-footer">
+    <p>
+      Harmonic Geometry • Generative Music Drawing Engine • Built with Web Audio API & HTML5 Canvas
+    </p>
+    <p style="margin-top: 0.5rem;">
+      <a href="index.html">← Return to the Canvas & Start Creating</a>
+    </p>
+  </footer>
+
+  <script>
+    function toggleTheme() {
+      const html = document.documentElement;
+      const current = html.getAttribute('data-theme') || 'dark';
+      const next = current === 'dark' ? 'light' : 'dark';
+      html.setAttribute('data-theme', next);
+      localStorage.setItem('theme', next);
+      const btnText = document.getElementById('themeBtnText');
+      if (btnText) btnText.textContent = next === 'dark' ? 'Light Theme' : 'Dark Theme';
+    }
+
+    // Initialize saved theme
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    const initBtnText = document.getElementById('themeBtnText');
+    if (initBtnText) initBtnText.textContent = savedTheme === 'dark' ? 'Light Theme' : 'Dark Theme';
+  </script>
+</body>
+</html>

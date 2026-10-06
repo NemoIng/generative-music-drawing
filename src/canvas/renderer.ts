@@ -1,6 +1,9 @@
 import { DrawnStroke } from '../engine/types';
 import { ScaleGuideline } from '../audio/scaleQuantizer';
 import { Point2D } from '../math/types';
+import { getHitJitter } from '../engine/strokeManager';
+import { evaluateAtDistance } from '../math/arcLengthInverter';
+import { LiveTrailPoint } from './inputHandler';
 
 export class CanvasRenderer {
   private ctx: CanvasRenderingContext2D;
@@ -31,20 +34,37 @@ export class CanvasRenderer {
     return this.canvas.getBoundingClientRect().height;
   }
 
+  public isDarkMode = false;
+
+  public setDarkMode(dark: boolean): void {
+    this.isDarkMode = dark;
+  }
+
   public clear(): void {
     const w = this.width;
     const h = this.height;
 
-    // Elegant light off-white / beige paper background
-    this.ctx.fillStyle = '#faf8f5';
-    this.ctx.fillRect(0, 0, w, h);
+    if (this.isDarkMode) {
+      this.ctx.fillStyle = '#0f0f12';
+      this.ctx.fillRect(0, 0, w, h);
 
-    // Subtle warm paper grain / radial gradient
-    const radial = this.ctx.createRadialGradient(w * 0.5, h * 0.45, h * 0.15, w * 0.5, h * 0.5, w * 0.85);
-    radial.addColorStop(0, '#ffffff');
-    radial.addColorStop(1, '#f4f0e6');
-    this.ctx.fillStyle = radial;
-    this.ctx.fillRect(0, 0, w, h);
+      const radial = this.ctx.createRadialGradient(w * 0.5, h * 0.45, h * 0.15, w * 0.5, h * 0.5, w * 0.85);
+      radial.addColorStop(0, '#18181c');
+      radial.addColorStop(1, '#0b0b0e');
+      this.ctx.fillStyle = radial;
+      this.ctx.fillRect(0, 0, w, h);
+    } else {
+      // Elegant light off-white / beige paper background
+      this.ctx.fillStyle = '#faf8f5';
+      this.ctx.fillRect(0, 0, w, h);
+
+      // Subtle warm paper grain / radial gradient
+      const radial = this.ctx.createRadialGradient(w * 0.5, h * 0.45, h * 0.15, w * 0.5, h * 0.5, w * 0.85);
+      radial.addColorStop(0, '#ffffff');
+      radial.addColorStop(1, '#f4f0e6');
+      this.ctx.fillStyle = radial;
+      this.ctx.fillRect(0, 0, w, h);
+    }
   }
 
   /**
@@ -53,25 +73,34 @@ export class CanvasRenderer {
    */
   public drawGuidelines(guidelines: ScaleGuideline[]): void {
     const w = this.width;
+    const h = this.height;
     this.ctx.save();
 
     for (const g of guidelines) {
+      const y = typeof g.screenY === 'number' ? g.screenY : g.y;
+      if (y < -30 || y > h + 30) continue;
+
       this.ctx.beginPath();
-      this.ctx.moveTo(44, g.y);
-      this.ctx.lineTo(w - 44, g.y);
+      this.ctx.moveTo(44, y);
+      this.ctx.lineTo(w - 44, y);
 
       const isFifth = g.scaleDegree % 7 === 4; // Dominant 5th in heptatonic modes
+      const isChordTone = !!g.isChordTone && !g.isRoot;
 
       if (g.isRoot) {
-        this.ctx.strokeStyle = 'rgba(28, 25, 23, 0.35)';
-        this.ctx.lineWidth = 1.4;
+        this.ctx.strokeStyle = this.isDarkMode ? 'rgba(255, 255, 255, 0.55)' : 'rgba(28, 25, 23, 0.45)';
+        this.ctx.lineWidth = 1.5;
         this.ctx.setLineDash([]);
+      } else if (isChordTone) {
+        this.ctx.strokeStyle = this.isDarkMode ? 'rgba(245, 158, 11, 0.45)' : 'rgba(217, 119, 6, 0.35)';
+        this.ctx.lineWidth = 1.3;
+        this.ctx.setLineDash([8, 6]);
       } else if (isFifth) {
-        this.ctx.strokeStyle = 'rgba(37, 99, 235, 0.22)';
+        this.ctx.strokeStyle = this.isDarkMode ? 'rgba(96, 165, 250, 0.4)' : 'rgba(37, 99, 235, 0.22)';
         this.ctx.lineWidth = 1.2;
         this.ctx.setLineDash([6, 6]);
       } else {
-        this.ctx.strokeStyle = 'rgba(120, 113, 108, 0.09)';
+        this.ctx.strokeStyle = this.isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(120, 113, 108, 0.09)';
         this.ctx.lineWidth = 1;
         this.ctx.setLineDash([3, 5]);
       }
@@ -81,21 +110,48 @@ export class CanvasRenderer {
       this.ctx.setLineDash([]);
       this.ctx.font = g.isRoot
         ? '700 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+        : isChordTone
+        ? '600 10.5px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
         : isFifth
         ? '600 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
         : '400 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 
-      this.ctx.fillStyle = g.isRoot ? '#1c1917' : isFifth ? '#2563eb' : '#a8a29e';
+      this.ctx.fillStyle = g.isRoot
+        ? (this.isDarkMode ? '#ffffff' : '#1c1917')
+        : isChordTone
+        ? (this.isDarkMode ? '#fbbf24' : '#b45309')
+        : isFifth
+        ? (this.isDarkMode ? '#93c5fd' : '#2563eb')
+        : (this.isDarkMode ? '#71717a' : '#a8a29e');
       this.ctx.textAlign = 'right';
       this.ctx.textBaseline = 'middle';
 
-      const label = g.isRoot ? `★ ${g.noteName}` : isFifth ? `${g.noteName} (5th)` : g.noteName;
-      this.ctx.fillText(label, 36, g.y);
+      const label = g.isRoot
+        ? `★ ${g.noteName}`
+        : isChordTone
+        ? `◆ ${g.noteName}`
+        : isFifth
+        ? `${g.noteName} (5th)`
+        : g.noteName;
+      this.ctx.fillText(label, 36, y);
 
       this.ctx.textAlign = 'left';
-      this.ctx.fillText(`${Math.round(g.frequency)}Hz`, w - 36, g.y);
+      this.ctx.fillStyle = isChordTone
+        ? (this.isDarkMode ? '#fbbf24' : '#b45309')
+        : (this.isDarkMode ? '#71717a' : '#a8a29e');
+      this.ctx.fillText(`${Math.round(g.frequency)}Hz`, w - 48, y);
     }
 
+    this.ctx.restore();
+  }
+
+  /**
+   * Executes drawing callbacks within the scrolled world coordinate matrix.
+   */
+  public drawWorldLayer(scrollY: number, drawFn: () => void): void {
+    this.ctx.save();
+    this.ctx.translate(0, -scrollY);
+    drawFn();
     this.ctx.restore();
   }
 
@@ -119,14 +175,14 @@ export class CanvasRenderer {
       ctx.beginPath();
       ctx.moveTo(44, z.y);
       ctx.lineTo(w - 44, z.y);
-      ctx.strokeStyle = 'rgba(24, 24, 27, 0.22)';
+      ctx.strokeStyle = this.isDarkMode ? 'rgba(255, 255, 255, 0.22)' : 'rgba(24, 24, 27, 0.22)';
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 6]);
       ctx.stroke();
 
       ctx.setLineDash([]);
       ctx.font = '600 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-      ctx.fillStyle = 'rgba(24, 24, 27, 0.65)';
+      ctx.fillStyle = this.isDarkMode ? 'rgba(255, 255, 255, 0.75)' : 'rgba(24, 24, 27, 0.65)';
       ctx.textAlign = 'right';
       ctx.textBaseline = 'bottom';
       ctx.fillText(z.label, w - 48, z.y - 3);
@@ -134,7 +190,7 @@ export class CanvasRenderer {
 
     // Bottom Kick label
     ctx.font = '700 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-    ctx.fillStyle = 'rgba(24, 24, 27, 0.75)';
+    ctx.fillStyle = this.isDarkMode ? 'rgba(255, 255, 255, 0.85)' : 'rgba(24, 24, 27, 0.75)';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'bottom';
     ctx.fillText('💥 Kick Drum', w - 48, h - 14);
@@ -158,7 +214,7 @@ export class CanvasRenderer {
     ctx.beginPath();
     ctx.moveTo(startX, y);
     ctx.lineTo(startX + barW, y);
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
+    ctx.strokeStyle = this.isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.08)';
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
     ctx.stroke();
@@ -169,7 +225,9 @@ export class CanvasRenderer {
       const isCurrent = b === beatIndex;
       ctx.beginPath();
       ctx.arc(bx, y, isCurrent ? 3.5 : 2, 0, Math.PI * 2);
-      ctx.fillStyle = isCurrent ? '#1c1917' : 'rgba(0, 0, 0, 0.2)';
+      ctx.fillStyle = isCurrent
+        ? (this.isDarkMode ? '#ffffff' : '#1c1917')
+        : (this.isDarkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.2)');
       ctx.fill();
     }
 
@@ -184,15 +242,26 @@ export class CanvasRenderer {
   }
 
   /**
+   * Resolves stroke color with awareness of dark mode (e.g. onyx drum machine becomes white/light grey).
+   */
+  public getStrokeColor(stroke: DrawnStroke): string {
+    if (this.isDarkMode && (stroke.instrumentId === 'onyx' || stroke.color === '#18181b')) {
+      return '#f4f4f5';
+    }
+    return stroke.color;
+  }
+
+  /**
    * Renders completed strokes with ink-on-paper aesthetics and mute/solo awareness.
    */
   public drawStroke(stroke: DrawnStroke, hasSolo: boolean = false): void {
-    const { path, color, style } = stroke;
+    const { path, style } = stroke;
     const ctx = this.ctx;
     ctx.save();
 
     const isGreyedOut = (hasSolo && !stroke.soloed) || !!stroke.muted;
-    const effectiveColor = isGreyedOut ? '#a8a29e' : color;
+    const baseColor = this.getStrokeColor(stroke);
+    const effectiveColor = isGreyedOut ? '#a8a29e' : baseColor;
     const vol = typeof stroke.volume === 'number' ? stroke.volume : 1.0;
 
     if (hasSolo && !stroke.soloed) {
@@ -252,12 +321,41 @@ export class CanvasRenderer {
       ctx.lineWidth = stroke.selected ? 2.5 : 2.0;
       ctx.stroke();
     } else if (style === 'dotted') {
-      ctx.lineWidth = stroke.selected ? 4.5 : 3.5;
-      ctx.setLineDash([2, 14]);
-      ctx.stroke();
+      const fluc = stroke.fluctuation ?? 0;
+      if (fluc > 0 && stroke.lut && stroke.lut.totalLength > 0) {
+        // Draw subtle faint baseline path so the user sees the original trajectory
+        ctx.save();
+        ctx.globalAlpha = ctx.globalAlpha * 0.25;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([2, 6]);
+        ctx.stroke();
+        ctx.restore();
+
+        // Draw individual scattered fluctuating dots
+        const dotSpacing = 16;
+        const totalL = stroke.lut.totalLength;
+        const numDots = Math.floor(totalL / dotSpacing);
+        const radius = stroke.selected ? 3.0 : 2.2;
+        const maxJitter = 18;
+
+        ctx.fillStyle = effectiveColor;
+        for (let i = 0; i <= numDots; i++) {
+          const d = Math.min(totalL, i * dotSpacing + dotSpacing * 0.5);
+          const evalPt = evaluateAtDistance(stroke.path, stroke.lut, d);
+          const jitter = getHitJitter(stroke.id, i) * fluc * maxJitter;
+          ctx.beginPath();
+          ctx.arc(evalPt.point.x, evalPt.point.y + jitter, radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else {
+        ctx.lineWidth = stroke.selected ? 4.5 : 3.5;
+        ctx.setLineDash([2, 14]);
+        ctx.stroke();
+      }
     } else if (style === 'striped') {
       ctx.lineWidth = stroke.selected ? 4.0 : 3.0;
-      ctx.setLineDash([12, 8]);
+      // Multi-burst ratchet pattern (triplet micro-dash burst followed by rhythmic space)
+      ctx.setLineDash([3, 4, 3, 4, 3, 14]);
       ctx.stroke();
     }
 
@@ -288,17 +386,19 @@ export class CanvasRenderer {
 
       // Floating pill badge above start point with Volume, Texture, Loop Sync & Traversal info
       const volPercent = Math.round(vol * 100);
-      const styleName = stroke.style.charAt(0).toUpperCase() + stroke.style.slice(1);
-      const syncLabel = (stroke.loopQuantize ?? '1bar') === '1bar' ? '1 Bar'
-        : (stroke.loopQuantize === '2bars' ? '2 Bars'
-        : (stroke.loopQuantize === '4bars' ? '4 Bars' : 'Free'));
-      const travLabel = (stroke.traversal ?? 'restart') === 'pingpong' ? '⇄' : '↻';
+      const styleName = stroke.style === 'striped' ? 'Roll' : (stroke.style.charAt(0).toUpperCase() + stroke.style.slice(1));
+      const syncLabel = (stroke.timingMode === 'timer' || stroke.speedMode === 'timer')
+        ? `${Math.round(stroke.duration ?? 30)}s ⌛`
+        : `${(stroke.speedMultiplier ?? 1.0).toFixed(2).replace(/\.00$/, '')}x ⚡`;
+      const travMode = (stroke.traversal === 'bounce' || (stroke.traversal as string) === 'pingpong') ? 'bounce' : 'restart';
+      const travLabel = travMode === 'bounce' ? '⇄' : '↻';
 
       let tagText = `${volPercent}% vol • ${styleName} • ${syncLabel} • ${travLabel}`;
       if (stroke.instrumentId === 'onyx') {
         const normY = this.height > 0 ? startPt.y / this.height : 0.5;
         const drumName = normY >= 0.72 ? 'Kick 💥' : normY >= 0.48 ? 'Snare 🪘' : normY >= 0.25 ? 'Tom 🥁' : 'Hi-Hat 🥢';
-        tagText = `${volPercent}% vol • ${drumName} • ${syncLabel} • ${travLabel}`;
+        const drumLabel = stroke.style === 'striped' ? `${drumName} Roll` : drumName;
+        tagText = `${volPercent}% vol • ${drumLabel} • ${syncLabel} • ${travLabel}`;
       } else if (stroke.waveParams && stroke.waveParams.amplitude > 0) {
         tagText = `${volPercent}% vol • ~Sine • ${styleName} • ${syncLabel} • ${travLabel}`;
       }
@@ -330,7 +430,7 @@ export class CanvasRenderer {
    */
   public drawPlayhead(stroke: DrawnStroke, nowMs: number, hasSolo: boolean = false): void {
     const ph = stroke.playhead;
-    if (!ph.lastEval) return;
+    if (!ph.lastEval || ph.finished) return;
 
     const { x, y } = ph.lastEval.point;
     const ctx = this.ctx;
@@ -338,7 +438,8 @@ export class CanvasRenderer {
 
     const isSoloGreyedOut = hasSolo && !stroke.soloed;
     const isGreyedOut = isSoloGreyedOut || !!stroke.muted;
-    const effectiveColor = isGreyedOut ? '#a8a29e' : stroke.color;
+    const baseColor = this.getStrokeColor(stroke);
+    const effectiveColor = isGreyedOut ? '#a8a29e' : baseColor;
     const vol = typeof stroke.volume === 'number' ? stroke.volume : 1.0;
 
     if (isSoloGreyedOut) {
@@ -368,18 +469,32 @@ export class CanvasRenderer {
     }
     ctx.globalAlpha = isSoloGreyedOut ? 0.16 : stroke.muted ? 0.25 : 1.0;
 
-    // 2. Playhead Acoustic Pulse Ring (only if audible and not solo-greyed out)
+    // 2. Playhead Acoustic Pulse / Drone Breathing Halo
     if (!stroke.muted && !isSoloGreyedOut) {
-      const pulsePhase = (nowMs % 1400) / 1400;
-      const pulseRadius = 6 + pulsePhase * 14;
-      const pulseAlpha = (1 - pulsePhase) * 0.45;
+      if (stroke.style === 'solid') {
+        const swell = ph.currentSwell ?? 1.0;
+        const breathePhase = (Math.sin(nowMs * 0.002) + 1) * 0.5;
+        const breatheRadius = (8 + breathePhase * 8) * swell;
+        const breatheAlpha = Math.min(0.65, (0.2 + breathePhase * 0.25) * swell);
 
-      ctx.beginPath();
-      ctx.arc(x, y, pulseRadius, 0, Math.PI * 2);
-      ctx.strokeStyle = effectiveColor;
-      ctx.globalAlpha = pulseAlpha;
-      ctx.lineWidth = 1.2;
-      ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(x, y, breatheRadius, 0, Math.PI * 2);
+        ctx.strokeStyle = effectiveColor;
+        ctx.globalAlpha = breatheAlpha;
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+      } else {
+        const pulsePhase = (nowMs % 1400) / 1400;
+        const pulseRadius = 6 + pulsePhase * 14;
+        const pulseAlpha = (1 - pulsePhase) * 0.45;
+
+        ctx.beginPath();
+        ctx.arc(x, y, pulseRadius, 0, Math.PI * 2);
+        ctx.strokeStyle = effectiveColor;
+        ctx.globalAlpha = pulseAlpha;
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+      }
       ctx.globalAlpha = 1.0;
     }
 
@@ -472,4 +587,148 @@ export class CanvasRenderer {
 
     ctx.restore();
   }
+
+  /**
+   * Draws dynamic disappearing ribbon trail for Live Play / Wand mode.
+   * Features glowing halo, smooth tapering line width, head cursor bead,
+   * and floating note badge with scale pitch and frequency.
+   */
+  public drawDisappearingTrail(
+    trail: ReadonlyArray<LiveTrailPoint>,
+    color: string,
+    nowMs: number = performance.now(),
+    isDarkMode: boolean = false,
+    maxLifetimeMs: number = 1000
+  ): void {
+    if (!trail || trail.length === 0) return;
+
+    const ctx = this.ctx;
+    const head = trail[trail.length - 1];
+    const headAge = nowMs - head.time;
+
+    ctx.save();
+
+    // 1. If multiple points, draw glowing tapering ribbons connecting them
+    if (trail.length >= 2) {
+      // Pass A: Soft luminous outer glow
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      for (let i = 1; i < trail.length; i++) {
+        const pPrev = trail[i - 1];
+        const pCurr = trail[i];
+        const age = nowMs - pCurr.time;
+        if (age >= maxLifetimeMs) continue;
+
+        const progress = Math.max(0, Math.min(1, age / maxLifetimeMs));
+        const alpha = Math.pow(1 - progress, 1.4);
+        if (alpha <= 0.01) continue;
+
+        // Position along the trail (0 at start, 1 at head)
+        const trailRatio = i / (trail.length - 1);
+        const glowWidth = 3 + trailRatio * 7;
+
+        ctx.beginPath();
+        ctx.moveTo(pPrev.screenX, pPrev.screenY);
+        ctx.lineTo(pCurr.screenX, pCurr.screenY);
+
+        ctx.shadowColor = color;
+        ctx.shadowBlur = isDarkMode ? 14 : 8;
+        ctx.strokeStyle = color;
+        ctx.globalAlpha = alpha * 0.45;
+        ctx.lineWidth = glowWidth;
+        ctx.stroke();
+      }
+
+      // Pass B: Crisp core ribbon with smooth tapering
+      ctx.shadowBlur = 0;
+      for (let i = 1; i < trail.length; i++) {
+        const pPrev = trail[i - 1];
+        const pCurr = trail[i];
+        const age = nowMs - pCurr.time;
+        if (age >= maxLifetimeMs) continue;
+
+        const progress = Math.max(0, Math.min(1, age / maxLifetimeMs));
+        const alpha = Math.pow(1 - progress, 1.2);
+        if (alpha <= 0.01) continue;
+
+        const trailRatio = i / (trail.length - 1);
+        const coreWidth = 1.2 + trailRatio * 3.2;
+
+        ctx.beginPath();
+        ctx.moveTo(pPrev.screenX, pPrev.screenY);
+        ctx.lineTo(pCurr.screenX, pCurr.screenY);
+
+        ctx.strokeStyle = isDarkMode ? '#ffffff' : color;
+        ctx.globalAlpha = alpha * 0.95;
+        ctx.lineWidth = coreWidth;
+        ctx.stroke();
+      }
+    }
+
+    // 2. Cursor head orb / pulsing bead
+    if (head && headAge < maxLifetimeMs) {
+      const headAlpha = Math.max(0, 1 - headAge / maxLifetimeMs);
+
+      // Outer glowing ring
+      ctx.beginPath();
+      ctx.arc(head.screenX, head.screenY, 7, 0, Math.PI * 2);
+      ctx.shadowColor = color;
+      ctx.shadowBlur = isDarkMode ? 12 : 8;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = headAlpha * 0.8;
+      ctx.stroke();
+
+      // Inner bright bead
+      ctx.beginPath();
+      ctx.arc(head.screenX, head.screenY, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = isDarkMode ? '#ffffff' : color;
+      ctx.globalAlpha = headAlpha;
+      ctx.fill();
+
+      // 3. Sleek Floating Note Pill Badge (shows scale pitch & Hz or drum zone name)
+      if (head.noteName && headAge < 850) {
+        const badgeAlpha = Math.max(0, 1 - headAge / 850);
+        const freqText = head.frequency ? ` · ${Math.round(head.frequency)}Hz` : '';
+        const badgeText = `${head.noteName}${freqText}`;
+        const badgeX = head.screenX + 12;
+        const badgeY = head.screenY - 18;
+
+        ctx.font = '500 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        const textWidth = ctx.measureText(badgeText).width;
+        const padding = 7;
+        const boxW = textWidth + padding * 2;
+        const boxH = 20;
+
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.15)';
+        ctx.shadowBlur = 8;
+        ctx.shadowOffsetY = 2;
+
+        ctx.fillStyle = isDarkMode ? 'rgba(24, 24, 28, 0.92)' : 'rgba(255, 255, 255, 0.95)';
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.2;
+        ctx.globalAlpha = badgeAlpha;
+
+        ctx.beginPath();
+        if (typeof (ctx as any).roundRect === 'function') {
+          (ctx as any).roundRect(badgeX, badgeY - 13, boxW, boxH, 5);
+        } else {
+          ctx.rect(badgeX, badgeY - 13, boxW, boxH);
+        }
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetY = 0;
+        ctx.fillStyle = isDarkMode ? '#f4f4f5' : '#18181b';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(badgeText, badgeX + padding, badgeY - 3);
+      }
+    }
+
+    ctx.restore();
+  }
 }
+

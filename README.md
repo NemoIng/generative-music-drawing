@@ -31,14 +31,12 @@ Standard computer graphics has $(0, 0)$ top-left, while musical frequency increa
 * **Discrete Snapping (Dotted / Striped Strokes):**
   $$k = \text{round}(d_{\text{cont}}), \quad m = \lfloor k / K \rfloor, \quad r = k \pmod K$$
   $$\Delta_{\text{semitones}} = 12m + I[r], \quad f = f_{\text{root}} \cdot 2^{\Delta_{\text{semitones}} / 12}$$
-* **Continuous Deadband Hysteresis (Solid Drones):**
-  With deadband width $w \in [0, 0.5]$ and fractional offset $\delta = d_{\text{cont}} - \lfloor d_{\text{cont}} \rfloor$:
-  $$d_{\text{smoothed}} = \begin{cases}
-  \lfloor d_{\text{cont}} \rfloor, & \delta < w \\
-  \lfloor d_{\text{cont}} \rfloor + 1, & \delta > 1 - w \\
-  \lfloor d_{\text{cont}} \rfloor + \frac{\delta - w}{1 - 2w}, & w \le \delta \le 1 - w
-  \end{cases}$$
-  Maintains stable pitches on level horizontal strokes while preserving smooth microtonal glides across vertical curves.
+* **Continuous Modal Pitch Interpolation (Solid Drones):**
+  With continuous degree $d_{\text{cont}}$, let $k_1 = \lfloor d_{\text{cont}} \rfloor$, $k_2 = k_1 + 1$, and $\gamma = d_{\text{cont}} - k_1$:
+  $$\Delta_{\text{semitones}} = (1 - \gamma)\,\text{semi}(k_1) + \gamma\,\text{semi}(k_2), \quad f = f_{\text{root}} \cdot 2^{\Delta_{\text{semitones}} / 12}$$
+  Provides pristine, continuous microtonal glides across vertical curves matching hand-drawn contours.
+* **Per-Line Tone Fluctuation:**
+  An individual slider $f \in [0, 1]$ introduces subtle, organic multi-frequency wander around the line for drone voices and hit-by-hit micro-tuning jitter for pulsed notes.
 
 ---
 
@@ -47,7 +45,7 @@ Standard computer graphics has $(0, 0)$ top-left, while musical frequency increa
 1. **Solid Drone Strokes:**
    * Continuous dual-oscillator drone voice (detuned sawtooth + triangle + sub-oscillator).
    * Resonant low-pass filter dynamically modulated by curve curvature $\kappa$ (tighter bends open higher harmonic resonance).
-   * Deadband hysteresis portamento glides.
+   * Smooth modal portamento glides and per-stroke tone fluctuation wander.
 2. **Dotted Strokes:**
    * Acoustic chime / plucked string voice.
    * Triggered when the playhead traverses dot boundaries along arc length.

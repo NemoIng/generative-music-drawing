@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { StrokeManager } from '../src/engine/strokeManager';
+import { StrokeManager, getNextVersionName } from '../src/engine/strokeManager';
 import { SplinePath } from '../src/math/types';
 import { ScaleQuantizer } from '../src/audio/scaleQuantizer';
 import { INSTRUMENTS } from '../src/audio/instruments';
@@ -239,48 +239,86 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
     expect(stroke.style).toBe('dotted');
   });
 
-  it('supports changing individual stroke loop sync (1bar, 2bars, 4bars, freeform) with undo/redo', () => {
+  it('supports changing individual stroke loop sync (1bar, 2bars, 4bars, 8bars, freeform) with 2bars standard default', () => {
     const sm = new StrokeManager();
     const stroke = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
-    expect(stroke.loopQuantize).toBe('1bar');
-
-    // Change to 2bars
-    sm.setStrokeLoopQuantize(stroke.id, '2bars');
+    // 2bars is now the standard default
     expect(stroke.loopQuantize).toBe('2bars');
+
+    // Change to 8bars
+    sm.setStrokeLoopQuantize(stroke.id, '8bars');
+    expect(stroke.loopQuantize).toBe('8bars');
+
+    // Change to 4bars
+    sm.setStrokeLoopQuantize(stroke.id, '4bars');
+    expect(stroke.loopQuantize).toBe('4bars');
+
+    // Change to 1bar
+    sm.setStrokeLoopQuantize(stroke.id, '1bar');
+    expect(stroke.loopQuantize).toBe('1bar');
 
     // Change to freeform
     sm.setStrokeLoopQuantize(stroke.id, 'freeform');
     expect(stroke.loopQuantize).toBe('freeform');
 
-    // Undo reverts to 2bars
-    sm.undo();
-    expect(stroke.loopQuantize).toBe('2bars');
-
     // Undo reverts to 1bar
     sm.undo();
     expect(stroke.loopQuantize).toBe('1bar');
 
-    // Redo restores 2bars
-    sm.redo();
+    // Undo reverts to 4bars
+    sm.undo();
+    expect(stroke.loopQuantize).toBe('4bars');
+
+    // Undo reverts to 8bars
+    sm.undo();
+    expect(stroke.loopQuantize).toBe('8bars');
+
+    // Undo reverts to initial 2bars
+    sm.undo();
     expect(stroke.loopQuantize).toBe('2bars');
+
+    // Redo restores 8bars
+    sm.redo();
+    expect(stroke.loopQuantize).toBe('8bars');
   });
 
-  it('supports changing individual stroke traversal mode (restart vs pingpong) with undo/redo', () => {
+  it('changing default loop quantize affects only future drawn strokes without modifying existing strokes', () => {
+    const sm = new StrokeManager();
+    expect(sm.defaultLoopQuantizeMode).toBe('2bars');
+
+    // Draw stroke 1 with standard default (2bars)
+    const s1 = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+    expect(s1.loopQuantize).toBe('2bars');
+
+    // Change general loop sync to 8bars
+    sm.setLoopQuantizeMode('8bars');
+    expect(sm.defaultLoopQuantizeMode).toBe('8bars');
+
+    // Stroke 1 MUST remain untouched at 2bars!
+    expect(s1.loopQuantize).toBe('2bars');
+
+    // Draw stroke 2 - it inherits the new general default (8bars)
+    const s2 = sm.addStroke(dummyPath, 'dotted', 'amber', 100);
+    expect(s2.loopQuantize).toBe('8bars');
+    expect(s1.loopQuantize).toBe('2bars');
+  });
+
+  it('supports changing individual stroke traversal mode (restart vs bounce) with undo/redo', () => {
     const sm = new StrokeManager();
     const stroke = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
     expect(stroke.traversal).toBe('restart');
 
-    // Change to pingpong
-    sm.setStrokeTraversal(stroke.id, 'pingpong');
-    expect(stroke.traversal).toBe('pingpong');
+    // Change to bounce
+    sm.setStrokeTraversal(stroke.id, 'bounce');
+    expect(stroke.traversal).toBe('bounce');
 
     // Undo reverts to restart
     sm.undo();
     expect(stroke.traversal).toBe('restart');
 
-    // Redo restores pingpong
+    // Redo restores bounce
     sm.redo();
-    expect(stroke.traversal).toBe('pingpong');
+    expect(stroke.traversal).toBe('bounce');
   });
 
   it('runs multiple strokes simultaneously with independent per-line traversal and loop sync cycles', () => {
@@ -292,14 +330,14 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
     sm.setStrokeLoopQuantize(s1.id, '1bar');
     sm.setStrokeTraversal(s1.id, 'restart');
 
-    // Stroke 2: 2 Bars, Ping-Pong traversal
+    // Stroke 2: 2 Bars, Bounce traversal
     const s2 = sm.addStroke(dummyPath, 'solid', 'amber', 100);
     sm.setStrokeLoopQuantize(s2.id, '2bars');
-    sm.setStrokeTraversal(s2.id, 'pingpong');
+    sm.setStrokeTraversal(s2.id, 'bounce');
 
     expect(s1.traversal).toBe('restart');
     expect(s1.loopQuantize).toBe('1bar');
-    expect(s2.traversal).toBe('pingpong');
+    expect(s2.traversal).toBe('bounce');
     expect(s2.loopQuantize).toBe('2bars');
 
     // With L = 100, dt = 1.8s at 100 BPM:
@@ -430,5 +468,677 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
     sm.setXAxisModulationMode('none');
     expect(sm.xAxisModulationMode).toBe('none');
   });
+
+  it('resyncAllPlayheads resets all active stroke playheads to distance 0 and direction 1', () => {
+    const sm = new StrokeManager();
+    const s1 = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+    const s2 = sm.addStroke(dummyPath, 'dotted', 'amber', 100);
+
+    s1.playhead.currentDistance = 45;
+    s1.playhead.direction = -1;
+    s2.playhead.currentDistance = 80;
+    s2.playhead.direction = 1;
+
+    sm.resyncAllPlayheads();
+
+    expect(s1.playhead.currentDistance).toBe(0);
+    expect(s1.playhead.direction).toBe(1);
+    expect(s2.playhead.currentDistance).toBe(0);
+    expect(s2.playhead.direction).toBe(1);
+  });
+
+  it('randomizeAllPlayheads scatters moving dots across all drawn lines within valid length bounds', () => {
+    const sm = new StrokeManager();
+    const s1 = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+    const s2 = sm.addStroke(dummyPath, 'dotted', 'amber', 100);
+    const s3 = sm.addStroke(dummyPath, 'striped', 'ruby', 100);
+    sm.setStrokeTraversal(s2.id, 'bounce');
+    sm.setStrokeTraversal(s3.id, 'restart');
+
+    s1.playhead.trail = [{ x: 10, y: 20 }, { x: 30, y: 40 }];
+    s2.playhead.trail = [{ x: 50, y: 60 }];
+
+    sm.randomizeAllPlayheads();
+
+    // Verify all playheads are within [0, totalLength]
+    expect(s1.playhead.currentDistance).toBeGreaterThanOrEqual(0);
+    expect(s1.playhead.currentDistance).toBeLessThanOrEqual(s1.lut.totalLength);
+
+    expect(s2.playhead.currentDistance).toBeGreaterThanOrEqual(0);
+    expect(s2.playhead.currentDistance).toBeLessThanOrEqual(s2.lut.totalLength);
+
+    expect(s3.playhead.currentDistance).toBeGreaterThanOrEqual(0);
+    expect(s3.playhead.currentDistance).toBeLessThanOrEqual(s3.lut.totalLength);
+
+    // Verify trails are reset to prevent visual jumping streaks
+    expect(s1.playhead.trail.length).toBe(0);
+    expect(s2.playhead.trail.length).toBe(0);
+    expect(s3.playhead.trail.length).toBe(0);
+
+    // Verify lastEval was recalculated for the new random distance
+    expect(s1.playhead.lastEval).toBeDefined();
+    expect(s2.playhead.lastEval).toBeDefined();
+    expect(s3.playhead.lastEval).toBeDefined();
+
+    // Restart mode stroke direction must be 1 (forward)
+    expect(s3.playhead.direction).toBe(1);
+
+    // Bounce mode direction must be either 1 or -1
+    expect([1, -1]).toContain(s2.playhead.direction);
+
+    // Playhead finished state is cleared
+    expect(s1.playhead.finished).toBe(false);
+  });
+
+  it('exports and imports compositions losslessly preserving strokes, volumes, loop sync, and wave params', () => {
+    const sm = new StrokeManager();
+    const s = sm.addStroke(dummyPath, 'dotted', 'amber', 100);
+    sm.setStrokeVolume(s.id, 0.75);
+    sm.setStrokeLoopQuantize(s.id, '2bars');
+    sm.setStrokeTraversal(s.id, 'bounce');
+    sm.restructureStrokeWave(s.id, 35, 2.5, 'sine');
+
+    const exported = sm.exportComposition('Groove Alpha', 'lydian', 'A2');
+    expect(exported.name).toBe('Groove Alpha');
+    expect(exported.scaleId).toBe('lydian');
+    expect(exported.strokes.length).toBe(1);
+    expect(exported.strokes[0].volume).toBe(0.75);
+    expect(exported.strokes[0].loopQuantize).toBe('2bars');
+    expect(exported.strokes[0].traversal).toBe('bounce');
+    expect(exported.strokes[0].waveParams?.shapeType).toBe('sine');
+
+    // Import into a new manager
+    const sm2 = new StrokeManager();
+    sm2.importComposition(exported);
+
+    expect(sm2.activeStrokes.length).toBe(1);
+    const restored = sm2.activeStrokes[0];
+    expect(restored.instrumentId).toBe('amber');
+    expect(restored.style).toBe('dotted');
+    expect(restored.volume).toBe(0.75);
+    expect(restored.loopQuantize).toBe('2bars');
+    expect(restored.traversal).toBe('bounce');
+    expect(restored.waveParams?.shapeType).toBe('sine');
+  });
+
+  it('initializes every new stroke playhead at distance 0 matching initial pitch and point', () => {
+    const sm = new StrokeManager();
+    const quantizer = new ScaleQuantizer();
+    // Simulate time passing in the session
+    sm.update(15.0, 800, 600, quantizer);
+
+    // Add a stroke under 2bars loop sync
+    const stroke = sm.addStroke(dummyPath, 'solid', 'indigo', 140, quantizer, 600);
+
+    // Starting location MUST be at the start (distance 0)
+    expect(stroke.playhead.currentDistance).toBe(0);
+    expect(stroke.playhead.direction).toBe(1);
+    expect(stroke.playhead.lastTriggerDistance).toBe(0);
+    expect(stroke.playhead.lastPitch).toBeDefined();
+    expect(stroke.playhead.lastEval?.point.x).toBe(dummyPath.segments[0].p0.x);
+    expect(stroke.playhead.lastEval?.point.y).toBe(dummyPath.segments[0].p0.y);
+  });
+
+  it('clearAll resets masterClockTime and resyncAllPlayheads aligns all tracks to start', () => {
+    const sm = new StrokeManager();
+    const quantizer = new ScaleQuantizer();
+    sm.update(10.0, 800, 600, quantizer);
+
+    sm.clearAll();
+    expect(sm.clockTime).toBe(0);
+
+    const s1 = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+    const s2 = sm.addStroke(dummyPath, 'dotted', 'amber', 100);
+    s1.playhead.currentDistance = 40;
+    s2.playhead.currentDistance = 80;
+
+    sm.resyncAllPlayheads();
+    expect(sm.clockTime).toBe(0);
+    expect(s1.playhead.currentDistance).toBe(0);
+    expect(s2.playhead.currentDistance).toBe(0);
+  });
+
+  it('supports master reverb depth modification on soundEngine', () => {
+    expect(() => soundEngine.setReverbMix(0.5)).not.toThrow();
+    expect(() => soundEngine.setReverbMix(0)).not.toThrow();
+    expect(() => soundEngine.setReverbMix(1)).not.toThrow();
+  });
+
+  it('supports octave span modifications rescaling totalNotes dynamically', () => {
+    const quantizer = new ScaleQuantizer();
+    const initialNotes = quantizer.totalNotes; // 4 octaves * 7 notes = 28
+
+    quantizer.updateConfig({ octaveSpan: 2 });
+    expect(quantizer.totalNotes).toBe(2 * 7); // 14 notes
+
+    quantizer.updateConfig({ octaveSpan: 5 });
+    expect(quantizer.totalNotes).toBe(5 * 7); // 35 notes
+
+    quantizer.updateConfig({ octaveSpan: 4 });
+    expect(quantizer.totalNotes).toBe(initialNotes);
+  });
+
+  it('supports setting stroke speed multiplier with clamping and undo/redo', () => {
+    const sm = new StrokeManager();
+    const stroke = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+    expect(stroke.speedMultiplier).toBe(1.0);
+    expect(stroke.speedMode).toBe('speed');
+
+    sm.setStrokeSpeed(stroke.id, 2.5, true);
+    expect(stroke.speedMultiplier).toBe(2.5);
+
+    // Clamps within [0.05, 5.0]
+    sm.setStrokeSpeed(stroke.id, 10.0, false);
+    expect(stroke.speedMultiplier).toBe(5.0);
+    sm.setStrokeSpeed(stroke.id, 0.01, false);
+    expect(stroke.speedMultiplier).toBe(0.05);
+
+    // Undo should restore back to 2.5, then 1.0
+    sm.setStrokeSpeed(stroke.id, 2.5, true);
+    sm.setStrokeSpeed(stroke.id, 0.5, true);
+    expect(stroke.speedMultiplier).toBe(0.5);
+
+    sm.undo();
+    expect(stroke.speedMultiplier).toBe(2.5);
+    sm.redo();
+    expect(stroke.speedMultiplier).toBe(0.5);
+  });
+
+  it('supports toggling stroke speed mode between speed and bars with undo/redo', () => {
+    const sm = new StrokeManager();
+    const stroke = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+    expect(stroke.speedMode).toBe('speed');
+
+    sm.setStrokeSpeedMode(stroke.id, 'bars', true);
+    expect(stroke.speedMode).toBe('bars');
+
+    sm.undo();
+    expect(stroke.speedMode).toBe('speed');
+
+    sm.redo();
+    expect(stroke.speedMode).toBe('bars');
+  });
+
+  it('advances playhead proportionally to speed multiplier in speed mode', () => {
+    const sm = new StrokeManager();
+    const stroke1 = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+    const stroke2 = sm.addStroke(dummyPath, 'solid', 'amber', 100);
+    const quantizer = new ScaleQuantizer();
+
+    sm.setStrokeSpeed(stroke1.id, 1.0, false);
+    sm.setStrokeSpeed(stroke2.id, 2.0, false);
+
+    // Initial distances are 0
+    expect(stroke1.playhead.currentDistance).toBe(0);
+    expect(stroke2.playhead.currentDistance).toBe(0);
+
+    // Advance 0.1 seconds (both stay well within 100px total length without wrapping)
+    sm.update(0.1, 800, 600, quantizer);
+
+    // Stroke 2 (2x speed) should have covered twice the distance of stroke 1 (1x speed)
+    expect(stroke2.playhead.currentDistance).toBeCloseTo(stroke1.playhead.currentDistance * 2, 2);
+    expect(stroke1.playhead.currentDistance).toBeGreaterThan(0);
+  });
+
+  it('preserves speedMultiplier and speedMode during export and import', () => {
+    const sm = new StrokeManager();
+    const stroke = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+    sm.setStrokeSpeed(stroke.id, 0.75, false);
+    sm.setStrokeSpeedMode(stroke.id, 'speed', false);
+
+    const strokeBars = sm.addStroke(dummyPath, 'dotted', 'onyx', 100);
+    sm.setStrokeSpeed(strokeBars.id, 2.0, false);
+    sm.setStrokeSpeedMode(strokeBars.id, 'bars', false);
+
+    const json = sm.exportComposition();
+    sm.clearAll();
+    expect(sm.activeStrokes.length).toBe(0);
+
+    sm.importComposition(json);
+    expect(sm.activeStrokes.length).toBe(2);
+
+    const imported1 = sm.activeStrokes.find((s) => s.instrumentId === 'indigo');
+    expect(imported1).toBeDefined();
+    expect(imported1?.speedMultiplier).toBe(0.75);
+    expect(imported1?.speedMode).toBe('speed');
+
+    const imported2 = sm.activeStrokes.find((s) => s.instrumentId === 'onyx');
+    expect(imported2).toBeDefined();
+    expect(imported2?.speedMultiplier).toBe(2.0);
+    expect(imported2?.speedMode).toBe('bars');
+  });
+
+  it('supports adjusting individual stroke reverb send level with undo and redo', () => {
+    const sm = new StrokeManager();
+    const stroke = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+    expect(stroke.reverb).toBe(0.4);
+
+    sm.setStrokeReverb(stroke.id, 0.85, true);
+    expect(stroke.reverb).toBe(0.85);
+
+    // Clamps within [0, 1]
+    sm.setStrokeReverb(stroke.id, 1.5, false);
+    expect(stroke.reverb).toBe(1.0);
+    sm.setStrokeReverb(stroke.id, -0.2, false);
+    expect(stroke.reverb).toBe(0.0);
+
+    // Undo should restore previous values
+    sm.setStrokeReverb(stroke.id, 0.75, true);
+    sm.setStrokeReverb(stroke.id, 0.20, true);
+    expect(stroke.reverb).toBe(0.20);
+
+    sm.undo();
+    expect(stroke.reverb).toBe(0.75);
+
+    sm.redo();
+    expect(stroke.reverb).toBe(0.20);
+  });
+
+  it('preserves individual stroke reverb during export and import', () => {
+    const sm = new StrokeManager();
+    const stroke1 = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+    sm.setStrokeReverb(stroke1.id, 0.90, false);
+
+    const stroke2 = sm.addStroke(dummyPath, 'dotted', 'amber', 100);
+    sm.setStrokeReverb(stroke2.id, 0.15, false);
+
+    const json = sm.exportComposition();
+    sm.clearAll();
+    expect(sm.activeStrokes.length).toBe(0);
+
+    sm.importComposition(json);
+    expect(sm.activeStrokes.length).toBe(2);
+
+    const imported1 = sm.activeStrokes.find((s) => s.instrumentId === 'indigo');
+    expect(imported1?.reverb).toBe(0.90);
+
+    const imported2 = sm.activeStrokes.find((s) => s.instrumentId === 'amber');
+    expect(imported2?.reverb).toBe(0.15);
+  });
+
+  it('supports adjusting individual stroke tone fluctuation with clamping, undo, and redo', () => {
+    const sm = new StrokeManager();
+    const stroke = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+    expect(stroke.fluctuation).toBe(0.0);
+
+    sm.setStrokeFluctuation(stroke.id, 0.45, true);
+    expect(stroke.fluctuation).toBe(0.45);
+
+    // Clamps within [0, 1]
+    sm.setStrokeFluctuation(stroke.id, 1.8, false);
+    expect(stroke.fluctuation).toBe(1.0);
+    sm.setStrokeFluctuation(stroke.id, -0.5, false);
+    expect(stroke.fluctuation).toBe(0.0);
+
+    // Undo should restore previous values
+    sm.setStrokeFluctuation(stroke.id, 0.60, true);
+    sm.setStrokeFluctuation(stroke.id, 0.25, true);
+    expect(stroke.fluctuation).toBe(0.25);
+
+    sm.undo();
+    expect(stroke.fluctuation).toBe(0.60);
+
+    sm.redo();
+    expect(stroke.fluctuation).toBe(0.25);
+  });
+
+  it('preserves individual stroke tone fluctuation during export and import', () => {
+    const sm = new StrokeManager();
+    const stroke1 = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+    sm.setStrokeFluctuation(stroke1.id, 0.75, false);
+
+    const stroke2 = sm.addStroke(dummyPath, 'dotted', 'amber', 100);
+    sm.setStrokeFluctuation(stroke2.id, 0.30, false);
+
+    const json = sm.exportComposition();
+    sm.clearAll();
+    expect(sm.activeStrokes.length).toBe(0);
+
+    sm.importComposition(json);
+    expect(sm.activeStrokes.length).toBe(2);
+
+    const imported1 = sm.activeStrokes.find((s) => s.instrumentId === 'indigo');
+    expect(imported1?.fluctuation).toBe(0.75);
+
+    const imported2 = sm.activeStrokes.find((s) => s.instrumentId === 'amber');
+    expect(imported2?.fluctuation).toBe(0.30);
+  });
+
+  it('applies tone fluctuation wander during playback update', () => {
+    const sm = new StrokeManager();
+    const stroke = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+    const quantizer = new ScaleQuantizer();
+
+    // Baseline: fluctuation = 0
+    sm.update(0.1, 800, 600, quantizer);
+    expect(stroke.playhead.lastEval).toBeDefined();
+    expect(stroke.playhead.lastEval?.point.y).toBeCloseTo(100, 4);
+
+    // Enable fluctuation = 0.8
+    sm.setStrokeFluctuation(stroke.id, 0.8, false);
+    sm.update(0.5, 800, 600, quantizer);
+
+    // Playhead point and pitch evaluation wander within +/- 18px of baseline y=100
+    const wanderedY = stroke.playhead.lastEval?.point.y;
+    expect(wanderedY).toBeDefined();
+    expect(wanderedY).toBeGreaterThanOrEqual(100 - 18 * 0.8 - 0.01);
+    expect(wanderedY).toBeLessThanOrEqual(100 + 18 * 0.8 + 0.01);
+  });
+
+  it('applies tone fluctuation visual wander and hit scatter to dotted strokes', () => {
+    const sm = new StrokeManager();
+    const dottedStroke = sm.addStroke(dummyPath, 'dotted', 'amber', 100, undefined, undefined, 0.8, '2bars', 'restart', 30, 1.0, 'speed', 0.5, 0.0);
+    const quantizer = new ScaleQuantizer();
+
+    // Baseline with fluctuation = 0
+    sm.update(0.1, 800, 600, quantizer);
+    expect(dottedStroke.playhead.lastEval?.point.y).toBeCloseTo(100, 4);
+
+    // Set fluctuation = 0.9
+    sm.setStrokeFluctuation(dottedStroke.id, 0.9, false);
+    sm.update(0.15, 800, 600, quantizer);
+
+    // The visual playhead point should now track the fluctuating dot position
+    const playheadY = dottedStroke.playhead.lastEval?.point.y;
+    expect(playheadY).toBeDefined();
+    expect(typeof playheadY).toBe('number');
+  });
+
+  it('supports copying, pasting, and duplicating strokes with all individual settings preserved', () => {
+    const sm = new StrokeManager();
+    const original = sm.addStroke(
+      dummyPath,
+      'dotted',
+      'amber',
+      120,
+      undefined,
+      undefined,
+      0.65, // volume
+      '4bars', // loopQuantize
+      'bounce', // traversal
+      45, // duration
+      1.75, // speedMultiplier
+      'speed', // speedMode
+      0.80, // reverb
+      0.60 // fluctuation
+    );
+
+    sm.selectStroke(original.id);
+    expect(sm.selectedStrokeId).toBe(original.id);
+
+    // Copy selected
+    const copied = sm.copySelected();
+    expect(copied).toBe(true);
+    expect(sm.hasClipboard()).toBe(true);
+
+    const clip = sm.getClipboard();
+    expect(clip).toBeDefined();
+    expect(clip?.style).toBe('dotted');
+    expect(clip?.instrumentId).toBe('amber');
+    expect(clip?.volume).toBe(0.65);
+    expect(clip?.loopQuantize).toBe('4bars');
+    expect(clip?.traversal).toBe('bounce');
+    expect(clip?.duration).toBe(45);
+    expect(clip?.speedMultiplier).toBe(1.75);
+    expect(clip?.speedMode).toBe('speed');
+    expect(clip?.reverb).toBe(0.80);
+    expect(clip?.fluctuation).toBe(0.60);
+
+    // Paste
+    const pasted = sm.paste(undefined, undefined, 24);
+    expect(pasted).toBeDefined();
+    expect(sm.activeStrokes.length).toBe(2);
+    expect(pasted?.id).not.toBe(original.id);
+    expect(sm.selectedStrokeId).toBe(pasted?.id); // auto-selects pasted stroke
+
+    // Verify all settings copied accurately
+    expect(pasted?.style).toBe('dotted');
+    expect(pasted?.instrumentId).toBe('amber');
+    expect(pasted?.volume).toBe(0.65);
+    expect(pasted?.loopQuantize).toBe('4bars');
+    expect(pasted?.traversal).toBe('bounce');
+    expect(pasted?.duration).toBe(45);
+    expect(pasted?.speedMultiplier).toBe(1.75);
+    expect(pasted?.speedMode).toBe('speed');
+    expect(pasted?.reverb).toBe(0.80);
+    expect(pasted?.fluctuation).toBe(0.60);
+
+    // Check position offset (+24px)
+    expect(pasted?.path.segments[0].p0.x).toBe(original.path.segments[0].p0.x + 24);
+    expect(pasted?.path.segments[0].p0.y).toBe(original.path.segments[0].p0.y + 24);
+
+    // Verify Undo removes pasted stroke
+    sm.undo();
+    expect(sm.activeStrokes.length).toBe(1);
+    expect(sm.activeStrokes[0].id).toBe(original.id);
+
+    // Verify Redo restores pasted stroke
+    sm.redo();
+    expect(sm.activeStrokes.length).toBe(2);
+
+    // Test duplicateSelected
+    sm.selectStroke(original.id);
+    const duplicated = sm.duplicateSelected();
+    expect(duplicated).toBeDefined();
+    expect(sm.activeStrokes.length).toBe(3);
+    expect(duplicated?.speedMultiplier).toBe(1.75);
+    expect(duplicated?.fluctuation).toBe(0.60);
+  });
+
+  it('supports smooth dual-voice note overlap transition on DroneVoice', () => {
+    const sm = new StrokeManager();
+    const quantizer = new ScaleQuantizer();
+    // Path passing through a note transition zone
+    const stroke = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+
+    // Initial update starts DroneVoice
+    sm.update(0.1, 800, 600, quantizer);
+    expect(stroke.droneVoice).toBeDefined();
+
+    // DroneVoice update should accept dual frequencies (freq1, freq2) and blend
+    const droneVoice = stroke.droneVoice!;
+    expect(() => {
+      droneVoice.update(100, 0, 400, 800, 'panAndTone', 1.0, 120, 0.5);
+    }).not.toThrow();
+
+    // DroneVoice updateDual should accept freqA, freqB, gainA, and gainB
+    expect(() => {
+      droneVoice.updateDual(100, 120, 0.7071, 0.7071, 0, 400, 800, 'panAndTone', 1.0);
+    }).not.toThrow();
+
+    // Verify quantizeContinuous provides dual notes and blend
+    const pitch = quantizer.quantizeContinuous(300, 600);
+    expect(pitch.freq1).toBeDefined();
+    expect(pitch.freq2).toBeDefined();
+    expect(pitch.freqA).toBeDefined();
+    expect(pitch.freqB).toBeDefined();
+    expect(pitch.gainA).toBeGreaterThanOrEqual(0);
+    expect(pitch.gainB).toBeGreaterThanOrEqual(0);
+    expect(pitch.gainA! ** 2 + pitch.gainB! ** 2).toBeCloseTo(1.0, 2);
+    expect(pitch.blend).toBeGreaterThanOrEqual(0);
+    expect(pitch.blend).toBeLessThanOrEqual(1);
+  });
+
+  it('supports changing stroke timingMode (speed vs timer) with undo and redo', () => {
+    const sm = new StrokeManager();
+    const stroke = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+    expect(stroke.timingMode).toBe('speed');
+
+    // Switch to timer
+    sm.setStrokeTimingMode(stroke.id, 'timer');
+    expect(stroke.timingMode).toBe('timer');
+
+    // Undo reverts to speed
+    sm.undo();
+    expect(stroke.timingMode).toBe('speed');
+
+    // Redo restores timer
+    sm.redo();
+    expect(stroke.timingMode).toBe('timer');
+  });
+
+  it('converts speed to duration when switching to timer and duration to speed when switching to speed', () => {
+    const sm = new StrokeManager();
+    sm.setBpm(120); // (120/60) * 80 = 160 px/s base speed at 1200px width
+    const longPath: SplinePath = {
+      segments: [
+        {
+          p0: { x: 0, y: 100 },
+          p1: { x: 300, y: 100 },
+          p2: { x: 600, y: 100 },
+          p3: { x: 800, y: 100 },
+        },
+      ],
+      isClosed: false,
+    };
+    const stroke = sm.addStroke(longPath, 'solid', 'indigo', 100);
+    expect(stroke.timingMode).toBe('speed');
+    stroke.speedMultiplier = 1.0;
+    // Length is 800px. Base speed at 1200px width = 160 px/s.
+    // Traversing 800px at 160 px/s takes 800 / 160 = 5 seconds.
+
+    // Switch to timer mode: duration should become 5s
+    sm.setStrokeTimingMode(stroke.id, 'timer', 1200);
+    expect(stroke.timingMode).toBe('timer');
+    expect(stroke.duration).toBe(5);
+
+    // Change duration to 20s (slower traversal: 800 / 20 = 40 px/s)
+    stroke.duration = 20;
+
+    // Switch back to speed mode: velocity 40 px/s / baseSpeed 160 px/s = 0.25x speed multiplier
+    sm.setStrokeTimingMode(stroke.id, 'speed', 1200);
+    expect(stroke.timingMode).toBe('speed');
+    expect(stroke.speedMultiplier).toBe(0.25);
+
+    // Undo reverts to timer with duration 20s
+    sm.undo();
+    expect(stroke.timingMode).toBe('timer');
+    expect(stroke.duration).toBe(20);
+
+    // Redo restores speed with multiplier 0.25x
+    sm.redo();
+    expect(stroke.timingMode).toBe('speed');
+    expect(stroke.speedMultiplier).toBe(0.25);
+  });
+
+  it('preserves pitch, stereo panning, and geometry invariants across window resizing via scaleStrokes', () => {
+    const sm = new StrokeManager();
+    const quantizer = new ScaleQuantizer();
+    const w1 = 1000;
+    const h1 = 600;
+
+    const testPath: SplinePath = {
+      segments: [
+        {
+          p0: { x: 200, y: 150 },
+          p1: { x: 300, y: 150 },
+          p2: { x: 500, y: 300 },
+          p3: { x: 600, y: 300 },
+        },
+      ],
+      isClosed: false,
+    };
+
+    const stroke = sm.addStroke(testPath, 'solid', 'spruce', 140, quantizer, h1);
+    const initialPitch = quantizer.quantizeContinuous(stroke.path.segments[0].p0.y, h1);
+    const initialPanRatio = stroke.path.segments[0].p0.x / w1;
+
+    // Window resizes: 1000x600 -> 1500x900 (scaleX = 1.5, scaleY = 1.5)
+    const w2 = 1500;
+    const h2 = 900;
+    const scaleX = w2 / w1;
+    const scaleY = h2 / h1;
+
+    sm.scaleStrokes(scaleX, scaleY);
+
+    // Segment coordinates scaled
+    expect(stroke.path.segments[0].p0.x).toBeCloseTo(300, 2);
+    expect(stroke.path.segments[0].p0.y).toBeCloseTo(225, 2);
+
+    // Stereo panning is 100% invariant
+    const scaledPanRatio = stroke.path.segments[0].p0.x / w2;
+    expect(scaledPanRatio).toBeCloseTo(initialPanRatio, 4);
+
+    // Continuous pitch is 100% invariant
+    const scaledPitch = quantizer.quantizeContinuous(stroke.path.segments[0].p0.y, h2);
+    expect(scaledPitch.frequency).toBeCloseTo(initialPitch.frequency, 2);
+    expect(scaledPitch.noteName).toBe(initialPitch.noteName);
+  });
+
+  it('scaleMelodicStrokesY guarantees pitch frequency constancy when changing octave view', () => {
+    const sm = new StrokeManager();
+    const quantizer = new ScaleQuantizer({ octaveSpan: 4 });
+    quantizer.setScrollEnabled(true);
+    const viewportHeight = 800;
+
+    const path: SplinePath = {
+      segments: [
+        {
+          p0: { x: 100, y: 520 },
+          p1: { x: 200, y: 520 },
+          p2: { x: 300, y: 520 },
+          p3: { x: 400, y: 520 },
+        },
+      ],
+      isClosed: false,
+    };
+    const stroke = sm.addStroke(path, 'solid', 'indigo', 100);
+
+    const initialPitch = quantizer.quantizeContinuous(stroke.path.segments[0].p0.y, viewportHeight);
+
+    // 1. Rescale octaveSpan from 4 to 2 (scaleFactor = 4 / 2 = 2)
+    sm.scaleMelodicStrokesY(4 / 2);
+    quantizer.updateConfig({ octaveSpan: 2 });
+    expect(stroke.path.segments[0].p0.y).toBeCloseTo(1040, 2);
+
+    const pitchAfter2Oct = quantizer.quantizeContinuous(stroke.path.segments[0].p0.y, viewportHeight);
+    expect(pitchAfter2Oct.frequency).toBeCloseTo(initialPitch.frequency, 4);
+    expect(pitchAfter2Oct.scaleDegree).toBeCloseTo(initialPitch.scaleDegree, 4);
+    expect(pitchAfter2Oct.noteName).toBe(initialPitch.noteName);
+
+    // 2. Rescale octaveSpan from 2 to 6 (scaleFactor = 2 / 6 = 1/3)
+    sm.scaleMelodicStrokesY(2 / 6);
+    quantizer.updateConfig({ octaveSpan: 6 });
+    expect(stroke.path.segments[0].p0.y).toBeCloseTo(1040 / 3, 2);
+
+    const pitchAfter6Oct = quantizer.quantizeContinuous(stroke.path.segments[0].p0.y, viewportHeight);
+    expect(pitchAfter6Oct.frequency).toBeCloseTo(initialPitch.frequency, 4);
+    expect(pitchAfter6Oct.scaleDegree).toBeCloseTo(initialPitch.scaleDegree, 4);
+    expect(pitchAfter6Oct.noteName).toBe(initialPitch.noteName);
+  });
+
+  it('scaleMelodicStrokesY preserves Onyx drum machine strokes without scaling Y', () => {
+    const sm = new StrokeManager();
+    const drumPath: SplinePath = {
+      segments: [
+        {
+          p0: { x: 50, y: 600 },
+          p1: { x: 100, y: 600 },
+          p2: { x: 150, y: 600 },
+          p3: { x: 200, y: 600 },
+        },
+      ],
+      isClosed: false,
+    };
+    const drumStroke = sm.addStroke(drumPath, 'solid', 'onyx', 100);
+
+    sm.scaleMelodicStrokesY(2.0);
+    expect(drumStroke.path.segments[0].p0.y).toBe(600);
+    expect(drumStroke.path.segments[0].p3.y).toBe(600);
+  });
+
+  it('getNextVersionName increments version numbers and handles collisions correctly', () => {
+    expect(getNextVersionName('Zen Meadow')).toBe('Zen Meadow (v2)');
+    expect(getNextVersionName('Zen Meadow (v2)')).toBe('Zen Meadow (v3)');
+    expect(getNextVersionName('Zen Meadow (v9)')).toBe('Zen Meadow (v10)');
+
+    const mockSaved: any = {
+      'Ambient Dawn (v2)': {},
+      'Ambient Dawn (v3)': {},
+    };
+    expect(getNextVersionName('Ambient Dawn', mockSaved)).toBe('Ambient Dawn (v4)');
+    expect(getNextVersionName('Ambient Dawn (v2)', mockSaved)).toBe('Ambient Dawn (v4)');
+  });
 });
+
 

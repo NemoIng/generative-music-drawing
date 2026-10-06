@@ -72,7 +72,7 @@ describe('DrumSynth & Onyx 808 Drum Machine Integration', () => {
 
     vi.spyOn(soundEngine, 'isReady', 'get').mockReturnValue(true);
     vi.spyOn(soundEngine, 'context', 'get').mockReturnValue(mockCtx);
-    const mockConnectVoice = vi.spyOn(soundEngine, 'connectVoice').mockImplementation(() => {});
+    const mockConnectVoice = vi.spyOn(soundEngine, 'connectVoice').mockImplementation(() => ({}));
 
     // Trigger all drum voices
     DrumSynth.triggerKick(0.9, 200, 800, 'panAndTone');
@@ -93,6 +93,7 @@ describe('DrumSynth & Onyx 808 Drum Machine Integration', () => {
     const clapSpy = vi.spyOn(DrumSynth, 'triggerClap').mockImplementation(() => {});
     const hatSpy = vi.spyOn(DrumSynth, 'triggerHiHat').mockImplementation(() => {});
     const tomSpy = vi.spyOn(DrumSynth, 'triggerTom').mockImplementation(() => {});
+    const rollSpy = vi.spyOn(DrumSynth, 'triggerRoll');
 
     const sm = new StrokeManager();
     const quantizer = new ScaleQuantizer();
@@ -116,12 +117,12 @@ describe('DrumSynth & Onyx 808 Drum Machine Integration', () => {
     const kickStroke = sm.addStroke(makeLineAtY(520), 'dotted', 'onyx', 140, quantizer, canvasHeight);
     kickStroke.playhead.currentDistance = 0;
 
-    // 2. Snare Line at lower mid (y = 360, which is 0.60 * 600, between 0.48 and 0.72)
-    const snareStroke = sm.addStroke(makeLineAtY(360), 'dotted', 'onyx', 140, quantizer, canvasHeight);
+    // 2. Snare Line at lower mid (y = 380, which is 0.63 * 600, between 0.58 and 0.72)
+    const snareStroke = sm.addStroke(makeLineAtY(380), 'dotted', 'onyx', 140, quantizer, canvasHeight);
     snareStroke.playhead.currentDistance = 0;
 
-    // 3. Clap Line at lower mid in striped texture
-    const clapStroke = sm.addStroke(makeLineAtY(360), 'striped', 'onyx', 140, quantizer, canvasHeight);
+    // 3. Clap Line in clap zone (y = 310, which is 0.516 * 600, between 0.48 and 0.58) in roll/striped texture
+    const clapStroke = sm.addStroke(makeLineAtY(310), 'striped', 'onyx', 140, quantizer, canvasHeight);
     clapStroke.playhead.currentDistance = 0;
 
     // 4. Tom Line in upper mid (y = 200, which is 0.33 * 600, between 0.25 and 0.48)
@@ -132,14 +133,44 @@ describe('DrumSynth & Onyx 808 Drum Machine Integration', () => {
     const hatStroke = sm.addStroke(makeLineAtY(80), 'dotted', 'onyx', 140, quantizer, canvasHeight);
     hatStroke.playhead.currentDistance = 0;
 
-    // Update simulation by 0.5s to cross dot & stripe distance intervals
-    sm.update(0.5, canvasWidth, canvasHeight, quantizer);
+    // Update simulation by 1.0s to cross dot & roll distance intervals under 2bars standard
+    sm.update(1.0, canvasWidth, canvasHeight, quantizer);
 
     expect(kickSpy).toHaveBeenCalled();
     expect(snareSpy).toHaveBeenCalled();
     expect(clapSpy).toHaveBeenCalled();
     expect(tomSpy).toHaveBeenCalled();
     expect(hatSpy).toHaveBeenCalled();
+    expect(rollSpy).toHaveBeenCalled();
+  });
+
+  it('resolves drum machine color to black in light mode and white/light grey in dark mode', async () => {
+    const { getInstrumentColor, INSTRUMENTS } = await import('../src/audio/instruments');
+    const { CanvasRenderer } = await import('../src/canvas/renderer');
+
+    // Test getInstrumentColor
+    expect(getInstrumentColor(INSTRUMENTS.onyx, false)).toBe('#18181b');
+    expect(getInstrumentColor(INSTRUMENTS.onyx, true)).toBe('#f4f4f5');
+
+    // Test CanvasRenderer getStrokeColor
+    const quantizer = new ScaleQuantizer();
+    const sm = new StrokeManager();
+    const onyxStroke = sm.addStroke({ segments: [], isClosed: false }, 'solid', 'onyx', 140, quantizer, 600);
+    const indigoStroke = sm.addStroke({ segments: [], isClosed: false }, 'solid', 'indigo', 140, quantizer, 600);
+
+    const mockRenderer = {
+      isDarkMode: false,
+      getStrokeColor: CanvasRenderer.prototype.getStrokeColor,
+    };
+
+    // Light mode
+    expect(mockRenderer.getStrokeColor(onyxStroke)).toBe('#18181b');
+    expect(mockRenderer.getStrokeColor(indigoStroke)).toBe('#2563eb');
+
+    // Dark mode
+    mockRenderer.isDarkMode = true;
+    expect(mockRenderer.getStrokeColor(onyxStroke)).toBe('#f4f4f5');
+    expect(mockRenderer.getStrokeColor(indigoStroke)).toBe('#2563eb');
   });
 
   it('builds the Analog 808 Groove template with 5 synchronized tracks', () => {
@@ -158,5 +189,107 @@ describe('DrumSynth & Onyx 808 Drum Machine Integration', () => {
 
     const violetTracks = strokes.filter((s) => s.instrumentId === 'violet');
     expect(violetTracks.length).toBe(1);
+  });
+
+  it('triggers DrumSynth.triggerRoll with rapid sample-accurate micro-bursts for all drum types', () => {
+    vi.spyOn(soundEngine, 'isReady', 'get').mockReturnValue(true);
+    const kickSpy = vi.spyOn(DrumSynth, 'triggerKick').mockImplementation(() => {});
+    const snareSpy = vi.spyOn(DrumSynth, 'triggerSnare').mockImplementation(() => {});
+    const clapSpy = vi.spyOn(DrumSynth, 'triggerClap').mockImplementation(() => {});
+    const hatSpy = vi.spyOn(DrumSynth, 'triggerHiHat').mockImplementation(() => {});
+    const tomSpy = vi.spyOn(DrumSynth, 'triggerTom').mockImplementation(() => {});
+
+    // Kick roll (3 hits)
+    DrumSynth.triggerRoll('kick', 0.9, 100, 800, 'panAndTone');
+    expect(kickSpy).toHaveBeenCalledTimes(3);
+
+    // Snare roll (3 hits)
+    DrumSynth.triggerRoll('snare', 0.9, 100, 800, 'panAndTone');
+    expect(snareSpy).toHaveBeenCalledTimes(3);
+
+    // Hi-hat roll (4 hits)
+    DrumSynth.triggerRoll('hihat', 0.9, 100, 800, 'panAndTone');
+    expect(hatSpy).toHaveBeenCalledTimes(4);
+
+    // Tom roll (3 hits)
+    DrumSynth.triggerRoll('tom', 0.9, 100, 800, 'panAndTone', 140);
+    expect(tomSpy).toHaveBeenCalledTimes(3);
+
+    // Clap roll (3 hits)
+    DrumSynth.triggerRoll('clap', 0.9, 100, 800, 'panAndTone');
+    expect(clapSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it('triggers modular synth ratchet bursts via PulseVoice and StrokeManager', async () => {
+    const { PulseVoice } = await import('../src/audio/synthVoice');
+    vi.spyOn(soundEngine, 'isReady', 'get').mockReturnValue(true);
+    const ratchetSpy = vi.spyOn(PulseVoice, 'triggerRatchet').mockImplementation(() => {});
+
+    const sm = new StrokeManager();
+    const quantizer = new ScaleQuantizer();
+    const canvasHeight = 600;
+    const canvasWidth = 800;
+
+    const dummyPath: SplinePath = {
+      segments: [
+        {
+          p0: { x: 50, y: 300 },
+          p1: { x: 150, y: 300 },
+          p2: { x: 250, y: 300 },
+          p3: { x: 350, y: 300 },
+        },
+      ],
+      isClosed: false,
+    };
+
+    // Add melodic stroke with roll/striped texture
+    const stroke = sm.addStroke(dummyPath, 'striped', 'indigo', 140, quantizer, canvasHeight);
+    stroke.playhead.currentDistance = 0;
+
+    sm.update(1.0, canvasWidth, canvasHeight, quantizer);
+    expect(ratchetSpy).toHaveBeenCalled();
+  });
+
+  it('ensures drum boundaries remain fixed on screen and do not shift when pitch frequency field scrolls', () => {
+    vi.spyOn(soundEngine, 'isReady', 'get').mockReturnValue(true);
+
+    const kickSpy = vi.spyOn(DrumSynth, 'triggerKick').mockImplementation(() => {});
+    const snareSpy = vi.spyOn(DrumSynth, 'triggerSnare').mockImplementation(() => {});
+
+    const sm = new StrokeManager();
+    const quantizer = new ScaleQuantizer();
+    quantizer.setScrollEnabled(true);
+    const canvasHeight = 600;
+    const canvasWidth = 800;
+
+    const makeLineAtY = (y: number): SplinePath => ({
+      segments: [
+        {
+          p0: { x: 50, y },
+          p1: { x: 150, y },
+          p2: { x: 250, y },
+          p3: { x: 350, y },
+        },
+      ],
+      isClosed: false,
+    });
+
+    // Kick line in fixed kick zone (y = 520, > 0.72 * 600)
+    const kickStroke = sm.addStroke(makeLineAtY(520), 'dotted', 'onyx', 140, quantizer, canvasHeight);
+    kickStroke.playhead.currentDistance = 0;
+
+    // Snare line in fixed snare zone (y = 380, between 0.48 and 0.72 * 600)
+    const snareStroke = sm.addStroke(makeLineAtY(380), 'dotted', 'onyx', 140, quantizer, canvasHeight);
+    snareStroke.playhead.currentDistance = 0;
+
+    // Scroll camera by 300px
+    quantizer.scrollBy(300, canvasHeight);
+
+    // Update simulation
+    sm.update(1.0, canvasWidth, canvasHeight, quantizer);
+
+    // Kick remains a kick, snare remains a snare regardless of camera scroll
+    expect(kickSpy).toHaveBeenCalled();
+    expect(snareSpy).toHaveBeenCalled();
   });
 });

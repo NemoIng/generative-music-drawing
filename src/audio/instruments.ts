@@ -23,6 +23,7 @@ export interface InstrumentDefinition {
   id: string;
   name: string;
   color: string;
+  darkColor?: string;
   icon: string;
   tagline: string;
   drone: DroneParams;
@@ -49,7 +50,7 @@ export const INSTRUMENTS: Record<string, InstrumentDefinition> = {
     },
     pulse: {
       dottedOscType: 'triangle',
-      dottedDecay: 0.42,
+      dottedDecay: 1.2,
       dottedFilterQ: 3.5,
       stripedOscType: 'sawtooth',
       stripedDecay: 0.08,
@@ -76,7 +77,7 @@ export const INSTRUMENTS: Record<string, InstrumentDefinition> = {
     },
     pulse: {
       dottedOscType: 'sine', // Snappy wooden tine
-      dottedDecay: 0.36,
+      dottedDecay: 1.1,
       dottedFilterQ: 3.2,
       stripedOscType: 'triangle',
       stripedDecay: 0.08,
@@ -103,7 +104,7 @@ export const INSTRUMENTS: Record<string, InstrumentDefinition> = {
     },
     pulse: {
       dottedOscType: 'triangle',
-      dottedDecay: 0.52,
+      dottedDecay: 1.6,
       dottedFilterQ: 4.8,
       stripedOscType: 'sine',
       stripedDecay: 0.12,
@@ -130,7 +131,7 @@ export const INSTRUMENTS: Record<string, InstrumentDefinition> = {
     },
     pulse: {
       dottedOscType: 'sine', // Bell ping
-      dottedDecay: 0.65,
+      dottedDecay: 2.0,
       dottedFilterQ: 6.0,
       stripedOscType: 'triangle',
       stripedDecay: 0.14,
@@ -157,7 +158,7 @@ export const INSTRUMENTS: Record<string, InstrumentDefinition> = {
     },
     pulse: {
       dottedOscType: 'triangle',
-      dottedDecay: 0.48,
+      dottedDecay: 1.4,
       dottedFilterQ: 4.0,
       stripedOscType: 'sine',
       stripedDecay: 0.09,
@@ -167,8 +168,8 @@ export const INSTRUMENTS: Record<string, InstrumentDefinition> = {
 
   slate: {
     id: 'slate',
-    name: 'Analog Moog & Sub',
-    color: '#334155', // Deep slate obsidian
+    name: 'Solar Acid & Sub-Bass',
+    color: '#eab308', // Radiant solar yellow / acid gold
     icon: '⚡',
     tagline: 'Vintage detuned saw/square oscillators, resonant 24dB ladder filter & 303 acid',
     drone: {
@@ -184,7 +185,7 @@ export const INSTRUMENTS: Record<string, InstrumentDefinition> = {
     },
     pulse: {
       dottedOscType: 'sawtooth',
-      dottedDecay: 0.28,
+      dottedDecay: 0.65,
       dottedFilterQ: 5.0,
       stripedOscType: 'square',
       stripedDecay: 0.09,
@@ -195,7 +196,8 @@ export const INSTRUMENTS: Record<string, InstrumentDefinition> = {
   onyx: {
     id: 'onyx',
     name: '808 Drum Machine',
-    color: '#18181b', // Deep matte onyx / obsidian
+    color: '#18181b', // Deep matte onyx / obsidian in light mode
+    darkColor: '#f4f4f5', // Clean light grey / off-white in dark mode
     icon: '🥁',
     tagline: 'Synthetic 808 analog drums: Sub Kick (bottom), Snare/Clap (mid), Toms & Hi-Hats (top)',
     drone: {
@@ -224,4 +226,12 @@ export const DEFAULT_INSTRUMENT = INSTRUMENTS.indigo;
 
 export function getInstrument(id: string): InstrumentDefinition {
   return INSTRUMENTS[id] || DEFAULT_INSTRUMENT;
+}
+
+export function getInstrumentColor(inst: InstrumentDefinition | string, isDark = false): string {
+  const item = typeof inst === 'string' ? getInstrument(inst) : inst;
+  if (isDark && item.darkColor) {
+    return item.darkColor;
+  }
+  return item.color;
 }

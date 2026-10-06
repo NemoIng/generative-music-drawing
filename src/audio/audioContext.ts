@@ -86,29 +86,51 @@ class SoundEngine {
   /**
    * Connects a voice node to Dry, Delay, and Reverb send buses.
    */
-  public connectVoice(sourceNode: AudioNode, delaySend: number = 0.3, reverbSend: number = 0.35): void {
-    if (!this.ctx || !this.dryGain || !this.delayNode || !this.reverbNode) return;
+  public connectVoice(
+    sourceNode: AudioNode,
+    delaySend: number = 0.3,
+    reverbSend: number = 0.35
+  ): { reverbSendGain?: GainNode; delaySendGain?: GainNode } {
+    if (!this.ctx || !this.dryGain || !this.delayNode || !this.reverbNode) return {};
 
     sourceNode.connect(this.dryGain);
 
+    let dSend: GainNode | undefined;
     if (delaySend > 0) {
-      const dSend = this.ctx.createGain();
+      dSend = this.ctx.createGain();
       dSend.gain.setValueAtTime(delaySend, this.ctx.currentTime);
       sourceNode.connect(dSend);
       dSend.connect(this.delayNode);
     }
 
-    if (reverbSend > 0) {
-      const rSend = this.ctx.createGain();
+    let rSend: GainNode | undefined;
+    if (reverbSend >= 0) {
+      rSend = this.ctx.createGain();
       rSend.gain.setValueAtTime(reverbSend, this.ctx.currentTime);
       sourceNode.connect(rSend);
       rSend.connect(this.reverbNode);
     }
+
+    return { reverbSendGain: rSend, delaySendGain: dSend };
   }
 
   public setMasterVolume(val: number): void {
     if (this.masterGain && this.ctx) {
       this.masterGain.gain.setTargetAtTime(Math.max(0, Math.min(1, val)), this.ctx.currentTime, 0.05);
+    }
+  }
+
+  public setReverbMix(val: number): void {
+    const clamped = Math.max(0, Math.min(1, val));
+    if (this.wetReverbGain && this.ctx) {
+      this.wetReverbGain.gain.setTargetAtTime(clamped, this.ctx.currentTime, 0.05);
+    }
+  }
+
+  public setDelayMix(val: number): void {
+    const clamped = Math.max(0, Math.min(1, val));
+    if (this.wetDelayGain && this.ctx) {
+      this.wetDelayGain.gain.setTargetAtTime(clamped, this.ctx.currentTime, 0.05);
     }
   }
 

@@ -9,111 +9,47 @@
   <body>
     <div id="app">
       <!-- Minimalist Top Navigation & Controls -->
+      <!-- Two-Level Header: Slim Pinned Top Bar + Collapsible Advanced Drawer -->
       <header class="top-bar">
-        <div class="brand">
-          <div class="logo-mark">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-              <path d="M9 18V5l12-2v13"></path>
-              <circle cx="6" cy="18" r="3"></circle>
-              <circle cx="18" cy="16" r="3"></circle>
-            </svg>
+        <div class="top-bar-primary">
+          <div class="brand">
+            <div class="logo-mark">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <path d="M9 18V5l12-2v13"></path>
+                <circle cx="6" cy="18" r="3"></circle>
+                <circle cx="18" cy="16" r="3"></circle>
+              </svg>
+            </div>
+            <div class="brand-text">
+              <h1>Harmonic Geometry</h1>
+              <span class="brand-sub">ambient music score</span>
+            </div>
           </div>
-          <div class="brand-text">
-            <h1>Harmonic Geometry</h1>
-            <span class="brand-sub">generative music score</span>
-          </div>
-        </div>
 
-        <nav class="controls-bar">
           <!-- Starter Groove Templates -->
-          <div class="control-group has-tooltip" data-tooltip="Starter Groove Templates: Instant multi-track musical compositions to spark inspiration.">
-            <label for="templateSelect">Templates</label>
+          <div class="control-group top-template-group has-tooltip" data-tooltip="Groove Templates: Instant ambient scores & full acoustic presets.">
+            <label class="top-row-label" for="templateSelect">Preset</label>
             <div class="select-wrapper">
               <select id="templateSelect" class="minimal-select">
-                <option value="" selected>Load Groove...</option>
-                <option value="ambientDawn">Ambient Dawn</option>
-                <option value="minimalGroove">Minimal Groove</option>
-                <option value="zenMeditation">Zen Meditation</option>
-                <option value="electro808">Analog 808 Groove</option>
+                <option value="" selected>Load Preset...</option>
+                <optgroup label="Ambient Starting Points">
+                  <option value="deepCosmicDrone">Deep Cosmic Drone (24 BPM)</option>
+                  <option value="cathedralSolitude">Cathedral of Solitude (32 BPM)</option>
+                  <option value="warmTapeDrift">Warm Tape Drift (40 BPM)</option>
+                  <option value="zenMeadow">Zen Meadow (48 BPM)</option>
+                  <option value="ambientDawn">Ambient Dawn (88 BPM)</option>
+                  <option value="zenMeditation">Zen Meditation (54 BPM)</option>
+                  <option value="minimalGroove">Minimal Groove (112 BPM)</option>
+                  <option value="electro808">Analog 808 Groove (110 BPM)</option>
+                </optgroup>
+                <optgroup label="My Saved Grooves" id="savedTemplatesGroup" style="display:none"></optgroup>
               </select>
             </div>
           </div>
 
-          <!-- Interaction Tool Mode: Draw vs Edit -->
-          <div class="control-group">
-            <label>Mode</label>
-            <div class="segmented-switch" id="toolModeControl">
-              <button
-                type="button"
-                class="seg-btn active has-tooltip"
-                data-mode="draw"
-                data-tooltip="Draw Mode (D): Click and drag on canvas to draw musical lines."
-              >
-                Draw
-              </button>
-              <button
-                type="button"
-                class="seg-btn has-tooltip"
-                data-mode="edit"
-                data-tooltip="Edit Mode (V): Click any line to select it; drag to reposition or re-voice."
-              >
-                Select
-              </button>
-            </div>
-          </div>
-
-          <!-- Drawing Shape: Curve vs Straight Note Bar -->
-          <div class="control-group">
-            <label>Shape</label>
-            <div class="segmented-switch" id="shapeControl">
-              <button
-                type="button"
-                class="seg-btn active has-tooltip"
-                data-shape="curve"
-                data-tooltip="Flowing Spline Curve (~): Expressive organic waves and glides."
-              >
-                Curve ~
-              </button>
-              <button
-                type="button"
-                class="seg-btn has-tooltip"
-                data-shape="straight"
-                data-tooltip="Straight Note Bar (—): Horizontal sustained note or rhythm strip (or hold Shift)."
-              >
-                Bar —
-              </button>
-            </div>
-          </div>
-
-          <!-- Auto-Smooth Toggle -->
-          <div class="control-group">
-            <label>Smooth</label>
-            <button
-              type="button"
-              id="autoSmoothBtn"
-              class="toggle-btn active has-tooltip"
-              data-tooltip="Auto-Smooth: Automatically eliminates hand jitters and refines curves into silky, flowing musical lines upon release."
-            >
-              Smooth On
-            </button>
-          </div>
-
-          <!-- Magnetic Pitch Snap Toggle -->
-          <div class="control-group">
-            <label>Pitch Grid</label>
-            <button
-              type="button"
-              id="snapPitchBtn"
-              class="toggle-btn has-tooltip"
-              data-tooltip="Magnetic Pitch Snapping: Magnetically locks your hand to scale note lines, eliminating hand-jitter wobble."
-            >
-              Snap Off
-            </button>
-          </div>
-
           <!-- Color-Sound Instrument Palette -->
           <div class="control-group">
-            <label>Sound Ink</label>
+            <label class="top-row-label">Sound Ink</label>
             <div class="color-palette-bar" id="instrumentPalette">
               <button
                 type="button"
@@ -164,8 +100,8 @@
                 type="button"
                 class="swatch-btn has-tooltip"
                 data-instrument="slate"
-                style="--swatch-c: #334155"
-                data-tooltip="Slate Ink (6): Analog Moog & Sub-Bass • Vintage detuned saw/square oscillators & 303 acid"
+                style="--swatch-c: #eab308"
+                data-tooltip="Yellow Ink (6): Solar Acid & Sub-Bass • Vintage detuned saw/square oscillators & 303 acid"
               >
                 <span class="swatch-dot"></span>
               </button>
@@ -181,231 +117,524 @@
             </div>
           </div>
 
-          <div class="nav-divider"></div>
-
-          <!-- X-Axis Modulation Setting -->
-          <div class="control-group has-tooltip" data-tooltip="X-Axis Modulation: Controls how horizontal position shapes sound (Stereo Panning across soundstage + Timbral Brightness).">
-            <label for="xAxisSelect">X-Axis</label>
-            <div class="select-wrapper">
-              <select id="xAxisSelect" class="minimal-select">
-                <option value="panAndTone" selected>Stereo Pan + Tone</option>
-                <option value="panOnly">Stereo Pan Only</option>
-                <option value="spaceDepth">Reverb Space Depth</option>
-                <option value="none">None (No Effects)</option>
-              </select>
-            </div>
-          </div>
-
-          <!-- Scale Selector -->
-          <div class="control-group has-tooltip" data-tooltip="Modal Scale: Sets musical intervals. Dorian and Lydian evoke ambient warmth; Pentatonics guarantee consonance.">
-            <label for="scaleSelect">Scale</label>
-            <div class="select-wrapper">
-              <select id="scaleSelect" class="minimal-select">
-                <option value="dorian" selected>Dorian</option>
-                <option value="lydian">Lydian</option>
-                <option value="minorPentatonic">Minor Pentatonic</option>
-                <option value="majorPentatonic">Major Pentatonic</option>
-                <option value="aeolian">Aeolian (Minor)</option>
-              </select>
-            </div>
-          </div>
-
-          <!-- Root Tuning -->
-          <div class="control-group has-tooltip" data-tooltip="Root Pitch: Fundamental base frequency aligned with bottom of canvas (D2 ≈ 73.4 Hz).">
-            <label for="rootSelect">Root</label>
-            <div class="select-wrapper">
-              <select id="rootSelect" class="minimal-select">
-                <option value="D2" selected>D2 (73 Hz)</option>
-                <option value="E2">E2 (82 Hz)</option>
-                <option value="F2">F2 (87 Hz)</option>
-                <option value="G2">G2 (98 Hz)</option>
-                <option value="A2">A2 (110 Hz)</option>
-                <option value="C3">C3 (131 Hz)</option>
-              </select>
+          <!-- Interaction Mode: Draw vs Live Play -->
+          <div class="control-group">
+            <label class="top-row-label">Mode</label>
+            <div class="segmented-switch" id="appModeControl">
+              <button
+                type="button"
+                class="seg-btn active has-tooltip"
+                data-app-mode="draw"
+                data-tooltip="Draw Score Mode (P): Draw permanent looping musical score curves."
+              >
+                Draw
+              </button>
+              <button
+                type="button"
+                class="seg-btn has-tooltip"
+                data-app-mode="live"
+                data-tooltip="Live Play Mode (P): Click to play notes instantly, drag to leave disappearing trails with 50% reverb."
+              >
+                Live Play
+              </button>
             </div>
           </div>
 
           <!-- Stroke Texture -->
           <div class="control-group">
-            <label>Texture</label>
+            <label class="top-row-label">Texture</label>
             <div class="segmented-switch" id="strokeModeControl">
               <button
                 type="button"
                 class="seg-btn active has-tooltip"
                 data-style="solid"
-                data-tooltip="Solid Drone: Continuous voice with deadband pitch-locking and curvature-modulated filter."
+                data-tooltip="Solid Drone: Continuous sustained voice with pitch-locking and smooth portamento."
               >
-                <span class="texture-indicator solid"></span> Solid
+                Solid
               </button>
               <button
                 type="button"
                 class="seg-btn has-tooltip"
                 data-style="dotted"
-                data-tooltip="Dotted Chime: Eighth-note staccato pulses snapped to scale intervals."
+                data-tooltip="Dotted Chime: Eighth-note staccato pulses cleanly snapped to scale degrees."
               >
-                <span class="texture-indicator dotted"></span> Dotted
+                Dotted
               </button>
               <button
                 type="button"
                 class="seg-btn has-tooltip"
                 data-style="striped"
-                data-tooltip="Striped Pulse: Sixteenth-note rhythmic bursts along the curve."
+                data-tooltip="Roll / Ratchet: Rapid rhythmic multi-trigger bursts (trap hi-hat rolls, snare ruffs, modular ratchets)."
               >
-                <span class="texture-indicator striped"></span> Striped
+                Roll
               </button>
             </div>
           </div>
 
-          <!-- Tempo Slider (BPM) -->
-          <div class="control-group slider-group has-tooltip" data-tooltip="Tempo (BPM): Governs playhead velocity. 1 beat = 80px arc-length.">
-            <div class="slider-header">
-              <label for="bpmSlider">Tempo</label>
-              <span id="bpmVal" class="value-badge">100 BPM</span>
+          <!-- Master Transport Controls -->
+          <div class="control-group top-actions-group">
+            <label class="top-row-label">Actions</label>
+            <div class="actions-group">
+              <button id="resyncBtn" class="action-btn has-tooltip" data-tooltip="Sync Lines (R): Resets all playheads to line starts simultaneously in locked phase.">
+                Sync
+              </button>
+              <button id="randomizePlayheadsBtn" class="action-btn has-tooltip" data-tooltip="Randomize Lines (Shift+R): Scatters moving dots to random positions along all drawn lines for generative polyrhythms.">
+                Randomize
+              </button>
+              <button id="undoBtn" class="action-btn has-tooltip" data-tooltip="Undo (⌘Z / Ctrl+Z): Undo last action.">
+                Undo
+              </button>
+              <button id="playPauseBtn" class="action-btn has-tooltip" data-tooltip="Play / Pause (Spacebar): Toggle playback.">
+                <span id="playPauseText">Pause</span><span id="playPauseIcon" style="display:none"></span>
+              </button>
+              <button id="clearBtn" class="action-btn text-danger has-tooltip" data-tooltip="Clear Canvas: Remove all curves.">
+                Clear
+              </button>
+              <button id="fullscreenBtn" class="action-btn has-tooltip" data-tooltip="Fullscreen (F): Expand canvas to fill entire screen.">
+                Fullscreen
+              </button>
+              <button id="themeToggleBtn" class="action-btn has-tooltip" data-tooltip="Theme (T): Toggle Dark / Light canvas appearance.">
+                <span id="themeText">Dark</span><span id="themeIcon" style="display:none"></span>
+              </button>
+              <button id="drawerToggleBtn" class="action-btn btn-settings has-tooltip" data-tooltip="Toggle Advanced Controls Drawer (Scale, Root, Space Reverb, Sliders).">
+                Controls<span id="drawerToggleArrow" style="display:none"></span>
+              </button>
+              <a href="guide.html" target="_blank" class="action-btn has-tooltip" data-tooltip="User Guide & Tips: Open beginner-friendly guide in new tab." style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center;">
+                Guide
+              </a>
             </div>
-            <input type="range" id="bpmSlider" min="40" max="200" step="2" value="100" class="minimal-slider" />
           </div>
+        </div>
 
-          <!-- Snap Deadband Width -->
-          <div class="control-group slider-group has-tooltip" data-tooltip="Snap Deadband (w): Pitch-lock tolerance. High values keep notes firmly in-tune; low values allow portamento.">
-            <div class="slider-header">
-              <label for="deadbandSlider">Deadband</label>
-              <span id="deadbandVal" class="value-badge">0.25</span>
+        <!-- Collapsible Controls Popover / Sidebar on Right Side -->
+        <div id="advancedDrawer" class="advanced-drawer" style="display: none;">
+          <div class="drawer-header">
+            <div class="drawer-header-title">
+              <span>Controls & Global Settings</span>
             </div>
-            <input type="range" id="deadbandSlider" min="0.05" max="0.45" step="0.05" value="0.25" class="minimal-slider" />
+            <button type="button" id="drawerCloseBtn" class="drawer-close-btn" aria-label="Close Controls" title="Close Controls">Close</button>
           </div>
 
-          <div class="nav-divider"></div>
+          <div class="advanced-drawer-inner">
+            <!-- 1. Live Wand & Performance Controls (Active in Live Play Mode) -->
+            <div id="liveControlsGroup" class="live-controls-group" style="display: none;">
+              <div class="live-card-header">
+                <span class="live-section-badge">Live Wand</span>
+                <span class="hint-micro">Dynamic Performance</span>
+              </div>
 
-          <!-- Master Action Buttons -->
-          <div class="actions-group">
-            <button id="undoBtn" class="action-btn has-tooltip" data-tooltip="Undo (⌘Z / Ctrl+Z): Undo last action.">
-              Undo
-            </button>
-            <button id="playPauseBtn" class="action-btn has-tooltip" data-tooltip="Play / Pause (Spacebar): Toggle playback.">
-              <span id="playPauseIcon">⏸</span> <span id="playPauseText">Pause</span>
-            </button>
-            <button id="clearBtn" class="action-btn text-danger has-tooltip" data-tooltip="Clear Canvas: Remove all curves.">
-              Clear
-            </button>
-            <button id="infoBtn" class="action-btn text-muted has-tooltip" data-tooltip="Algorithm & Math: View equations.">
-              Math
-            </button>
+              <!-- Live Reverb Slider (0% - 100%, default 50%) -->
+              <div class="control-group slider-group has-tooltip" data-tooltip="Live Wand Reverb: Adjusts cathedral reverb send for notes played live (0% dry to 100% ambient wash).">
+                <div class="slider-header">
+                  <label for="liveReverbSlider">Live Reverb</label>
+                  <span id="liveReverbVal" class="value-badge">50%</span>
+                </div>
+                <input type="range" id="liveReverbSlider" min="0" max="100" step="1" value="50" class="minimal-slider" />
+              </div>
+
+              <!-- Live Volume Slider (0% - 100%, default 90%) -->
+              <div class="control-group slider-group has-tooltip" data-tooltip="Live Wand Volume: Balances the loudness of your live playing over looping background drawings.">
+                <div class="slider-header">
+                  <label for="liveVolSlider">Live Volume</label>
+                  <span id="liveVolVal" class="value-badge">90%</span>
+                </div>
+                <input type="range" id="liveVolSlider" min="0" max="100" step="1" value="90" class="minimal-slider" />
+              </div>
+
+              <!-- Live Sustain / Release Slider (0.1s - 2.5s, default 0.4s) -->
+              <div class="control-group slider-group has-tooltip" data-tooltip="Live Sustain / Tail: How long the live sound resonates after releasing the cursor (tight staccato 0.05s to lush ambient pad 2.5s).">
+                <div class="slider-header">
+                  <label for="liveSustainSlider">Sustain Tail</label>
+                  <span id="liveSustainVal" class="value-badge">0.40s</span>
+                </div>
+                <input type="range" id="liveSustainSlider" min="0.05" max="2.5" step="0.05" value="0.40" class="minimal-slider" />
+              </div>
+
+              <!-- Live Scale Snap Toggle & Trail Life in a flex row -->
+              <div class="drawer-two-col">
+                <div class="control-group has-tooltip" data-tooltip="Live Scale Lock: When ON, live wand locks to exact in-tune modal scale notes & active chord progression tones, guaranteeing perfect harmony over background loops.">
+                  <label>Pitch Lock</label>
+                  <button type="button" id="liveSnapBtn" class="toggle-btn" style="width: 100%;">
+                    Free Glide
+                  </button>
+                </div>
+
+                <div class="control-group slider-group has-tooltip" data-tooltip="Disappearing Trail Duration: Controls how long the visual glowing ribbon stays visible on screen before evaporating.">
+                  <div class="slider-header">
+                    <label for="liveTrailSlider">Trail Life</label>
+                    <span id="liveTrailVal" class="value-badge">1.0s</span>
+                  </div>
+                  <input type="range" id="liveTrailSlider" min="0.2" max="3.0" step="0.1" value="1.0" class="minimal-slider" />
+                </div>
+              </div>
+            </div>
+
+            <!-- 2. Modal Scale, Root Tuning & X-Axis Modulation Card -->
+            <div class="drawer-card">
+              <span class="drawer-card-label">Scale & Tuning</span>
+              <div class="drawer-two-col">
+                <div class="control-group has-tooltip" data-tooltip="Modal Scale: Sets musical intervals. Dorian and Lydian evoke ambient warmth; Pentatonics guarantee consonance.">
+                  <label for="scaleSelect">Scale</label>
+                  <div class="select-wrapper">
+                    <select id="scaleSelect" class="minimal-select">
+                      <option value="dorian" selected>Dorian</option>
+                      <option value="lydian">Lydian</option>
+                      <option value="major">Major (Ionian)</option>
+                      <option value="mixolydian">Mixolydian</option>
+                      <option value="minorPentatonic">Minor Pentatonic</option>
+                      <option value="majorPentatonic">Major Pentatonic</option>
+                      <option value="aeolian">Aeolian (Minor)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="control-group has-tooltip" data-tooltip="Root Pitch: Fundamental base frequency aligned with bottom of canvas (D2 ≈ 73.4 Hz).">
+                  <label for="rootSelect">Root</label>
+                  <div class="select-wrapper">
+                    <select id="rootSelect" class="minimal-select">
+                      <option value="D2">D2 (73 Hz)</option>
+                      <option value="E2">E2 (82 Hz)</option>
+                      <option value="F2">F2 (87 Hz)</option>
+                      <option value="G2">G2 (98 Hz)</option>
+                      <option value="A2">A2 (110 Hz)</option>
+                      <option value="C3">C3 (131 Hz)</option>
+                      <option value="D3" selected>D3 (147 Hz)</option>
+                      <option value="E3">E3 (165 Hz)</option>
+                      <option value="F3">F3 (175 Hz)</option>
+                      <option value="G3">G3 (196 Hz)</option>
+                      <option value="A3">A3 (220 Hz)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div class="control-group has-tooltip" data-tooltip="X-Axis Modulation: Controls how horizontal position shapes sound (Stereo Panning across soundstage + Timbral Brightness).">
+                <label for="xAxisSelect">X-Axis Modulation</label>
+                <div class="select-wrapper">
+                  <select id="xAxisSelect" class="minimal-select">
+                    <option value="panAndTone" selected>Stereo Pan + Tone</option>
+                    <option value="panOnly">Stereo Pan Only</option>
+                    <option value="spaceDepth">Reverb Space Depth</option>
+                    <option value="none">None (No Effects)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- 3. Drawing Defaults & Gesture Smoothing Card -->
+            <div class="drawer-card draw-only-control">
+              <span class="drawer-card-label">Drawing Score Defaults</span>
+              <div class="drawer-two-col">
+                <div class="control-group draw-only-control">
+                  <label>Shape</label>
+                  <div class="segmented-switch" id="shapeControl">
+                    <button type="button" class="seg-btn active has-tooltip" data-shape="curve" data-tooltip="Flowing Spline Curve: Expressive organic waves and glides.">
+                      Curve
+                    </button>
+                    <button type="button" class="seg-btn has-tooltip" data-shape="straight" data-tooltip="Straight Note Bar: Horizontal sustained note or rhythm strip (or hold Shift).">
+                      Bar
+                    </button>
+                  </div>
+                </div>
+
+                <div class="control-group draw-only-control">
+                  <label>Smooth</label>
+                  <button type="button" id="autoSmoothBtn" class="toggle-btn active has-tooltip" data-tooltip="Auto-Smooth: Automatically eliminates hand jitters and refines curves into silky, flowing musical lines upon release." style="width: 100%;">
+                    Smooth On
+                  </button>
+                </div>
+              </div>
+
+              <div class="drawer-two-col">
+                <div class="control-group draw-only-control">
+                  <label>Pitch Grid</label>
+                  <button type="button" id="snapPitchBtn" class="toggle-btn has-tooltip" data-tooltip="Magnetic Pitch Snapping: Magnetically locks your hand to scale note lines, eliminating hand-jitter wobble." style="width: 100%;">
+                    Snap Off
+                  </button>
+                </div>
+
+                <div class="control-group draw-only-control has-tooltip" data-tooltip="Default Line Timing: Default speed multiplier or timer duration for newly drawn lines.">
+                  <label for="generalSyncSelect">Default Timing</label>
+                  <div class="select-wrapper">
+                    <select id="generalSyncSelect" class="minimal-select">
+                      <option value="speed:0.25">¼x Speed</option>
+                      <option value="speed:0.5">½x Speed</option>
+                      <option value="speed:1.0" selected>1x Speed</option>
+                      <option value="speed:2.0">2x Speed</option>
+                      <option value="timer:15">15s Timer</option>
+                      <option value="timer:30">30s Timer</option>
+                      <option value="timer:60">60s Drone</option>
+                      <option value="timer:120">120s Drone</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="control-group draw-only-control has-tooltip" data-tooltip="Default Line Voicing: Harmonic intervals produced by newly drawn lines (Single Unison, Octave Doubling, Sub-Octave, or Dual Octave).">
+                  <label for="defaultHarmonizerSelect">Default Voicing</label>
+                  <div class="select-wrapper">
+                    <select id="defaultHarmonizerSelect" class="minimal-select">
+                      <option value="single" selected>Single (1x)</option>
+                      <option value="octave">Octave (+8va)</option>
+                      <option value="subOctave">Sub-Octave (-8vb)</option>
+                      <option value="dualOctave">Dual Octave (±8va)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 4. Master Acoustics & Tempo Card -->
+            <div class="drawer-card">
+              <span class="drawer-card-label">Master Acoustics & Tempo</span>
+
+              <!-- Tempo Slider (BPM 10 - 200) -->
+              <div class="control-group slider-group has-tooltip" data-tooltip="Tempo (BPM): 10–240 BPM. Ambient music benefits from ultra-slow tempos (10–60 BPM).">
+                <div class="slider-header">
+                  <label for="bpmSlider">Tempo</label>
+                  <span id="bpmVal" class="value-badge">100 BPM</span>
+                </div>
+                <input type="range" id="bpmSlider" min="10" max="200" step="2" value="100" class="minimal-slider" />
+              </div>
+
+              <!-- Master Reverb Space Depth -->
+              <div class="control-group slider-group has-tooltip" data-tooltip="Space (Reverb): Adjusts room acoustics from intimate & dry (0%) to vast cathedral ambient (100%).">
+                <div class="slider-header">
+                  <label for="spaceSlider">Space (Master Reverb)</label>
+                  <span id="spaceVal" class="value-badge">35%</span>
+                </div>
+                <input type="range" id="spaceSlider" min="0" max="100" step="1" value="35" class="minimal-slider" />
+              </div>
+
+              <!-- Organic Timbral Breathing (Option 3) -->
+              <div class="control-group has-tooltip" data-tooltip="Timbral Breathing: Generates slow, evolving acoustic movement with filter sweeps, volume swells, and analog tape drift without changing pitch.">
+                <label for="breathingSelect">Timbral Breathing</label>
+                <div class="select-wrapper">
+                  <select id="breathingSelect" class="minimal-select">
+                    <option value="gentle" selected>Gentle Swell (~22s)</option>
+                    <option value="deep">Deep Ocean (~34s)</option>
+                    <option value="drift">Tape Drift (Phasing)</option>
+                    <option value="off">Off (Static)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Canvas Pitch Octave Span -->
+              <div class="control-group slider-group has-tooltip" data-tooltip="Octave Range: Pitch span across canvas height (2 = detailed melodic focus, 5 = full symphonic range).">
+                <div class="slider-header">
+                  <label for="octavesSlider">Octaves View</label>
+                  <span id="octavesVal" class="value-badge">4 Oct</span>
+                </div>
+                <input type="range" id="octavesSlider" min="2" max="6" step="1" value="4" class="minimal-slider" />
+              </div>
+            </div>
+
+            <!-- 5. Presets & Storage Card + Math Button -->
+            <div class="drawer-card">
+              <span class="drawer-card-label">Presets & System</span>
+              <div class="drawer-two-col">
+                <button type="button" id="saveTemplateBtn" class="action-btn has-tooltip" data-tooltip="Save Groove: Save composition to browser and export JSON file.">
+                  Save File
+                </button>
+                <button type="button" id="loadTemplateFileBtn" class="action-btn has-tooltip" data-tooltip="Load Groove File: Open a saved composition JSON file.">
+                  Load File
+                </button>
+                <input type="file" id="loadFileInput" accept=".json" style="display: none;" />
+              </div>
+              <button id="infoBtn" class="action-btn text-muted has-tooltip" data-tooltip="Algorithm & Math: View equations." style="width: 100%;">
+                Math & Algorithm
+              </button>
+            </div>
           </div>
-        </nav>
+        </div>
       </header>
 
       <!-- Drawing Canvas Area -->
       <main class="canvas-container">
-        <!-- Floating Dedicated Selected Line Inspector (Appears over canvas when a line is selected) -->
+        <!-- Floating Dedicated Selected Line Inspector (Two rows: Sound parameters & Motion/Shape) -->
         <section id="trackInspectorBar" class="track-inspector-bar" style="display: none;">
           <div class="track-inspector-inner">
-            <!-- Line Identity & Color Pill -->
-            <div class="inspector-badge">
-              <span class="inspector-badge-dot" id="trackBadgeDot"></span>
-              <div class="inspector-badge-meta">
-                <span class="inspector-badge-sub">Selected Line</span>
-                <span class="inspector-badge-name" id="trackLabel">Bowed Cello</span>
+            <!-- Row 1: Line Identity, Audio Levels (Volume, Reverb, Fluctuation), and Track Actions -->
+            <div class="track-inspector-row track-inspector-row-top">
+              <!-- Line Identity & Color Pill -->
+              <div class="inspector-badge">
+                <span class="inspector-badge-dot" id="trackBadgeDot"></span>
+                <div class="inspector-badge-meta">
+                  <span class="inspector-badge-sub">Selected Line</span>
+                  <span class="inspector-badge-name" id="trackLabel">Bowed Cello</span>
+                </div>
+              </div>
+
+              <div class="inspector-divider"></div>
+
+              <!-- Individual Line Volume -->
+              <div class="inspector-cell has-tooltip" data-tooltip="Line Volume: Drag to adjust volume of this line (0% - 100%). Shortcut: [ / ] or ↑ / ↓.">
+                <label for="trackVolSlider">Vol</label>
+                <div class="track-slider-wrap">
+                  <input type="range" id="trackVolSlider" min="0" max="100" step="1" value="100" class="track-vol-slider" />
+                  <span id="trackVolVal" class="track-vol-val">100%</span>
+                </div>
+              </div>
+
+              <!-- Individual Line Reverb -->
+              <div class="inspector-cell has-tooltip" data-tooltip="Line Reverb: Adjust the space / convolution reverb send level for this individual line (0% - 100%).">
+                <label for="trackReverbSlider">Rev</label>
+                <div class="track-slider-wrap">
+                  <input type="range" id="trackReverbSlider" min="0" max="100" step="1" value="40" class="track-vol-slider" />
+                  <span id="trackReverbVal" class="track-vol-val">40%</span>
+                </div>
+              </div>
+
+              <!-- Individual Line Tone Fluctuation -->
+              <div class="inspector-cell has-tooltip" data-tooltip="Tone Fluctuation: Controls slight randomness / organic pitch drift from the drawn line (0.00 = strict line tracking, 1.00 = maximum subtle pitch and tone wander).">
+                <label for="trackFluctuationSlider">Fluct</label>
+                <div class="track-slider-wrap">
+                  <input type="range" id="trackFluctuationSlider" min="0" max="1" step="0.01" value="0.00" class="track-vol-slider" />
+                  <span id="trackFluctuationVal" class="track-vol-val">0.00</span>
+                </div>
+              </div>
+
+              <!-- Actions: Mute / Solo / Duplicate / Delete / Done -->
+              <div class="inspector-actions">
+                <button id="muteBtn" class="action-btn has-tooltip" data-tooltip="Mute selected line (M)">Mute</button>
+                <button id="soloBtn" class="action-btn has-tooltip" data-tooltip="Solo selected line (S)">Solo</button>
+                <button id="duplicateTrackBtn" class="action-btn has-tooltip" data-tooltip="Duplicate / Copy selected line with all settings (⌘D or ⌘C then ⌘V)">Duplicate</button>
+                <button id="deleteTrackBtn" class="action-btn text-danger has-tooltip" data-tooltip="Delete selected line (Backspace / Delete)">Delete</button>
+                <button id="deselectTrackBtn" class="action-btn btn-subtle has-tooltip" data-tooltip="Deselect line (Esc)">Done</button>
               </div>
             </div>
 
-            <div class="inspector-divider"></div>
+            <!-- Row 2: Timing (Speed vs Timer), Traversal (Restart vs Bounce), and Shape Restructuring -->
+            <div class="track-inspector-row track-inspector-row-bottom">
+              <!-- Individual Line Timing: Speed vs Timer (Free default, timer for drones) -->
+              <div class="inspector-cell inspector-speed-cell has-tooltip" data-tooltip="Line Timing: Control pacing with Speed (multiplier) or Timer (duration in seconds). For long ambient drones, set the timer really high.">
+                <div class="inspector-speed-header">
+                  <label>Timing</label>
+                  <div class="speed-mode-toggle" id="speedModeToggle">
+                    <button type="button" class="speed-mode-btn active" id="speedModeSpeedBtn" title="Speed mode: Continuous velocity multiplier">Speed</button>
+                    <button type="button" class="speed-mode-btn" id="speedModeTimerBtn" title="Timer mode: Loop duration in seconds (set high for drones)">Timer</button>
+                  </div>
+                </div>
 
-            <!-- Individual Line Volume -->
-            <div class="inspector-cell has-tooltip" data-tooltip="Line Volume: Drag to adjust volume of this line (0% - 100%). Shortcut: [ / ] or ↑ / ↓.">
-              <label for="trackVolSlider">Volume</label>
-              <div class="track-slider-wrap">
-                <input type="range" id="trackVolSlider" min="0" max="100" step="1" value="100" class="track-vol-slider" />
-                <span id="trackVolVal" class="track-vol-val">100%</span>
+                <!-- Speed Mode: Slider & Quick Preset Pills -->
+                <div id="trackSpeedControls" class="track-speed-wrap">
+                  <div class="track-slider-wrap">
+                    <input type="range" id="trackSpeedSlider" min="0.1" max="4.0" step="0.05" value="1.0" class="track-vol-slider" />
+                    <span id="trackSpeedVal" class="track-vol-val">1.00x</span>
+                  </div>
+                  <div class="speed-preset-pills" id="speedPresetPills">
+                    <button type="button" class="speed-pill" data-speed="0.25">¼x</button>
+                    <button type="button" class="speed-pill" data-speed="0.5">½x</button>
+                    <button type="button" class="speed-pill active" data-speed="1.0">1x</button>
+                    <button type="button" class="speed-pill" data-speed="2.0">2x</button>
+                  </div>
+                </div>
+
+                <!-- Timer Mode: Duration Slider & Quick Pills (for long drones, set really high) -->
+                <div id="trackDurationGroup" class="track-speed-wrap" style="display: none;">
+                  <div class="track-slider-wrap">
+                    <input type="range" id="trackDurationSlider" min="1" max="300" step="1" value="30" class="track-vol-slider" />
+                    <span id="trackDurationVal" class="track-vol-val">30s</span>
+                  </div>
+                  <div class="speed-preset-pills" id="durationPresetPills">
+                    <button type="button" class="speed-pill" data-duration="10">10s</button>
+                    <button type="button" class="speed-pill active" data-duration="30">30s</button>
+                    <button type="button" class="speed-pill" data-duration="60">1m</button>
+                    <button type="button" class="speed-pill" data-duration="120">2m</button>
+                  </div>
+                </div>
               </div>
-            </div>
 
-            <!-- Individual Line Texture -->
-            <div class="inspector-cell has-tooltip" data-tooltip="Line Texture: Switch audio voice between continuous solid drone, 8th-note dotted chimes, and 16th-note striped pulses.">
-              <label>Texture</label>
-              <div class="segmented-switch mini-switch" id="trackTextureControl">
-                <button type="button" class="seg-btn active" data-track-style="solid">Solid</button>
-                <button type="button" class="seg-btn" data-track-style="dotted">Dotted</button>
-                <button type="button" class="seg-btn" data-track-style="striped">Striped</button>
+              <!-- Individual Line Traversal: Restart vs Bounce -->
+              <div class="inspector-cell has-tooltip" data-tooltip="Line Traversal: Restart from line start, or Bounce back and forth.">
+                <label>Traversal</label>
+                <div class="segmented-switch mini-switch" id="trackTraversalControl">
+                  <button type="button" class="seg-btn active" data-track-traversal="restart">Restart</button>
+                  <button type="button" class="seg-btn" data-track-traversal="bounce">Bounce</button>
+                </div>
               </div>
-            </div>
 
-            <!-- Individual Line Loop Sync -->
-            <div class="inspector-cell has-tooltip" data-tooltip="Line Loop Sync: Aligns loop cycle to musical bars. Locked tracks loop in rhythmic unison regardless of length.">
-              <label for="trackSyncSelect">Loop Sync</label>
-              <div class="select-wrapper mini-select-wrapper">
-                <select id="trackSyncSelect" class="minimal-select track-mini-select">
-                  <option value="1bar">1 Bar</option>
-                  <option value="2bars">2 Bars</option>
-                  <option value="4bars">4 Bars</option>
-                  <option value="freeform">Freeform</option>
-                </select>
-              </div>
-            </div>
-
-            <!-- Individual Line Traversal: Restart vs Bounce -->
-            <div class="inspector-cell has-tooltip" data-tooltip="Line Traversal: Restart (one-way wrap) vs Bounce (ping-pong reversal).">
-              <label>Traversal</label>
-              <div class="segmented-switch mini-switch" id="trackTraversalControl">
-                <button type="button" class="seg-btn active" data-track-traversal="restart">Restart ↻</button>
-                <button type="button" class="seg-btn" data-track-traversal="pingpong">Bounce ⇄</button>
-              </div>
-            </div>
-
-            <!-- Mathematical Wave Restructuring -->
-            <div class="inspector-cell inspector-wave-cell" id="trackWaveControl">
-              <label>Shape</label>
-              <div class="track-wave-subgroup">
-                <div class="select-wrapper mini-select-wrapper has-tooltip" data-tooltip="Mathematical Shape: Restructure this line into Sine (~), Tangent (∿), Triangle (▲), Square (⊓), Sawtooth (⊿), or Melodic Arch (⌒).">
-                  <select id="waveShapeSelect" class="minimal-select track-mini-select">
-                    <option value="sine" selected>~ Sine</option>
-                    <option value="tangent">∿ Tangent</option>
-                    <option value="triangle">▲ Triangle</option>
-                    <option value="square">⊓ Square</option>
-                    <option value="sawtooth">⊿ Sawtooth</option>
-                    <option value="arch">⌒ Arch</option>
+              <!-- Individual Line Voicing (Harmonizer) -->
+              <div class="inspector-cell has-tooltip" id="trackHarmonizerControl" data-tooltip="Line Voicing: Single unison, Upper Octave stack (+8va), Sub-Octave bass (-8vb), or Dual Octave (±8va).">
+                <label for="trackHarmonizerSelect">Voicing</label>
+                <div class="select-wrapper mini-select-wrapper">
+                  <select id="trackHarmonizerSelect" class="minimal-select track-mini-select">
+                    <option value="single" selected>Single (1x)</option>
+                    <option value="octave">Octave (+8va)</option>
+                    <option value="subOctave">Sub-Octave (-8vb)</option>
+                    <option value="dualOctave">Dual Octave (±8va)</option>
                   </select>
                 </div>
-                <button
-                  type="button"
-                  id="waveSineBtn"
-                  class="wave-toggle-btn has-tooltip"
-                  data-tooltip="Toggle Shape Restructuring: Applies or flattens the mathematical curve."
-                >
-                  Wave
-                </button>
-                <div class="wave-slider-group has-tooltip" data-tooltip="Wave Amplitude: Adjusts the vertical wave height / pitch modulation depth (0px = straight, up to 100px).">
-                  <label for="waveAmpSlider">Amp</label>
-                  <input type="range" id="waveAmpSlider" min="0" max="100" step="1" value="0" class="track-mini-slider" />
-                  <span id="waveAmpVal" class="track-mini-val">0px</span>
-                </div>
-                <div class="wave-slider-group has-tooltip" data-tooltip="Wave Period / Frequency: Number of complete wave cycles along the stroke length (0.5 to 8.0 cycles).">
-                  <label for="wavePeriodSlider">Period</label>
-                  <input type="range" id="wavePeriodSlider" min="0.5" max="8" step="0.5" value="2" class="track-mini-slider" />
-                  <span id="wavePeriodVal" class="track-mini-val">2.0x</span>
+              </div>
+
+              <!-- Mathematical Wave Restructuring -->
+              <div class="inspector-cell inspector-wave-cell" id="trackWaveControl">
+                <label>Shape</label>
+                <div class="track-wave-subgroup">
+                  <div class="select-wrapper mini-select-wrapper has-tooltip" data-tooltip="Mathematical Shape: Restructure this line into Sine, Tangent, Triangle, Square, Sawtooth, or Melodic Arch.">
+                    <select id="waveShapeSelect" class="minimal-select track-mini-select">
+                      <option value="sine" selected>Sine</option>
+                      <option value="tangent">Tangent</option>
+                      <option value="triangle">Triangle</option>
+                      <option value="square">Square</option>
+                      <option value="sawtooth">Sawtooth</option>
+                      <option value="arch">Arch</option>
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    id="waveSineBtn"
+                    class="wave-toggle-btn has-tooltip"
+                    data-tooltip="Toggle Shape Restructuring: Applies or flattens the mathematical curve."
+                  >
+                    Wave
+                  </button>
+                  <div class="wave-slider-group has-tooltip" data-tooltip="Wave Amplitude: Adjusts the vertical wave height / pitch modulation depth (0px = straight, up to 100px).">
+                    <label for="waveAmpSlider">Amp</label>
+                    <input type="range" id="waveAmpSlider" min="0" max="100" step="1" value="0" class="track-mini-slider" />
+                    <span id="waveAmpVal" class="track-mini-val">0px</span>
+                  </div>
+                  <div class="wave-slider-group has-tooltip" data-tooltip="Wave Period / Frequency: Number of complete wave cycles along the stroke length (0.5 to 8.0 cycles).">
+                    <label for="wavePeriodSlider">Per</label>
+                    <input type="range" id="wavePeriodSlider" min="0.5" max="8" step="0.5" value="2" class="track-mini-slider" />
+                    <span id="wavePeriodVal" class="track-mini-val">2.0x</span>
+                  </div>
                 </div>
               </div>
-            </div>
-
-            <div class="inspector-divider"></div>
-
-            <!-- Actions: Mute / Solo / Delete / Done -->
-            <div class="inspector-actions">
-              <button id="muteBtn" class="action-btn has-tooltip" data-tooltip="Mute selected line (M)">Mute</button>
-              <button id="soloBtn" class="action-btn has-tooltip" data-tooltip="Solo selected line (S)">Solo</button>
-              <button id="deleteTrackBtn" class="action-btn text-danger has-tooltip" data-tooltip="Delete selected line (Backspace / Delete)">Delete</button>
-              <button id="deselectTrackBtn" class="action-btn btn-subtle has-tooltip" data-tooltip="Deselect line (Esc)">✕ Done</button>
             </div>
           </div>
         </section>
 
         <canvas id="musicCanvas"></canvas>
 
+        <!-- Interactive Frequency Range Navigator & Vertical Pitch Scrollbar -->
+        <aside id="pitchNavigator" class="pitch-navigator" aria-label="Frequency Range Navigator">
+          <button type="button" id="pitchScrollUpBtn" class="pitch-nav-btn has-tooltip" data-tooltip="Scroll UP towards Highest Frequencies (Leads / Chimes / 4.7 kHz) • PageUp / Wheel" title="High Frequencies">
+            Up
+          </button>
+          <div id="pitchTrack" class="pitch-track" title="Click or drag to scroll frequency spectrum">
+            <span class="pitch-mark pitch-mark-top">4.7 kHz</span>
+            <span class="pitch-mark pitch-mark-high">1.2 kHz</span>
+            <span class="pitch-mark pitch-mark-mid">294 Hz</span>
+            <span class="pitch-mark pitch-mark-bass">73 Hz</span>
+            <span class="pitch-mark pitch-mark-sub">18 Hz</span>
+            <div id="pitchThumb" class="pitch-thumb" title="Visible frequency window. Drag to scroll.">
+              <span id="pitchThumbLabel" class="pitch-thumb-label">D2–D6</span>
+            </div>
+          </div>
+          <button type="button" id="pitchScrollDownBtn" class="pitch-nav-btn has-tooltip" data-tooltip="Scroll DOWN towards Lowest Frequencies (Sub-bass / 808 / 18 Hz) • PageDown / Wheel" title="Low Frequencies">
+            Down
+          </button>
+          <button type="button" id="pitchResetBtn" class="pitch-reset-btn has-tooltip" data-tooltip="Reset View: Center on standard middle pitch register (D2–D6) • Home key" title="Center View">
+            Mid
+          </button>
+        </aside>
+
         <!-- Initial Gentle Invitation Banner -->
         <div id="audioUnlockPrompt" class="welcome-banner">
           <div class="welcome-card">
-            <h3>Draw on the canvas or load a template</h3>
-            <p>Y = Pitch • X = Stereo Pan & Tone • Arc = Rhythm • 1 Bar = 4 Beats</p>
-            <span class="hint-small">Choose colors for instruments • Hold Shift for straight notes • Load a Template above</span>
+            <h3>Draw on the canvas or load an ambient template</h3>
+            <p>Y = Pitch • X = Stereo Pan & Tone • Arc = Rhythm • Ultra-slow 10–60 BPM & Drone modes</p>
+            <span class="hint-small">Click any line to select & voice chords • Open Controls for Scale & Reverb</span>
           </div>
         </div>
 
@@ -413,15 +642,15 @@
         <footer class="bottom-bar">
           <div class="status-left">
             <span id="statStrokes" class="status-chip">0 strokes</span>
-            <span id="statMode" class="status-chip">Draw Mode</span>
+            <span id="statMode" class="status-chip">Draw / Click to Select</span>
             <span id="statInstrument" class="status-chip">🎻 Bowed Cello</span>
             <span id="statTempo" class="status-chip">100 BPM</span>
-            <span id="statLoopSync" class="status-chip">Per-Line Loops</span>
+            <span id="statLoopSync" class="status-chip">Default: 2 Bars</span>
             <span id="statPitchSnap" class="status-chip">Snap Off</span>
             <span id="statAudio" class="status-chip chip-ready">Audio ready</span>
           </div>
           <div class="status-right">
-            <span id="contextHelp" class="context-help">Hover over any setting for details • Space: Pause • ⌘Z: Undo • Shift: Straight Note • 1-7: Inks</span>
+            <span id="contextHelp" class="context-help">Hover over any setting for details • Space: Pause • P: Live Play • ⌘Z: Undo • Shift: Straight Note • 1-7: Inks</span>
           </div>
         </footer>
       </main>
@@ -432,7 +661,7 @@
         <div class="modal-card">
           <div class="modal-head">
             <h2>Mathematical Specifications</h2>
-            <button id="closeModalBtn" class="close-btn" aria-label="Close modal">&times;</button>
+            <button id="closeModalBtn" class="close-btn" aria-label="Close modal">Close</button>
           </div>
           <div class="modal-content">
             <section>
@@ -445,13 +674,13 @@
             </section>
 
             <section>
-              <h3>2. Coordinate-to-Pitch Scale Quantizer with Deadband Hysteresis</h3>
+              <h3>2. Coordinate-to-Pitch Scale Quantizer & Tone Fluctuation</h3>
               <p>Standard graphics places $(0, 0)$ top-left, while musical frequency increases upwards. Normalized pitch coordinate is inverted:</p>
               <pre><code>u = clamp(1 - y / H, 0, 1),   d_cont = u · (N_notes - 1)</code></pre>
-              <p>Continuous scale degree $d_{\text{cont}}$ passes through center-locking deadband hysteresis ($w \in [0, 0.5]$):</p>
+              <p>Continuous scale degree $d_{\text{cont}}$ smoothly interpolates across modal intervals, with optional per-line tone fluctuation for organic analog drift:</p>
               <ul>
-                <li><strong>Solid Strokes:</strong> Rest comfortably in-tune on horizontal lines, while gliding with smooth microtonal portamento during vertical moves.</li>
-                <li><strong>Dotted / Striped Strokes:</strong> Strictly snapped to discrete modal scale intervals at synchronized eighth- and sixteenth-note pulses.</li>
+                <li><strong>Solid Strokes:</strong> Glide with smooth, natural microtonal portamento, with tone fluctuation adding organic wandering drift.</li>
+                <li><strong>Dotted / Roll Strokes:</strong> Quantized to discrete scale intervals or rapid rhythmic roll/ratchet bursts.</li>
               </ul>
             </section>
 
@@ -464,7 +693,56 @@
           </div>
         </div>
       </div>
+
+      <!-- Save Preset Modal (Overwrite or Save as New Version) -->
+      <div id="savePresetModal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-card save-preset-modal-card">
+          <div class="modal-head">
+            <h2>Save Preset</h2>
+            <button id="closeSavePresetModalBtn" class="close-btn" aria-label="Close modal">Close</button>
+          </div>
+          <div class="modal-content save-preset-modal-content">
+            <p class="save-preset-desc">
+              Save your current composition, instruments, tempo, and effects.
+            </p>
+
+            <div class="save-preset-input-wrap">
+              <label for="savePresetNameInput" class="save-input-label">Preset Name</label>
+              <input
+                type="text"
+                id="savePresetNameInput"
+                class="save-preset-input"
+                placeholder="Preset Name"
+                maxlength="64"
+              />
+            </div>
+
+            <div class="save-preset-actions-stack">
+              <button type="button" id="overwritePresetBtn" class="action-btn action-btn-primary save-btn-choice has-tooltip" data-tooltip="Overwrite current preset with your latest changes">
+                Overwrite Current Preset
+              </button>
+              <button type="button" id="saveNewVersionBtn" class="action-btn save-btn-choice has-tooltip" data-tooltip="Save as a new version (e.g. v2, v3) preserving earlier versions">
+                Save as New Version
+              </button>
+              <button type="button" id="saveCustomNameBtn" class="action-btn btn-subtle save-btn-choice has-tooltip" data-tooltip="Save with the custom name entered above">
+                Save with Entered Name
+              </button>
+            </div>
+
+            <div class="save-export-options">
+              <label class="save-checkbox-label">
+                <input type="checkbox" id="saveExportJsonCheck" />
+                <span>Also download backup .json file</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
+
+    <!-- Global Floating Tooltip Popover (Guaranteed on top of all canvas layers, never clipped) -->
+    <div id="floatingTooltip" class="app-floating-tooltip" role="tooltip" aria-hidden="true"></div>
 
     <script type="module" src="./src/main.ts"></script>
   </body>

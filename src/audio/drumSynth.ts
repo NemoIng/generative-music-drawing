@@ -47,11 +47,13 @@ export class DrumSynth {
     velocity: number = 0.9,
     x: number = 0,
     canvasWidth: number = 1,
-    xModMode: XAxisModulationMode = 'panAndTone'
+    xModMode: XAxisModulationMode = 'panAndTone',
+    timeOffset: number = 0,
+    reverb: number = 0.0
   ): void {
     if (!soundEngine.isReady || velocity <= 0.001) return;
     const ctx = soundEngine.context;
-    const now = ctx.currentTime;
+    const now = ctx.currentTime + timeOffset;
 
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -85,8 +87,8 @@ export class DrumSynth {
     osc.connect(gain);
     gain.connect(panner);
 
-    // Kicks are routed dry with zero reverb to maintain punch
-    soundEngine.connectVoice(panner, 0.0, 0.0);
+    // Kicks are routed primarily dry with optional subtle sub-reverb
+    soundEngine.connectVoice(panner, 0.0, Math.min(1, reverb * 0.25));
 
     osc.start(now);
     clickOsc.start(now);
@@ -101,11 +103,13 @@ export class DrumSynth {
     velocity: number = 0.85,
     x: number = 0,
     canvasWidth: number = 1,
-    xModMode: XAxisModulationMode = 'panAndTone'
+    xModMode: XAxisModulationMode = 'panAndTone',
+    timeOffset: number = 0,
+    reverb: number = 0.35
   ): void {
     if (!soundEngine.isReady || velocity <= 0.001) return;
     const ctx = soundEngine.context;
-    const now = ctx.currentTime;
+    const now = ctx.currentTime + timeOffset;
 
     const pan = this.getPan(x, canvasWidth, xModMode);
     const panner = ctx.createStereoPanner();
@@ -150,7 +154,7 @@ export class DrumSynth {
     masterSnareGain.connect(panner);
 
     // Snares have subtle reverb send for acoustic space
-    soundEngine.connectVoice(panner, 0.15, 0.35);
+    soundEngine.connectVoice(panner, 0.15, reverb);
 
     bodyOsc.start(now);
     noiseSource.start(now);
@@ -166,11 +170,13 @@ export class DrumSynth {
     velocity: number = 0.75,
     x: number = 0,
     canvasWidth: number = 1,
-    xModMode: XAxisModulationMode = 'panAndTone'
+    xModMode: XAxisModulationMode = 'panAndTone',
+    timeOffset: number = 0,
+    reverb: number = 0.25
   ): void {
     if (!soundEngine.isReady || velocity <= 0.001) return;
     const ctx = soundEngine.context;
-    const now = ctx.currentTime;
+    const now = ctx.currentTime + timeOffset;
 
     const pan = this.getPan(x, canvasWidth, xModMode);
     const panner = ctx.createStereoPanner();
@@ -197,7 +203,7 @@ export class DrumSynth {
     filter.connect(gain);
     gain.connect(panner);
 
-    soundEngine.connectVoice(panner, isClosed ? 0.08 : 0.25, isClosed ? 0.15 : 0.4);
+    soundEngine.connectVoice(panner, isClosed ? 0.08 : 0.25, isClosed ? Math.min(1, reverb * 0.6) : reverb);
 
     noiseSource.start(now);
     noiseSource.stop(now + decayTime + 0.02);
@@ -210,11 +216,13 @@ export class DrumSynth {
     velocity: number = 0.8,
     x: number = 0,
     canvasWidth: number = 1,
-    xModMode: XAxisModulationMode = 'panAndTone'
+    xModMode: XAxisModulationMode = 'panAndTone',
+    timeOffset: number = 0,
+    reverb: number = 0.55
   ): void {
     if (!soundEngine.isReady || velocity <= 0.001) return;
     const ctx = soundEngine.context;
-    const now = ctx.currentTime;
+    const now = ctx.currentTime + timeOffset;
 
     const pan = this.getPan(x, canvasWidth, xModMode);
     const panner = ctx.createStereoPanner();
@@ -244,7 +252,7 @@ export class DrumSynth {
     filter.connect(gain);
     gain.connect(panner);
 
-    soundEngine.connectVoice(panner, 0.2, 0.55);
+    soundEngine.connectVoice(panner, 0.2, reverb);
 
     noiseSource.start(now);
     noiseSource.stop(now + 0.26);
@@ -258,11 +266,13 @@ export class DrumSynth {
     velocity: number = 0.85,
     x: number = 0,
     canvasWidth: number = 1,
-    xModMode: XAxisModulationMode = 'panAndTone'
+    xModMode: XAxisModulationMode = 'panAndTone',
+    timeOffset: number = 0,
+    reverb: number = 0.3
   ): void {
     if (!soundEngine.isReady || velocity <= 0.001) return;
     const ctx = soundEngine.context;
-    const now = ctx.currentTime;
+    const now = ctx.currentTime + timeOffset;
 
     const pan = this.getPan(x, canvasWidth, xModMode);
     const panner = ctx.createStereoPanner();
@@ -285,9 +295,47 @@ export class DrumSynth {
     osc.connect(gain);
     gain.connect(panner);
 
-    soundEngine.connectVoice(panner, 0.18, 0.3);
+    soundEngine.connectVoice(panner, 0.18, reverb);
 
     osc.start(now);
     osc.stop(now + 0.3);
+  }
+
+  /**
+   * Triggers a rapid multi-hit ratchet / roll burst (e.g. 3 or 4 rapid 32nd-note micro-hits).
+   */
+  public static triggerRoll(
+    drumType: 'kick' | 'snare' | 'hihat' | 'tom' | 'clap',
+    velocity: number = 0.85,
+    x: number = 0,
+    canvasWidth: number = 1,
+    xModMode: XAxisModulationMode = 'panAndTone',
+    baseFreq: number = 120,
+    reverb: number = 0.35
+  ): void {
+    if (!soundEngine.isReady || velocity <= 0.001) return;
+    const burstCount = drumType === 'hihat' ? 4 : 3;
+    const intervalSec = drumType === 'hihat' ? 0.035 : 0.045;
+    for (let i = 0; i < burstCount; i++) {
+      const offset = i * intervalSec;
+      const hitVel = velocity * (0.7 + 0.3 * (i / (burstCount - 1 || 1)));
+      switch (drumType) {
+        case 'kick':
+          this.triggerKick(hitVel, x, canvasWidth, xModMode, offset, reverb);
+          break;
+        case 'snare':
+          this.triggerSnare(hitVel, x, canvasWidth, xModMode, offset, reverb);
+          break;
+        case 'hihat':
+          this.triggerHiHat(i === burstCount - 1 ? false : true, hitVel, x, canvasWidth, xModMode, offset, reverb);
+          break;
+        case 'tom':
+          this.triggerTom(baseFreq, hitVel, x, canvasWidth, xModMode, offset, reverb);
+          break;
+        case 'clap':
+          this.triggerClap(hitVel, x, canvasWidth, xModMode, offset, reverb);
+          break;
+      }
+    }
   }
 }

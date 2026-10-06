@@ -45,6 +45,11 @@ export const ROOT_NOTES: Record<string, RootNote> = {
   G2: { name: 'G2', frequency: 97.999, baseMidi: 43 },
   A2: { name: 'A2', frequency: 110.000, baseMidi: 45 },
   C3: { name: 'C3', frequency: 130.813, baseMidi: 48 },
+  D3: { name: 'D3', frequency: 146.832, baseMidi: 50 },
+  E3: { name: 'E3', frequency: 164.814, baseMidi: 52 },
+  F3: { name: 'F3', frequency: 174.614, baseMidi: 53 },
+  G3: { name: 'G3', frequency: 195.998, baseMidi: 55 },
+  A3: { name: 'A3', frequency: 220.000, baseMidi: 57 },
 };
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
