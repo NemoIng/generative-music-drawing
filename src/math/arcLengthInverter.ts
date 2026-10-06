@@ -82,10 +82,13 @@ export function evaluateAtDistance(
   const alpha = deltaS > 1e-12 ? (sStar - s_j) / deltaS : 0;
 
   // 4. Parameter Interpolation
-  const k = lut.segmentIndices[j];
-  const t_j = lut.tValues[j];
-  const t_next = lut.tValues[j + 1];
-  let tStar = t_j + alpha * (t_next - t_j);
+  const k_curr = lut.segmentIndices[j];
+  const k_next = lut.segmentIndices[j + 1];
+  const isBoundary = k_curr !== k_next;
+  const k = isBoundary ? k_next : k_curr;
+  const t_start = isBoundary ? 0.0 : lut.tValues[j];
+  const t_end = lut.tValues[j + 1];
+  let tStar = t_start + alpha * (t_end - t_start);
   tStar = Math.max(0, Math.min(1, tStar));
 
   const seg = path.segments[k];

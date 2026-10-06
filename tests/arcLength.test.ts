@@ -109,4 +109,22 @@ describe('Bézier Curve and Arc-Length Parameterization', () => {
     expect(atWrapped.point.x).toBeCloseTo(atQuarter.point.x, 1);
     expect(atWrapped.point.y).toBeCloseTo(atQuarter.point.y, 1);
   });
+
+  it('ensures smooth monotonic progression across segment boundaries', () => {
+    const p: SplinePath = {
+      segments: [
+        { p0: { x: 0, y: 0 }, p1: { x: 33.333, y: 0 }, p2: { x: 66.667, y: 0 }, p3: { x: 100, y: 0 } },
+        { p0: { x: 100, y: 0 }, p1: { x: 133.333, y: 0 }, p2: { x: 166.667, y: 0 }, p3: { x: 200, y: 0 } },
+      ],
+      isClosed: false,
+    };
+    const lut = buildArcLengthLUT(p, 64);
+    let prevX = -1;
+    for (let s = 95; s <= 105; s += 0.1) {
+      const res = evaluateAtDistance(p, lut, s);
+      expect(res.point.x).toBeGreaterThanOrEqual(prevX);
+      expect(res.point.x).toBeCloseTo(s, 2);
+      prevX = res.point.x;
+    }
+  });
 });

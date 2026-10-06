@@ -1303,69 +1303,63 @@ export class StrokeManager {
       let nextDist = prevDist + deltaDist;
 
       // Handle curve boundary according to traversal mode (restart vs bounce)
+      let didWrapOrBounce = false;
       if (stroke.lut.isClosed) {
+        if (nextDist >= L || nextDist < 0) didWrapOrBounce = true;
         nextDist = ((nextDist % L) + L) % L;
       } else if (strokeTraversal === 'bounce') {
         if (nextDist >= L) {
-          nextDist = L - (nextDist - L);
+          nextDist = Math.max(0, L - (nextDist - L));
           ph.direction = -1;
+          didWrapOrBounce = true;
         } else if (nextDist <= 0) {
-          nextDist = -nextDist;
+          nextDist = Math.min(L, -nextDist);
           ph.direction = 1;
+          didWrapOrBounce = true;
         }
       } else {
         // 'restart'
         if (nextDist >= L) {
           nextDist = nextDist % L;
+          didWrapOrBounce = true;
         } else if (nextDist < 0) {
           nextDist = 0;
+          didWrapOrBounce = true;
         }
         ph.direction = 1;
       }
 
       ph.currentDistance = nextDist;
 
-      // 1. Evaluate position with Newton-Raphson refinement
+      // 1. Evaluate position with Newton-Raphson refinement (2 iterations for sub-pixel accuracy)
       const evalResult = evaluateAtDistance(stroke.path, stroke.lut, nextDist, {
         useNewtonRaphson: true,
-        newtonIterations: 1,
+        newtonIterations: 2,
       });
+
+      // Visual playhead dot glides directly along the geometric curve with 100% precision
+      const visualPt: Point2D = evalResult.point;
+      ph.lastEval = evalResult;
+
+      // 2. Motion Trail (reset immediately on loop boundary wrap/bounce to avoid cross-screen streaks)
+      if (didWrapOrBounce) {
+        ph.trail = [visualPt];
+      } else {
+        ph.trail.unshift(visualPt);
+        if (ph.trail.length > 14) {
+          ph.trail.pop();
+        }
+      }
 
       const strokeFluctuation = stroke.fluctuation ?? this.defaultFluctuation;
       const MAX_FLUCTUATION_OFFSET = 18; // Max pixel drift (~1 semitone / microtonal wander)
       const maxY = quantizer?.isScrollEnabled ? quantizer.getWorldHeight(canvasHeight) : canvasHeight;
 
-      // Continuous organic wander for solid drone lines
+      // Continuous organic wander for solid drone acoustic pitch
       const wander = (stroke.style === 'solid' && strokeFluctuation > 0)
         ? getStrokeWander(stroke.id, this.masterClockTime, nextDist) * strokeFluctuation * MAX_FLUCTUATION_OFFSET
         : 0;
       const solidEffectiveY = Math.max(0, Math.min(maxY, evalResult.point.y + wander));
-
-      // Visual playhead tracks the wander & dot scatter when fluctuation is active
-      let effectiveVisualY = evalResult.point.y;
-      if (strokeFluctuation > 0) {
-        if (stroke.style === 'solid') {
-          effectiveVisualY = solidEffectiveY;
-        } else if (stroke.style === 'dotted') {
-          const dotIdx = Math.floor(nextDist / DOT_SPACING);
-          const dotJitter = getHitJitter(stroke.id, dotIdx) * strokeFluctuation * 18;
-          effectiveVisualY = Math.max(0, Math.min(maxY, evalResult.point.y + dotJitter));
-        } else if (stroke.style === 'striped') {
-          const rollIdx = Math.floor(nextDist / ROLL_SPACING);
-          const rollJitter = getHitJitter(stroke.id, rollIdx) * strokeFluctuation * 14;
-          effectiveVisualY = Math.max(0, Math.min(maxY, evalResult.point.y + rollJitter));
-        }
-      }
-
-      const visualPt: Point2D = { x: evalResult.point.x, y: effectiveVisualY };
-
-      ph.lastEval = { ...evalResult, point: visualPt };
-
-      // 2. Motion Trail
-      ph.trail.unshift(visualPt);
-      if (ph.trail.length > 14) {
-        ph.trail.pop();
-      }
 
       // 3. Audio & Pitch evaluation (Respecting Volume, Mute, Solo, and Loop Boundary Crossfade)
       const audible = this.isStrokeAudible(stroke);

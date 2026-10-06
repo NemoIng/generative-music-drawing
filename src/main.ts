@@ -2441,15 +2441,28 @@ function updateStats(): void {
   statStrokes.textContent = `${count} ${count === 1 ? 'stroke' : 'strokes'}`;
 }
 
-// Animation & Sequencer Loop
-let lastTimeMs = performance.now();
+// Animation & Sequencer Loop with Smooth Frame-Delta Filtering
+let lastTimeMs = 0;
+let smoothedDt = 1 / 60;
 
 function animationLoop(nowMs: number): void {
-  const dt = Math.min(0.08, (nowMs - lastTimeMs) / 1000);
+  if (lastTimeMs === 0) {
+    lastTimeMs = nowMs;
+  }
+  const rawDt = (nowMs - lastTimeMs) / 1000;
   lastTimeMs = nowMs;
 
+  // Filter delta-time: if huge stutter or tab backgrounded (>120ms), reset smooth baseline
+  if (rawDt > 0.12) {
+    smoothedDt = 1 / 60;
+  } else {
+    // Clamp minor frame-timing variances and smooth with exponential moving average
+    const clampedDt = Math.max(0.001, Math.min(0.064, rawDt));
+    smoothedDt = smoothedDt * 0.75 + clampedDt * 0.25;
+  }
+
   // 1. Update constant-velocity playheads, Y pitch, X stereo modulation, and measure progress
-  strokeManager.update(dt, renderer.width, renderer.height, quantizer);
+  strokeManager.update(smoothedDt, renderer.width, renderer.height, quantizer);
 
   // 2. Clear canvas to warm paper tone
   renderer.clear();
@@ -2521,7 +2534,7 @@ prevCanvasWidth = renderer.width;
 prevCanvasHeight = renderer.height;
 quantizer.resetScrollToDefault(renderer.height);
 updatePitchNavigator();
-loadTemplate('deepCosmicDrone', false);
+loadTemplate('cathedralSolitude', false);
 updateStats();
 updateTrackActionsVisibility();
 requestAnimationFrame(animationLoop);
