@@ -345,6 +345,23 @@ export class StrokeManager {
     return stroke.muted ?? false;
   }
 
+  public setStrokeMuted(strokeId: string, muted: boolean): void {
+    const stroke = this.strokes.find((s) => s.id === strokeId);
+    if (!stroke) return;
+    stroke.muted = muted;
+
+    if (!this.isStrokeAudible(stroke) && stroke.droneVoice) {
+      stroke.droneVoice.stop();
+      stroke.droneVoice = null;
+    } else if (this.isStrokeAudible(stroke) && stroke.style === 'solid' && this.engine.isReady && stroke.playhead.lastPitch && !this.isPaused) {
+      if (!stroke.droneVoice || !stroke.droneVoice.isPlaying) {
+        const inst = getInstrument(stroke.instrumentId);
+        stroke.droneVoice = new DroneVoice(this.engine);
+        stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, stroke.volume ?? 1.0, stroke.reverb ?? this.defaultReverb);
+      }
+    }
+  }
+
   public toggleSolo(strokeId: string): boolean {
     const stroke = this.strokes.find((s) => s.id === strokeId);
     if (!stroke) return false;
@@ -1813,7 +1830,7 @@ export class StrokeManager {
    * Exports the current composition as a portable JSON-serializable object.
    */
   public exportComposition(
-    name = 'My Custom Groove',
+    name = 'My Ambient Preset',
     scaleId = 'dorian',
     rootId = 'D2',
     canvasWidth?: number,
@@ -1830,6 +1847,7 @@ export class StrokeManager {
       rootId,
       xAxisModulationMode: this.xModMode,
       breathingMode: this.breathingMode,
+      defaultHarmonizer: this.defaultHarmonizer,
       strokes: this.strokes.map((s) => ({
         id: s.id,
         instrumentId: s.instrumentId,
@@ -1884,6 +1902,9 @@ export class StrokeManager {
     }
     if (data.breathingMode) {
       this.setBreathingMode(data.breathingMode);
+    }
+    if (data.defaultHarmonizer) {
+      this.setDefaultStrokeHarmonizer(data.defaultHarmonizer);
     }
 
     // Determine horizontal scale factor to prevent lines falling off the right window margin

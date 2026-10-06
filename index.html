@@ -26,9 +26,12 @@
             </div>
           </div>
 
-          <!-- Starter Groove Templates -->
-          <div class="control-group top-template-group has-tooltip" data-tooltip="Groove Templates: Instant ambient scores & full acoustic presets.">
-            <label class="top-row-label" for="templateSelect">Preset</label>
+          <!-- Ambient Score Presets -->
+          <div class="control-group top-template-group has-tooltip" data-tooltip="Ambient Presets: Instant acoustic scores and saved compositions.">
+            <div class="top-row-label-row">
+              <label class="top-row-label" for="templateSelect">Preset</label>
+              <span id="dirtyIndicator" class="dirty-badge" style="display:none;" title="Unsaved changes in current composition">Edited</span>
+            </div>
             <div class="select-wrapper">
               <select id="templateSelect" class="minimal-select">
                 <option value="" selected>Load Preset...</option>
@@ -41,7 +44,7 @@
                   <option value="zenMeditation">Zen Meditation (54 BPM)</option>
                   <option value="minimalGroove">Minimal Groove (112 BPM)</option>
                 </optgroup>
-                <optgroup label="My Saved Grooves" id="savedTemplatesGroup" style="display:none"></optgroup>
+                <optgroup label="My Saved Presets" id="savedTemplatesGroup" style="display:none"></optgroup>
               </select>
             </div>
           </div>
@@ -422,15 +425,20 @@
             <div class="drawer-card">
               <span class="drawer-card-label">Presets & System</span>
               <div class="drawer-two-col">
-                <button type="button" id="saveTemplateBtn" class="action-btn has-tooltip" data-tooltip="Save Groove: Save composition to browser and export JSON file.">
-                  Save File
+                <button type="button" id="quickSaveBtn" class="action-btn action-btn-primary has-tooltip" data-tooltip="Quick Save (⌘S / Ctrl+S): Instantly overwrite currently loaded preset with your latest changes.">
+                  Quick Save
                 </button>
-                <button type="button" id="loadTemplateFileBtn" class="action-btn has-tooltip" data-tooltip="Load Groove File: Open a saved composition JSON file.">
-                  Load File
+                <button type="button" id="saveTemplateBtn" class="action-btn has-tooltip" data-tooltip="Save Preset As...: Save with a custom name or as a new version.">
+                  Save As...
+                </button>
+              </div>
+              <div class="drawer-two-col" style="margin-top: 6px;">
+                <button type="button" id="loadTemplateFileBtn" class="action-btn has-tooltip" data-tooltip="Load Preset File: Open a saved composition JSON file." style="width: 100%;">
+                  Load Preset File
                 </button>
                 <input type="file" id="loadFileInput" accept=".json" style="display: none;" />
               </div>
-              <button id="infoBtn" class="action-btn text-muted has-tooltip" data-tooltip="Algorithm & Math: View equations." style="width: 100%;">
+              <button id="infoBtn" class="action-btn text-muted has-tooltip" data-tooltip="Algorithm & Math: View equations." style="width: 100%; margin-top: 6px;">
                 Math & Algorithm
               </button>
             </div>
@@ -439,6 +447,14 @@
             <div class="drawer-card">
               <span class="drawer-card-label">Keyboard Shortcuts</span>
               <div class="drawer-shortcuts-list">
+                <div class="shortcut-row">
+                  <span class="shortcut-desc">Quick Save Preset</span>
+                  <kbd class="shortcut-key">⌘S / Ctrl+S</kbd>
+                </div>
+                <div class="shortcut-row">
+                  <span class="shortcut-desc">Toggle Layers Mixer</span>
+                  <kbd class="shortcut-key">M / Layers</kbd>
+                </div>
                 <div class="shortcut-row">
                   <span class="shortcut-desc">Play / Pause</span>
                   <kbd class="shortcut-key">Space / P</kbd>
@@ -515,6 +531,24 @@
 
       <!-- Drawing Canvas Area -->
       <main class="canvas-container">
+        <!-- Persistent / Collapsible Layers Mixer Panel -->
+        <aside id="layerMixerDrawer" class="layer-mixer-drawer" style="display: none;">
+          <div class="mixer-header">
+            <div class="mixer-header-title">
+              <span>Layers Mixer</span>
+              <span id="mixerTrackCount" class="mixer-count-chip">0 Lines</span>
+            </div>
+            <div class="mixer-header-actions">
+              <button type="button" id="mixerMuteAllBtn" class="action-btn action-btn-xs has-tooltip" data-tooltip="Mute all lines">Mute All</button>
+              <button type="button" id="mixerUnmuteAllBtn" class="action-btn action-btn-xs has-tooltip" data-tooltip="Unmute all lines">Unmute</button>
+              <button type="button" id="mixerCloseBtn" class="drawer-close-btn" aria-label="Close Mixer" title="Close Mixer">Close</button>
+            </div>
+          </div>
+          <div id="layerMixerList" class="mixer-track-list">
+            <!-- Dynamically populated track cards -->
+          </div>
+        </aside>
+
         <!-- Floating Dedicated Selected Line Inspector (Two rows: Sound parameters & Motion/Shape) -->
         <section id="trackInspectorBar" class="track-inspector-bar" style="display: none;">
           <div class="track-inspector-inner">
@@ -706,7 +740,10 @@
         <!-- Bottom Status Bar with Contextual Help & Secondary Utility Actions -->
         <footer class="bottom-bar">
           <div class="status-left">
-            <span id="statStrokes" class="status-chip">0 strokes</span>
+            <button type="button" id="layersToggleBtn" class="status-chip status-chip-btn has-tooltip" data-tooltip="Composition Layers Mixer: Persistent track overview with Volume, Mute, Solo, and Reverb for all lines.">
+              Layers <span id="layerCountBadge" class="layer-badge-count">0</span>
+            </button>
+            <span id="statStrokes" class="status-chip" style="display:none">0 strokes</span>
             <span id="statMode" class="status-chip">Draw / Click to Select</span>
             <span id="statInstrument" class="status-chip">🎻 Bowed Cello</span>
             <span id="statTempo" class="status-chip">100 BPM</span>

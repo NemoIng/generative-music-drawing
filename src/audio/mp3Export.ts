@@ -81,12 +81,36 @@ export function downloadBlob(blob: Blob, filename: string): void {
   }, 200);
 }
 
+const WORKLET_PROCESSOR_CODE = `
+class LiveRecordingProcessor extends AudioWorkletProcessor {
+  process(inputs) {
+    const input = inputs[0];
+    if (input && input.length > 0) {
+      const left = input[0];
+      const right = input.length > 1 ? input[1] : input[0];
+      if (left && left.length > 0) {
+        this.port.postMessage({
+          left: new Float32Array(left),
+          right: new Float32Array(right)
+        });
+      }
+    }
+    return true;
+  }
+}
+registerProcessor('live-recording-processor', LiveRecordingProcessor);
+`;
+
 /**
  * Live audio recorder that captures master bus audio in real-time
+ * via high-performance AudioWorkletNode (with ScriptProcessorNode fallback)
  * and converts directly to MP3 upon stopping.
  */
 export class LiveRecorder {
+  private static workletModuleLoaded = new WeakSet<BaseAudioContext>();
+  private static workletLoadPromise = new WeakMap<BaseAudioContext, Promise<void>>();
   private _isRecording = false;
+  private workletNode: AudioWorkletNode | null = null;
   private scriptNode: ScriptProcessorNode | null = null;
   private dummyGain: GainNode | null = null;
   private leftChunks: Float32Array[] = [];
@@ -95,6 +119,28 @@ export class LiveRecorder {
   private startTime = 0;
   private sampleRate = 44100;
   private timerInterval: number | null = null;
+
+  public static async preloadWorklet(ctx: BaseAudioContext): Promise<void> {
+    if (typeof AudioWorkletNode === 'undefined' || !ctx.audioWorklet) return;
+    if (LiveRecorder.workletModuleLoaded.has(ctx)) return;
+    if (LiveRecorder.workletLoadPromise.has(ctx)) {
+      return LiveRecorder.workletLoadPromise.get(ctx);
+    }
+
+    const p = (async () => {
+      try {
+        const blob = new Blob([WORKLET_PROCESSOR_CODE], { type: 'application/javascript' });
+        const url = URL.createObjectURL(blob);
+        await ctx.audioWorklet.addModule(url);
+        URL.revokeObjectURL(url);
+        LiveRecorder.workletModuleLoaded.add(ctx);
+      } catch (err) {
+        console.warn('Could not register AudioWorklet module for LiveRecorder:', err);
+      }
+    })();
+    LiveRecorder.workletLoadPromise.set(ctx, p);
+    return p;
+  }
 
   public get recording(): boolean {
     return this._isRecording;
@@ -119,8 +165,65 @@ export class LiveRecorder {
     this.leftChunks = [];
     this.rightChunks = [];
     this.totalSamples = 0;
+    this._isRecording = true;
+    this.startTime = performance.now();
 
-    // Use standard ScriptProcessorNode for universal browser support without worklet CORS issues
+    let workletAttached = false;
+    if (typeof AudioWorkletNode !== 'undefined' && ctx.audioWorklet) {
+      if (LiveRecorder.workletModuleLoaded.has(ctx)) {
+        try {
+          this.attachWorklet(engine, ctx);
+          workletAttached = true;
+        } catch {
+          workletAttached = false;
+        }
+      } else {
+        LiveRecorder.preloadWorklet(ctx).then(() => {
+          if (this._isRecording && !this.workletNode && !this.scriptNode) {
+            try {
+              this.attachWorklet(engine, ctx);
+            } catch {
+              this.attachScriptProcessor(engine, ctx);
+            }
+          }
+        });
+      }
+    }
+
+    if (!workletAttached && (!ctx.audioWorklet || typeof AudioWorkletNode === 'undefined')) {
+      this.attachScriptProcessor(engine, ctx);
+    }
+
+    if (onTick) {
+      this.timerInterval = window.setInterval(() => {
+        if (!this._isRecording) return;
+        const elapsed = (performance.now() - this.startTime) / 1000;
+        onTick(elapsed);
+      }, 250);
+    }
+
+    return true;
+  }
+
+  private attachWorklet(engine: SoundEngine, ctx: AudioContext): void {
+    this.workletNode = new AudioWorkletNode(ctx, 'live-recording-processor');
+    this.dummyGain = ctx.createGain();
+    this.dummyGain.gain.setValueAtTime(0, 0);
+
+    this.workletNode.port.onmessage = (e: MessageEvent<{ left: Float32Array; right: Float32Array }>) => {
+      if (!this._isRecording) return;
+      const { left, right } = e.data;
+      this.leftChunks.push(left);
+      this.rightChunks.push(right);
+      this.totalSamples += left.length;
+    };
+
+    engine.masterOutputNode!.connect(this.workletNode);
+    this.workletNode.connect(this.dummyGain);
+    this.dummyGain.connect(ctx.destination);
+  }
+
+  private attachScriptProcessor(engine: SoundEngine, ctx: AudioContext): void {
     const bufferSize = 4096;
     this.scriptNode = ctx.createScriptProcessor(bufferSize, 2, 2);
     this.dummyGain = ctx.createGain();
@@ -135,23 +238,9 @@ export class LiveRecorder {
       this.totalSamples += inLeft.length;
     };
 
-    // Connect: masterGain -> scriptNode -> dummyGain(0.0) -> destination
-    engine.masterOutputNode.connect(this.scriptNode);
+    engine.masterOutputNode!.connect(this.scriptNode);
     this.scriptNode.connect(this.dummyGain);
     this.dummyGain.connect(ctx.destination);
-
-    this._isRecording = true;
-    this.startTime = performance.now();
-
-    if (onTick) {
-      this.timerInterval = window.setInterval(() => {
-        if (!this._isRecording) return;
-        const elapsed = (performance.now() - this.startTime) / 1000;
-        onTick(elapsed);
-      }, 250);
-    }
-
-    return true;
   }
 
   /**
@@ -168,14 +257,7 @@ export class LiveRecorder {
       this.timerInterval = null;
     }
 
-    if (this.scriptNode && this.dummyGain) {
-      try {
-        this.scriptNode.disconnect();
-        this.dummyGain.disconnect();
-      } catch {}
-      this.scriptNode = null;
-      this.dummyGain = null;
-    }
+    this.disconnectNodes();
 
     if (this.totalSamples === 0) {
       throw new Error('No audio data was captured.');
@@ -206,17 +288,33 @@ export class LiveRecorder {
       clearInterval(this.timerInterval);
       this.timerInterval = null;
     }
-    if (this.scriptNode && this.dummyGain) {
-      try {
-        this.scriptNode.disconnect();
-        this.dummyGain.disconnect();
-      } catch {}
-      this.scriptNode = null;
-      this.dummyGain = null;
-    }
+    this.disconnectNodes();
     this.leftChunks = [];
     this.rightChunks = [];
     this.totalSamples = 0;
+  }
+
+  private disconnectNodes(): void {
+    if (this.workletNode) {
+      try {
+        this.workletNode.port.onmessage = null;
+        this.workletNode.disconnect();
+      } catch {}
+      this.workletNode = null;
+    }
+    if (this.scriptNode) {
+      try {
+        this.scriptNode.onaudioprocess = null;
+        this.scriptNode.disconnect();
+      } catch {}
+      this.scriptNode = null;
+    }
+    if (this.dummyGain) {
+      try {
+        this.dummyGain.disconnect();
+      } catch {}
+      this.dummyGain = null;
+    }
   }
 }
 

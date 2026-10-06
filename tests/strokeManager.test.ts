@@ -1281,6 +1281,51 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
     // Should be clamped to mockCtx.currentTime = 10.0, NOT scheduled in the past at 2.0
     expect(startedAt).toBeGreaterThanOrEqual(10.0);
   });
+
+  it('restores xAxisModulationMode, defaultHarmonizer, and breathingMode across preset export and import', () => {
+    const sm = new StrokeManager();
+    sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+
+    // 1. Set X-Axis Modulation to spaceDepth (Reverb Space Depth)
+    sm.setXAxisModulationMode('spaceDepth');
+    sm.setBreathingMode('deep');
+    sm.setDefaultStrokeHarmonizer('dualOctave');
+
+    // 2. Export preset
+    const preset = sm.exportComposition('Ethereal Horizon', 'lydian', 'D3');
+    expect(preset.xAxisModulationMode).toBe('spaceDepth');
+    expect(preset.breathingMode).toBe('deep');
+    expect(preset.defaultHarmonizer).toBe('dualOctave');
+
+    // 3. Change current setting to none / defaults
+    sm.setXAxisModulationMode('none');
+    sm.setBreathingMode('off');
+    sm.setDefaultStrokeHarmonizer('single');
+    expect(sm.xAxisModulationMode).toBe('none');
+    expect(sm.currentBreathingMode).toBe('off');
+    expect(sm.defaultStrokeHarmonizer).toBe('single');
+
+    // 4. Reload saved preset into manager
+    sm.importComposition(preset);
+
+    // 5. Verify restored state
+    expect(sm.xAxisModulationMode).toBe('spaceDepth');
+    expect(sm.currentBreathingMode).toBe('deep');
+    expect(sm.defaultStrokeHarmonizer).toBe('dualOctave');
+  });
+
+  it('supports setStrokeMuted to cleanly mute and unmute individual strokes', () => {
+    const sm = new StrokeManager();
+    const s1 = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+    const s2 = sm.addStroke(dummyPath, 'dotted', 'amber', 100);
+
+    sm.setStrokeMuted(s1.id, true);
+    expect(s1.muted).toBe(true);
+    expect(s2.muted).toBe(false);
+
+    sm.setStrokeMuted(s1.id, false);
+    expect(s1.muted).toBe(false);
+  });
 });
 
 

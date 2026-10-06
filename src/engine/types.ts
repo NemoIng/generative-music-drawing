@@ -67,6 +67,12 @@ export interface SavedComposition {
   progressionId?: string;
   breathingMode?: BreathingMode;
   scrollY?: number;
+  defaultTiming?: string;
+  defaultHarmonizer?: HarmonizerMode;
+  shapeMode?: string;
+  autoSmooth?: boolean;
+  snapPitch?: boolean;
+  theme?: string;
   strokes: Array<{
     id: string;
     instrumentId: string;

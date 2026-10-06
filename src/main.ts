@@ -133,6 +133,65 @@ const trackHarmonizerControl = document.getElementById('trackHarmonizerControl')
 const trackHarmonizerSelect = document.getElementById('trackHarmonizerSelect') as HTMLSelectElement | null;
 const breathingSelect = document.getElementById('breathingSelect') as HTMLSelectElement | null;
 
+// Layers Mixer & Presets Dirty State Controls
+const layersToggleBtn = document.getElementById('layersToggleBtn') as HTMLButtonElement | null;
+const layerCountBadge = document.getElementById('layerCountBadge') as HTMLSpanElement | null;
+const layerMixerDrawer = document.getElementById('layerMixerDrawer') as HTMLElement | null;
+const layerMixerList = document.getElementById('layerMixerList') as HTMLElement | null;
+const mixerTrackCount = document.getElementById('mixerTrackCount') as HTMLSpanElement | null;
+const mixerMuteAllBtn = document.getElementById('mixerMuteAllBtn') as HTMLButtonElement | null;
+const mixerUnmuteAllBtn = document.getElementById('mixerUnmuteAllBtn') as HTMLButtonElement | null;
+const mixerCloseBtn = document.getElementById('mixerCloseBtn') as HTMLButtonElement | null;
+const dirtyIndicator = document.getElementById('dirtyIndicator') as HTMLSpanElement | null;
+const quickSaveBtn = document.getElementById('quickSaveBtn') as HTMLButtonElement | null;
+
+let isCompositionDirty = false;
+
+function setCompositionDirty(dirty: boolean): void {
+  isCompositionDirty = dirty;
+  if (dirtyIndicator) {
+    dirtyIndicator.style.display = dirty ? 'inline-block' : 'none';
+  }
+  const baseTitle = 'Harmonic Geometry • Generative Music Drawing';
+  document.title = dirty ? `• ${baseTitle}` : baseTitle;
+}
+
+function formatDurationSec(sec: number): string {
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return s > 0 ? `${m}m ${s}s` : `${m}m`;
+}
+
+function applyGeneralSync(val: string): void {
+  if (val.startsWith('speed:')) {
+    const mult = parseFloat(val.replace('speed:', ''));
+    strokeManager.setDefaultSpeedMode('speed');
+    strokeManager.setDefaultSpeedMultiplier(mult);
+    if (!strokeManager.selectedStrokeId) {
+      statLoopSync.textContent = `Default: ${mult}x Speed`;
+    }
+  } else if (val.startsWith('timer:')) {
+    const dur = parseInt(val.replace('timer:', ''), 10);
+    strokeManager.setDefaultSpeedMode('timer');
+    strokeManager.setDefaultDuration(dur);
+    if (!strokeManager.selectedStrokeId) {
+      statLoopSync.textContent = `Default: ${formatDurationSec(dur)} Timer`;
+    }
+  } else if (val.startsWith('bars:')) {
+    const mode = val.replace('bars:', '') as LoopQuantizeMode;
+    strokeManager.setDefaultSpeedMode('bars');
+    strokeManager.setLoopQuantizeMode(mode);
+    if (!strokeManager.selectedStrokeId) {
+      const defSyncLabel = mode === '1bar' ? '1 Bar'
+        : (mode === '2bars' ? '2 Bars'
+        : (mode === '4bars' ? '4 Bars'
+        : (mode === '8bars' ? '8 Bars' : 'Freeform')));
+      statLoopSync.textContent = `Default: ${defSyncLabel}`;
+    }
+  }
+}
+
 // Pitch Navigator Controls
 const pitchNavigator = document.getElementById('pitchNavigator') as HTMLElement;
 const pitchScrollUpBtn = document.getElementById('pitchScrollUpBtn') as HTMLButtonElement;
@@ -193,7 +252,9 @@ const inputHandler = new InputHandler(canvasEl, {
     );
 
     strokeManager.activateAudioVoices();
+    setCompositionDirty(true);
     updateStats();
+    renderLayerMixer();
   },
   onDrawChange: (points: Point2D[]) => {
     activeDrawingPoints = points;
@@ -425,10 +486,10 @@ const stopThumbDrag = (e: PointerEvent) => {
 pitchThumb?.addEventListener('pointerup', stopThumbDrag);
 pitchThumb?.addEventListener('pointercancel', stopThumbDrag);
 
-// Custom Saved Grooves Management
+// Custom Saved Presets Management
 function getSavedCompositions(): Record<string, SavedComposition> {
   try {
-    const raw = localStorage.getItem('harmonic_saved_grooves');
+    const raw = localStorage.getItem('harmonic_saved_presets') || localStorage.getItem('harmonic_saved_grooves');
     return raw ? JSON.parse(raw) : {};
   } catch {
     return {};
@@ -494,6 +555,39 @@ async function loadComposition(comp: SavedComposition): Promise<void> {
     breathingSelect.value = comp.breathingMode;
     strokeManager.setBreathingMode(comp.breathingMode);
   }
+  if (comp.xAxisModulationMode) {
+    if (xAxisSelect) {
+      xAxisSelect.value = comp.xAxisModulationMode;
+    }
+    strokeManager.setXAxisModulationMode(comp.xAxisModulationMode);
+  }
+  if (comp.defaultHarmonizer && defaultHarmonizerSelect) {
+    defaultHarmonizerSelect.value = comp.defaultHarmonizer;
+    strokeManager.setDefaultStrokeHarmonizer(comp.defaultHarmonizer);
+  }
+  if (comp.defaultTiming && generalSyncSelect) {
+    generalSyncSelect.value = comp.defaultTiming;
+    applyGeneralSync(comp.defaultTiming);
+  }
+  if (comp.shapeMode) {
+    inputHandler.setDrawShape(comp.shapeMode as DrawShape);
+    shapeButtons.forEach((b) => b.classList.toggle('active', b.getAttribute('data-shape') === comp.shapeMode));
+  }
+  if (comp.autoSmooth !== undefined) {
+    inputHandler.setAutoSmooth(comp.autoSmooth);
+    autoSmoothBtn.classList.toggle('active', comp.autoSmooth);
+    autoSmoothBtn.textContent = comp.autoSmooth ? 'Smooth On' : 'Smooth Off';
+  }
+  if (comp.snapPitch !== undefined) {
+    inputHandler.setSnapPitch(comp.snapPitch);
+    snapPitchBtn.classList.toggle('active', comp.snapPitch);
+    snapPitchBtn.textContent = comp.snapPitch ? 'Snap ON' : 'Snap Off';
+    statPitchSnap.textContent = comp.snapPitch ? 'Snap ON' : 'Snap Off';
+    statPitchSnap.style.color = comp.snapPitch ? '#2563eb' : 'inherit';
+  }
+  if (comp.theme) {
+    setTheme(comp.theme === 'dark');
+  }
 
   if (typeof comp.scrollY === 'number') {
     quantizer.scrollY = quantizer.clampScrollY(comp.scrollY, renderer.height);
@@ -516,8 +610,10 @@ async function loadComposition(comp: SavedComposition): Promise<void> {
 
   strokeManager.importComposition(comp, quantizer, renderer.height, renderer.width);
   currentLoadedPresetName = comp.name || 'Custom Preset';
+  setCompositionDirty(false);
   updateStats();
   updateTrackActionsVisibility();
+  renderLayerMixer();
 }
 
 // Initial populate of saved templates
@@ -544,7 +640,7 @@ function openSavePresetModal(): void {
     alert('Draw or create some musical lines first before saving a preset.');
     return;
   }
-  const activeName = currentLoadedPresetName || `Groove ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  const activeName = currentLoadedPresetName || `Ambient Piece ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   if (savePresetNameInput) {
     savePresetNameInput.value = activeName;
   }
@@ -576,15 +672,34 @@ function executeSavePreset(nameToSave: string, downloadJson: boolean): void {
   comp.spaceReverb = parseFloat(spaceSlider.value) / 100;
   comp.octaveSpan = parseInt(octavesSlider.value, 10);
   comp.scrollY = quantizer.scrollY;
+  if (xAxisSelect) {
+    comp.xAxisModulationMode = xAxisSelect.value as XAxisModulationMode;
+  }
+  if (breathingSelect) {
+    comp.breathingMode = breathingSelect.value as BreathingMode;
+  }
+  if (defaultHarmonizerSelect) {
+    comp.defaultHarmonizer = defaultHarmonizerSelect.value as HarmonizerMode;
+  }
+  if (generalSyncSelect) {
+    comp.defaultTiming = generalSyncSelect.value;
+  }
+  comp.shapeMode = inputHandler.drawShape;
+  comp.autoSmooth = inputHandler.isAutoSmooth;
+  comp.snapPitch = inputHandler.isPitchSnapped;
+  comp.theme = document.body.classList.contains('dark-mode') ? 'dark' : 'light';
 
   // 1. Save to browser storage
   const saved = getSavedCompositions();
   saved[cleanName] = comp;
-  localStorage.setItem('harmonic_saved_grooves', JSON.stringify(saved));
+  localStorage.setItem('harmonic_saved_presets', JSON.stringify(saved));
+  localStorage.setItem('harmonic_saved_grooves', JSON.stringify(saved)); // Backwards-compat
   refreshSavedTemplatesDropdown();
 
   templateSelect.value = `custom:${cleanName}`;
   currentLoadedPresetName = cleanName;
+  setCompositionDirty(false);
+  renderLayerMixer();
 
   // 2. Download JSON file if requested
   if (downloadJson) {
@@ -638,6 +753,220 @@ savePresetNameInput?.addEventListener('keydown', (e) => {
     e.preventDefault();
     closeSavePresetModal();
   }
+});
+
+// Quick Save Action (1-click overwrite or save)
+function executeQuickSave(): void {
+  if (strokeManager.activeStrokes.length === 0) {
+    alert('Draw or create some musical lines first before saving a preset.');
+    return;
+  }
+  const store = getSavedCompositions();
+  if (currentLoadedPresetName && store[currentLoadedPresetName]) {
+    executeSavePreset(currentLoadedPresetName, false);
+    if (quickSaveBtn) {
+      const orig = quickSaveBtn.textContent;
+      quickSaveBtn.textContent = 'Saved!';
+      setTimeout(() => {
+        quickSaveBtn.textContent = orig;
+      }, 1200);
+    }
+  } else {
+    openSavePresetModal();
+  }
+}
+quickSaveBtn?.addEventListener('click', executeQuickSave);
+
+// ==========================================================================
+// Layers Mixer Panel Logic
+// ==========================================================================
+function renderLayerMixer(): void {
+  const strokes = strokeManager.activeStrokes;
+  if (layerCountBadge) {
+    layerCountBadge.textContent = strokes.length.toString();
+  }
+  if (mixerTrackCount) {
+    mixerTrackCount.textContent = `${strokes.length} ${strokes.length === 1 ? 'Line' : 'Lines'}`;
+  }
+  if (!layerMixerList) return;
+
+  if (strokes.length === 0) {
+    layerMixerList.innerHTML = '<div class="mixer-empty-state">No lines yet. Draw on the canvas to add ambient sound layers.</div>';
+    return;
+  }
+
+  const hasSolo = strokeManager.hasSoloedStrokes;
+  layerMixerList.innerHTML = '';
+
+  strokes.forEach((stroke, idx) => {
+    const card = document.createElement('div');
+    const isSelected = stroke.id === strokeManager.selectedStrokeId;
+    const isDimmed = (hasSolo && !stroke.soloed) || !!stroke.muted;
+
+    card.className = `layer-card${isSelected ? ' selected' : ''}${isDimmed ? ' dimmed' : ''}`;
+    card.setAttribute('data-stroke-id', stroke.id);
+
+    const inst = getInstrument(stroke.instrumentId);
+    const instName = inst.name;
+    const color = renderer.getStrokeColor(stroke);
+    const volPct = Math.round((stroke.volume ?? 1.0) * 100);
+    const revPct = Math.round((stroke.reverb ?? 0.4) * 100);
+
+    const totalSec = (stroke.timingMode === 'timer' || stroke.speedMode === 'timer')
+      ? (stroke.duration ?? 30)
+      : (stroke.lut.totalLength / Math.max(1, stroke.playhead.velocity || 100));
+    const timingTag = `${totalSec.toFixed(1)}s`;
+
+    card.innerHTML = `
+      <div class="layer-card-top">
+        <div class="layer-identity">
+          <span class="layer-dot" style="background: ${color}"></span>
+          <span class="layer-name">#${idx + 1} ${instName}</span>
+          <span class="layer-tag">${timingTag}</span>
+        </div>
+        <div class="layer-actions">
+          <button type="button" class="layer-btn${stroke.muted ? ' active-mute' : ''}" data-action="mute" title="Mute line">M</button>
+          <button type="button" class="layer-btn${stroke.soloed ? ' active-solo' : ''}" data-action="solo" title="Solo line">S</button>
+          <button type="button" class="layer-btn" data-action="duplicate" title="Duplicate line">⧉</button>
+          <button type="button" class="layer-btn text-danger" data-action="delete" title="Delete line">✕</button>
+        </div>
+      </div>
+      <div class="layer-controls-row">
+        <div class="layer-slider-group">
+          <span class="layer-slider-label">Vol</span>
+          <input type="range" class="minimal-slider layer-vol-slider" min="0" max="100" step="1" value="${volPct}" />
+          <span class="layer-slider-val layer-vol-val">${volPct}%</span>
+        </div>
+        <div class="layer-slider-group">
+          <span class="layer-slider-label">Rev</span>
+          <input type="range" class="minimal-slider layer-rev-slider" min="0" max="100" step="1" value="${revPct}" />
+          <span class="layer-slider-val layer-rev-val">${revPct}%</span>
+        </div>
+      </div>
+    `;
+
+    // Click on card body selects stroke
+    card.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('button') || target.closest('input')) return;
+      strokeManager.selectStroke(stroke.id);
+      updateTrackActionsVisibility();
+      renderLayerMixer();
+    });
+
+    // Mute button
+    const muteB = card.querySelector<HTMLButtonElement>('[data-action="mute"]');
+    muteB?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      strokeManager.toggleMute(stroke.id);
+      setCompositionDirty(true);
+      updateStats();
+      updateTrackActionsVisibility();
+      renderLayerMixer();
+    });
+
+    // Solo button
+    const soloB = card.querySelector<HTMLButtonElement>('[data-action="solo"]');
+    soloB?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      strokeManager.toggleSolo(stroke.id);
+      setCompositionDirty(true);
+      updateStats();
+      updateTrackActionsVisibility();
+      renderLayerMixer();
+    });
+
+    // Duplicate button
+    const dupB = card.querySelector<HTMLButtonElement>('[data-action="duplicate"]');
+    dupB?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      strokeManager.duplicateStroke(stroke.id);
+      setCompositionDirty(true);
+      updateStats();
+      updateTrackActionsVisibility();
+      renderLayerMixer();
+    });
+
+    // Delete button
+    const delB = card.querySelector<HTMLButtonElement>('[data-action="delete"]');
+    delB?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      strokeManager.removeStroke(stroke.id);
+      setCompositionDirty(true);
+      updateStats();
+      updateTrackActionsVisibility();
+      renderLayerMixer();
+    });
+
+    // Volume slider
+    const volSlider = card.querySelector<HTMLInputElement>('.layer-vol-slider');
+    const volVal = card.querySelector<HTMLSpanElement>('.layer-vol-val');
+    volSlider?.addEventListener('input', (e) => {
+      e.stopPropagation();
+      const v = parseInt(volSlider.value, 10) / 100;
+      if (volVal) volVal.textContent = `${volSlider.value}%`;
+      strokeManager.setStrokeVolume(stroke.id, v);
+      setCompositionDirty(true);
+      if (stroke.id === strokeManager.selectedStrokeId && trackVolSlider && trackVolVal) {
+        trackVolSlider.value = volSlider.value;
+        trackVolVal.textContent = `${volSlider.value}%`;
+      }
+    });
+
+    // Reverb slider
+    const revSlider = card.querySelector<HTMLInputElement>('.layer-rev-slider');
+    const revVal = card.querySelector<HTMLSpanElement>('.layer-rev-val');
+    revSlider?.addEventListener('input', (e) => {
+      e.stopPropagation();
+      const r = parseInt(revSlider.value, 10) / 100;
+      if (revVal) revVal.textContent = `${revSlider.value}%`;
+      strokeManager.setStrokeReverb(stroke.id, r);
+      setCompositionDirty(true);
+      if (stroke.id === strokeManager.selectedStrokeId && trackReverbSlider && trackReverbVal) {
+        trackReverbSlider.value = revSlider.value;
+        trackReverbVal.textContent = `${revSlider.value}%`;
+      }
+    });
+
+    layerMixerList.appendChild(card);
+  });
+}
+
+layersToggleBtn?.addEventListener('click', () => {
+  if (!layerMixerDrawer) return;
+  const isShown = layerMixerDrawer.style.display !== 'none';
+  layerMixerDrawer.style.display = isShown ? 'none' : 'flex';
+  layersToggleBtn.classList.toggle('active', !isShown);
+  if (!isShown) {
+    renderLayerMixer();
+  }
+});
+
+mixerCloseBtn?.addEventListener('click', () => {
+  if (layerMixerDrawer) {
+    layerMixerDrawer.style.display = 'none';
+    layersToggleBtn?.classList.remove('active');
+  }
+});
+
+mixerMuteAllBtn?.addEventListener('click', () => {
+  strokeManager.activeStrokes.forEach((s) => {
+    strokeManager.setStrokeMuted(s.id, true);
+  });
+  setCompositionDirty(true);
+  updateStats();
+  updateTrackActionsVisibility();
+  renderLayerMixer();
+});
+
+mixerUnmuteAllBtn?.addEventListener('click', () => {
+  strokeManager.activeStrokes.forEach((s) => {
+    strokeManager.setStrokeMuted(s.id, false);
+  });
+  setCompositionDirty(true);
+  updateStats();
+  updateTrackActionsVisibility();
+  renderLayerMixer();
 });
 
 // ==========================================================================
@@ -846,6 +1175,7 @@ loadFileInput?.addEventListener('change', async () => {
     comp.name = compName;
     const saved = getSavedCompositions();
     saved[compName] = comp;
+    localStorage.setItem('harmonic_saved_presets', JSON.stringify(saved));
     localStorage.setItem('harmonic_saved_grooves', JSON.stringify(saved));
     refreshSavedTemplatesDropdown();
     templateSelect.value = `custom:${compName}`;
@@ -955,15 +1285,26 @@ async function loadTemplate(tId: string, initAudio = true): Promise<void> {
   if (soundEngine.isReady) {
     strokeManager.activateAudioVoices();
   }
+  currentLoadedPresetName = template.name;
+  setCompositionDirty(false);
   updateStats();
   updateTrackActionsVisibility();
+  renderLayerMixer();
 }
 
 templateSelect.addEventListener('change', async () => {
   const tId = templateSelect.value;
   if (!tId) return;
 
-  // Check if it's a custom saved groove
+  if (isCompositionDirty && strokeManager.activeStrokes.length > 0) {
+    const ok = confirm(`You have unsaved changes in "${currentLoadedPresetName || 'current composition'}". Discard changes and load new preset?`);
+    if (!ok) {
+      templateSelect.value = currentLoadedPresetName ? `custom:${currentLoadedPresetName}` : '';
+      return;
+    }
+  }
+
+  // Check if it's a custom saved preset
   if (tId.startsWith('custom:')) {
     const name = tId.replace('custom:', '');
     currentLoadedPresetName = name;
@@ -975,6 +1316,8 @@ templateSelect.addEventListener('change', async () => {
   }
 
   await loadTemplate(tId, true);
+  setCompositionDirty(false);
+  renderLayerMixer();
 });
 
 // Color-Sound Instrument Swatch Selection
@@ -1017,6 +1360,7 @@ swatchButtons.forEach((btn) => {
 xAxisSelect.addEventListener('change', () => {
   const mode = xAxisSelect.value as XAxisModulationMode;
   strokeManager.setXAxisModulationMode(mode);
+  setCompositionDirty(true);
 });
 
 // Global Floating Tooltip Popover & Contextual Hover Descriptions
@@ -1090,6 +1434,7 @@ scaleSelect.addEventListener('change', () => {
   if (scale) {
     quantizer.updateConfig({ scale });
     updatePitchNavigator();
+    setCompositionDirty(true);
   }
 });
 
@@ -1098,6 +1443,7 @@ rootSelect.addEventListener('change', () => {
   if (root) {
     quantizer.updateConfig({ root });
     updatePitchNavigator();
+    setCompositionDirty(true);
   }
 });
 
@@ -1111,7 +1457,9 @@ strokeModeButtons.forEach((btn) => {
       // If a stroke is selected, update that stroke's texture immediately!
       if (strokeManager.selectedStrokeId) {
         strokeManager.setStrokeStyle(strokeManager.selectedStrokeId, style);
+        setCompositionDirty(true);
         updateTrackActionsVisibility();
+        renderLayerMixer();
       }
     }
   });
@@ -1123,6 +1471,7 @@ bpmSlider.addEventListener('input', () => {
   bpmVal.textContent = `${bpm} BPM`;
   strokeManager.setBpm(bpm);
   statTempo.textContent = `${bpm} BPM`;
+  setCompositionDirty(true);
 });
 
 // Space (Master Reverb Room Depth) Slider
@@ -1130,6 +1479,7 @@ spaceSlider?.addEventListener('input', () => {
   const val = parseInt(spaceSlider.value, 10);
   spaceVal.textContent = `${val}%`;
   soundEngine.setReverbMix(val / 100);
+  setCompositionDirty(true);
 });
 
 // Canvas Pitch Octaves Range Slider (Rescaling melodic strokes so musical pitch and sound remain unchanged)
@@ -1169,13 +1519,6 @@ octavesSlider?.addEventListener('input', () => {
     updateTrackActionsVisibility();
   }
 });
-
-function formatDurationSec(sec: number): string {
-  if (sec < 60) return `${sec}s`;
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return s > 0 ? `${m}m ${s}s` : `${m}m`;
-}
 
 // Track Inspector Volume / Timing / Traversal / Wave Reshape / Mute / Solo / Delete Controls
 function updateTrackActionsVisibility(): void {
@@ -1440,33 +1783,8 @@ durationPills.forEach((pill) => {
 
 // General Timing Default (Sets default speed/timer for future drawn lines)
 generalSyncSelect?.addEventListener('change', () => {
-  const val = generalSyncSelect.value;
-  if (val.startsWith('speed:')) {
-    const mult = parseFloat(val.replace('speed:', ''));
-    strokeManager.setDefaultSpeedMode('speed');
-    strokeManager.setDefaultSpeedMultiplier(mult);
-    if (!strokeManager.selectedStrokeId) {
-      statLoopSync.textContent = `Default: ${mult}x Speed`;
-    }
-  } else if (val.startsWith('timer:')) {
-    const dur = parseInt(val.replace('timer:', ''), 10);
-    strokeManager.setDefaultSpeedMode('timer');
-    strokeManager.setDefaultDuration(dur);
-    if (!strokeManager.selectedStrokeId) {
-      statLoopSync.textContent = `Default: ${formatDurationSec(dur)} Timer`;
-    }
-  } else if (val.startsWith('bars:')) {
-    const mode = val.replace('bars:', '') as LoopQuantizeMode;
-    strokeManager.setDefaultSpeedMode('bars');
-    strokeManager.setLoopQuantizeMode(mode);
-    if (!strokeManager.selectedStrokeId) {
-      const defSyncLabel = mode === '1bar' ? '1 Bar'
-        : (mode === '2bars' ? '2 Bars'
-        : (mode === '4bars' ? '4 Bars'
-        : (mode === '8bars' ? '8 Bars' : 'Freeform')));
-      statLoopSync.textContent = `Default: ${defSyncLabel}`;
-    }
-  }
+  applyGeneralSync(generalSyncSelect.value);
+  setCompositionDirty(true);
 });
 
 // Track Inspector Loop Sync Event Listener
@@ -1691,15 +2009,24 @@ playPauseBtn.addEventListener('click', togglePlayPause);
 // Undo Action
 undoBtn.addEventListener('click', () => {
   strokeManager.undo();
+  setCompositionDirty(true);
   updateStats();
   updateTrackActionsVisibility();
+  renderLayerMixer();
 });
 
 clearBtn.addEventListener('click', () => {
+  if (isCompositionDirty && strokeManager.activeStrokes.length > 0) {
+    const ok = confirm('You have unsaved changes in your composition. Are you sure you want to clear the canvas?');
+    if (!ok) return;
+  }
   strokeManager.clearAll();
   templateSelect.value = '';
+  currentLoadedPresetName = '';
+  setCompositionDirty(false);
   updateStats();
   updateTrackActionsVisibility();
+  renderLayerMixer();
 });
 
 infoBtn.addEventListener('click', () => {
@@ -1827,6 +2154,7 @@ defaultHarmonizerSelect?.addEventListener('change', () => {
   if (!defaultHarmonizerSelect) return;
   const mode = defaultHarmonizerSelect.value as HarmonizerMode;
   strokeManager.setDefaultStrokeHarmonizer(mode);
+  setCompositionDirty(true);
 });
 
 trackHarmonizerSelect?.addEventListener('change', () => {
@@ -1834,7 +2162,9 @@ trackHarmonizerSelect?.addEventListener('change', () => {
   if (!selectedId || !trackHarmonizerSelect) return;
   const mode = trackHarmonizerSelect.value as HarmonizerMode;
   strokeManager.setStrokeHarmonizer(selectedId, mode, true);
+  setCompositionDirty(true);
   updateStats();
+  renderLayerMixer();
 });
 
 // Organic Timbral Breathing Control (Option 3)
@@ -1842,6 +2172,15 @@ breathingSelect?.addEventListener('change', () => {
   if (!breathingSelect) return;
   const mode = breathingSelect.value as BreathingMode;
   strokeManager.setBreathingMode(mode);
+  setCompositionDirty(true);
+});
+
+// Warn user if leaving with unsaved changes
+window.addEventListener('beforeunload', (e) => {
+  if (isCompositionDirty && strokeManager.activeStrokes.length > 0) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
 });
 
 // Global Keyboard Shortcuts
@@ -1853,6 +2192,20 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     target.isContentEditable
   );
   if (isTextInput) {
+    return;
+  }
+
+  // Quick Save: Cmd+S / Ctrl+S
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's' && !e.shiftKey) {
+    e.preventDefault();
+    executeQuickSave();
+    return;
+  }
+
+  // Toggle Layers Mixer: M key when no stroke is selected
+  if (e.key.toLowerCase() === 'm' && !e.metaKey && !e.ctrlKey && !strokeManager.selectedStrokeId) {
+    e.preventDefault();
+    layersToggleBtn?.click();
     return;
   }
 
@@ -2051,6 +2404,7 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
 window.addEventListener('pointerdown', async () => {
   if (!soundEngine.isReady) {
     await soundEngine.init();
+    LiveRecorder.preloadWorklet(soundEngine.context);
     strokeManager.activateAudioVoices();
     statAudio.textContent = 'Audio: Active';
     statAudio.classList.add('chip-ready');

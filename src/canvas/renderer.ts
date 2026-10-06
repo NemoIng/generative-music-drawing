@@ -76,13 +76,17 @@ export class CanvasRenderer {
     const h = this.height;
     this.ctx.save();
 
+    // Responsive blank background margins for scale names (left) and Hz (right)
+    const leftMargin = Math.min(84, Math.max(56, w * 0.04));
+    const rightMargin = Math.min(80, Math.max(56, w * 0.04));
+
     for (const g of guidelines) {
       const y = typeof g.screenY === 'number' ? g.screenY : g.y;
       if (y < -30 || y > h + 30) continue;
 
       this.ctx.beginPath();
-      this.ctx.moveTo(44, y);
-      this.ctx.lineTo(w - 44, y);
+      this.ctx.moveTo(leftMargin, y);
+      this.ctx.lineTo(w - rightMargin, y);
 
       const isFifth = g.scaleDegree % 7 === 4; // Dominant 5th in heptatonic modes
       const isChordTone = !!g.isChordTone && !g.isRoot;
@@ -133,13 +137,13 @@ export class CanvasRenderer {
         : isFifth
         ? `${g.noteName} (5th)`
         : g.noteName;
-      this.ctx.fillText(label, 36, y);
+      this.ctx.fillText(label, leftMargin - 14, y);
 
       this.ctx.textAlign = 'left';
       this.ctx.fillStyle = isChordTone
         ? (this.isDarkMode ? '#fbbf24' : '#b45309')
         : (this.isDarkMode ? '#71717a' : '#a8a29e');
-      this.ctx.fillText(`${Math.round(g.frequency)}Hz`, w - 48, y);
+      this.ctx.fillText(`${Math.round(g.frequency)}Hz`, w - rightMargin + 14, y);
     }
 
     this.ctx.restore();
@@ -165,6 +169,9 @@ export class CanvasRenderer {
     const ctx = this.ctx;
     ctx.save();
 
+    const leftMargin = Math.min(84, Math.max(56, w * 0.08));
+    const rightMargin = Math.min(80, Math.max(56, w * 0.08));
+
     const zones = [
       { y: h * 0.25, label: '🥢 Hi-Hats' },
       { y: h * 0.48, label: '🥁 Toms' },
@@ -173,8 +180,8 @@ export class CanvasRenderer {
 
     for (const z of zones) {
       ctx.beginPath();
-      ctx.moveTo(44, z.y);
-      ctx.lineTo(w - 44, z.y);
+      ctx.moveTo(leftMargin, z.y);
+      ctx.lineTo(w - rightMargin, z.y);
       ctx.strokeStyle = this.isDarkMode ? 'rgba(255, 255, 255, 0.22)' : 'rgba(24, 24, 27, 0.22)';
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 6]);
@@ -185,7 +192,7 @@ export class CanvasRenderer {
       ctx.fillStyle = this.isDarkMode ? 'rgba(255, 255, 255, 0.75)' : 'rgba(24, 24, 27, 0.65)';
       ctx.textAlign = 'right';
       ctx.textBaseline = 'bottom';
-      ctx.fillText(z.label, w - 48, z.y - 3);
+      ctx.fillText(z.label, w - rightMargin, z.y - 3);
     }
 
     // Bottom Kick label
@@ -193,7 +200,7 @@ export class CanvasRenderer {
     ctx.fillStyle = this.isDarkMode ? 'rgba(255, 255, 255, 0.85)' : 'rgba(24, 24, 27, 0.75)';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'bottom';
-    ctx.fillText('💥 Kick Drum', w - 48, h - 14);
+    ctx.fillText('💥 Kick Drum', w - rightMargin, h - 14);
 
     ctx.restore();
   }
@@ -240,6 +247,7 @@ export class CanvasRenderer {
 
     ctx.restore();
   }
+
 
   /**
    * Resolves stroke color with awareness of dark mode (e.g. onyx drum machine becomes white/light grey).
@@ -384,23 +392,25 @@ export class CanvasRenderer {
         ctx.stroke();
       }
 
-      // Floating pill badge above start point with Volume, Texture, Loop Sync & Traversal info
+      // Floating pill badge above start point with Volume, Texture, Loop Duration & Progress
       const volPercent = Math.round(vol * 100);
-      const styleName = stroke.style === 'striped' ? 'Roll' : (stroke.style.charAt(0).toUpperCase() + stroke.style.slice(1));
-      const syncLabel = (stroke.timingMode === 'timer' || stroke.speedMode === 'timer')
-        ? `${Math.round(stroke.duration ?? 30)}s ⌛`
-        : `${(stroke.speedMultiplier ?? 1.0).toFixed(2).replace(/\.00$/, '')}x ⚡`;
-      const travMode = (stroke.traversal === 'bounce' || (stroke.traversal as string) === 'pingpong') ? 'bounce' : 'restart';
-      const travLabel = travMode === 'bounce' ? '⇄' : '↻';
+      const totalSec = (stroke.timingMode === 'timer' || stroke.speedMode === 'timer')
+        ? (stroke.duration ?? 30)
+        : (stroke.lut.totalLength / Math.max(1, stroke.playhead.velocity || 100));
+      const progressPct = stroke.lut.totalLength > 0
+        ? Math.min(100, Math.max(0, Math.round((stroke.playhead.currentDistance / stroke.lut.totalLength) * 100)))
+        : 0;
+      const syncLabel = `${totalSec.toFixed(1)}s`;
+      const travMode = (stroke.traversal === 'bounce' || (stroke.traversal as string) === 'pingpong') ? 'Bounce' : 'Loop';
 
-      let tagText = `${volPercent}% vol • ${styleName} • ${syncLabel} • ${travLabel}`;
+      let tagText = `${volPercent}% vol • ${syncLabel} • ${progressPct}% • ${travMode}`;
       if (stroke.instrumentId === 'onyx') {
         const normY = this.height > 0 ? startPt.y / this.height : 0.5;
-        const drumName = normY >= 0.72 ? 'Kick 💥' : normY >= 0.48 ? 'Snare 🪘' : normY >= 0.25 ? 'Tom 🥁' : 'Hi-Hat 🥢';
+        const drumName = normY >= 0.72 ? 'Kick' : normY >= 0.48 ? 'Snare' : normY >= 0.25 ? 'Tom' : 'Hi-Hat';
         const drumLabel = stroke.style === 'striped' ? `${drumName} Roll` : drumName;
-        tagText = `${volPercent}% vol • ${drumLabel} • ${syncLabel} • ${travLabel}`;
+        tagText = `${volPercent}% vol • ${drumLabel} • ${syncLabel} • ${progressPct}%`;
       } else if (stroke.waveParams && stroke.waveParams.amplitude > 0) {
-        tagText = `${volPercent}% vol • ~Sine • ${styleName} • ${syncLabel} • ${travLabel}`;
+        tagText = `${volPercent}% vol • Wave • ${syncLabel} • ${progressPct}%`;
       }
 
       ctx.font = '600 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
