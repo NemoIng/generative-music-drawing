@@ -3,7 +3,6 @@ import { DrumSynth } from '../src/audio/drumSynth';
 import { StrokeManager } from '../src/engine/strokeManager';
 import { ScaleQuantizer } from '../src/audio/scaleQuantizer';
 import { soundEngine } from '../src/audio/audioContext';
-import { buildTemplateStrokes } from '../src/audio/templates';
 import { SplinePath } from '../src/math/types';
 
 describe('DrumSynth & Onyx 808 Drum Machine Integration', () => {

@@ -40,9 +40,9 @@ describe('Starter Musical Groove Templates', () => {
     }
   });
 
-  it('ensures all 8 templates generate stroke points within visible screen height bounds [0, height]', () => {
+  it('ensures all 7 templates generate stroke points within visible screen height bounds [0, height]', () => {
     const allTemplateIds = Object.keys(TEMPLATES);
-    expect(allTemplateIds.length).toBe(8);
+    expect(allTemplateIds.length).toBe(7);
 
     for (const id of allTemplateIds) {
       const strokes = buildTemplateStrokes(id, width, height, quantizer);
