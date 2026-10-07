@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { StrokeManager, getNextVersionName } from '../src/engine/strokeManager';
 import { SplinePath } from '../src/math/types';
+import { SavedComposition } from '../src/engine/types';
 import { ScaleQuantizer } from '../src/audio/scaleQuantizer';
 import { INSTRUMENTS, DEFAULT_INSTRUMENT } from '../src/audio/instruments';
 import { DroneVoice, PulseVoice } from '../src/audio/synthVoice';
@@ -1376,6 +1377,178 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
     // Toggle back to restart
     sm.setStrokeTraversal(s.id, 'restart');
     expect(s.traversal).toBe('restart');
+  });
+
+  describe('Scene Crossfade & Smooth Overlapping Morph', () => {
+    it('initiates scene crossfade with outgoing and incoming strokes simultaneously', () => {
+      const sm = new StrokeManager();
+      const strokeA = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+
+      const incomingComp: SavedComposition = {
+        version: 1,
+        name: 'Scene 2',
+        timestamp: Date.now(),
+        bpm: 45,
+        scaleId: 'lydian',
+        rootId: 'D2',
+        spaceReverb: 0.7,
+        strokes: [
+          {
+            id: 'stroke_incoming_1',
+            path: dummyPath,
+            style: 'dotted' as const,
+            instrumentId: 'amber',
+            volume: 0.8,
+            speedMultiplier: 1.0,
+            traversal: 'restart' as const,
+            timingMode: 'speed' as const,
+          },
+        ],
+      };
+
+      sm.startSceneCrossfade(incomingComp, undefined, 600, 800, 'equalPower', 'scene_2');
+
+      expect(sm.isCrossfadingMorph).toBe(true);
+      expect(sm.activeStrokes.length).toBe(2);
+
+      const outgoing = sm.activeStrokes.find((s) => s.id === strokeA.id);
+      const incoming = sm.activeStrokes.find((s) => s.id !== strokeA.id);
+
+      expect(outgoing?.morphRole).toBe('outgoing');
+      expect(outgoing?.morphGain).toBe(1.0);
+
+      expect(incoming?.morphRole).toBe('incoming');
+      expect(incoming?.morphGain).toBe(0.0);
+
+      // Exporting composition during crossfade must filter out incoming strokes
+      const exported = sm.exportComposition();
+      expect(exported.strokes.length).toBe(1);
+      expect(exported.strokes[0].id).toBe(strokeA.id);
+    });
+
+    it('calculates equal-power crossfade gains preserving acoustic energy without volume dips', () => {
+      const sm = new StrokeManager();
+      sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+
+      const incomingComp: SavedComposition = {
+        version: 1,
+        name: 'Scene B',
+        timestamp: Date.now(),
+        bpm: 40,
+        scaleId: 'dorian',
+        rootId: 'D2',
+        strokes: [
+          {
+            id: 'stroke_b',
+            path: dummyPath,
+            style: 'solid' as const,
+            instrumentId: 'emerald',
+          },
+        ],
+      };
+
+      sm.startSceneCrossfade(incomingComp, undefined, 600, 800, 'equalPower', 'scene_b');
+
+      // Start: r = 0
+      const at0 = sm.updateSceneCrossfade(0.0);
+      expect(at0.outgoingGain).toBeCloseTo(1.0);
+      expect(at0.incomingGain).toBeCloseTo(0.0);
+
+      // Midpoint: r = 0.5 (equal power cos(pi/4) and sin(pi/4))
+      const atHalf = sm.updateSceneCrossfade(0.5);
+      expect(atHalf.outgoingGain).toBeCloseTo(Math.cos(Math.PI / 4));
+      expect(atHalf.incomingGain).toBeCloseTo(Math.sin(Math.PI / 4));
+      // Sum of squares must equal 1.0 (constant acoustic power!)
+      const powerSum = Math.pow(atHalf.outgoingGain, 2) + Math.pow(atHalf.incomingGain, 2);
+      expect(powerSum).toBeCloseTo(1.0);
+
+      // End: r = 1
+      const at1 = sm.updateSceneCrossfade(1.0);
+      expect(at1.outgoingGain).toBeCloseTo(0.0);
+      expect(at1.incomingGain).toBeCloseTo(1.0);
+    });
+
+    it('supports reverbWash and linear curve modes', () => {
+      const sm = new StrokeManager();
+      sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+
+      const incomingComp: SavedComposition = {
+        version: 1,
+        name: 'Scene C',
+        timestamp: Date.now(),
+        bpm: 40,
+        scaleId: 'dorian',
+        rootId: 'D2',
+        strokes: [{ id: 'stroke_c', path: dummyPath, style: 'solid' as const, instrumentId: 'amber' }],
+      };
+
+      // Reverb Wash mode
+      sm.startSceneCrossfade(incomingComp, undefined, 600, 800, 'reverbWash', 'scene_c');
+      const washMid = sm.updateSceneCrossfade(0.5);
+      expect(washMid.reverbBoost).toBeGreaterThan(0.2); // Midpoint reverb wash swell
+
+      // Complete and start new with Linear mode
+      sm.completeSceneCrossfade();
+      sm.startSceneCrossfade(incomingComp, undefined, 600, 800, 'linear', 'scene_c2');
+      const linearMid = sm.updateSceneCrossfade(0.5);
+      expect(linearMid.outgoingGain).toBeCloseTo(0.5);
+      expect(linearMid.incomingGain).toBeCloseTo(0.5);
+      expect(linearMid.reverbBoost).toBe(0.0);
+    });
+
+    it('completes scene crossfade smoothly by removing outgoing and promoting incoming strokes', () => {
+      const sm = new StrokeManager();
+      const strokeA = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+
+      const incomingComp: SavedComposition = {
+        version: 1,
+        name: 'Scene D',
+        timestamp: Date.now(),
+        bpm: 40,
+        scaleId: 'dorian',
+        rootId: 'D2',
+        strokes: [{ id: 'stroke_incoming', path: dummyPath, style: 'solid' as const, instrumentId: 'amber' }],
+      };
+
+      sm.startSceneCrossfade(incomingComp, undefined, 600, 800, 'equalPower', 'scene_d');
+      expect(sm.activeStrokes.length).toBe(2);
+
+      sm.completeSceneCrossfade();
+
+      expect(sm.isCrossfadingMorph).toBe(false);
+      expect(sm.activeStrokes.length).toBe(1);
+      const remaining = sm.activeStrokes[0];
+      expect(remaining.id).not.toBe(strokeA.id);
+      expect(remaining.morphRole).toBeUndefined();
+      expect(remaining.morphGain).toBeUndefined();
+    });
+
+    it('cancels scene crossfade by dropping incoming strokes and restoring outgoing strokes', () => {
+      const sm = new StrokeManager();
+      const strokeA = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+
+      const incomingComp: SavedComposition = {
+        version: 1,
+        name: 'Scene E',
+        timestamp: Date.now(),
+        bpm: 40,
+        scaleId: 'dorian',
+        rootId: 'D2',
+        strokes: [{ id: 'stroke_incoming_e', path: dummyPath, style: 'solid' as const, instrumentId: 'amber' }],
+      };
+
+      sm.startSceneCrossfade(incomingComp, undefined, 600, 800, 'equalPower', 'scene_e');
+      sm.updateSceneCrossfade(0.5);
+      expect(sm.activeStrokes.length).toBe(2);
+
+      sm.cancelSceneCrossfade();
+
+      expect(sm.isCrossfadingMorph).toBe(false);
+      expect(sm.activeStrokes.length).toBe(1);
+      expect(sm.activeStrokes[0].id).toBe(strokeA.id);
+      expect(sm.activeStrokes[0].morphRole).toBeUndefined();
+      expect(sm.activeStrokes[0].morphGain).toBeUndefined();
+    });
   });
 });
 

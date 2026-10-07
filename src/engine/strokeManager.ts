@@ -4,11 +4,12 @@ import { evaluateAtDistance } from '../math/arcLengthInverter';
 import { evaluateBezier } from '../math/bezier';
 import { generateWaveSpline, WaveParams, WaveShapeType } from '../math/waveShape';
 import { ScaleQuantizer } from '../audio/scaleQuantizer';
+import { SCALES, ROOT_NOTES } from '../audio/scales';
 import { DroneVoice, PulseVoice, XAxisModulationMode } from '../audio/synthVoice';
 import { DrumSynth } from '../audio/drumSynth';
 import { getInstrument, DEFAULT_INSTRUMENT } from '../audio/instruments';
 import { soundEngine, SoundEngine } from '../audio/audioContext';
-import { DrawnStroke, StrokeStyle, TraversalMode, TimingMode, LoopQuantizeMode, SpeedMode, HarmonizerMode, SavedComposition } from './types';
+import { DrawnStroke, StrokeStyle, TraversalMode, TimingMode, LoopQuantizeMode, SpeedMode, HarmonizerMode, SavedComposition, MorphCurveMode, SavedStroke } from './types';
 import { getHarmonizerFrequencies } from '../audio/harmony';
 import { calculateBreathing, BreathingMode } from '../audio/breathing';
 
@@ -143,6 +144,17 @@ export class StrokeManager {
   private defaultDuration = 30;
   private defaultReverb = 0.4;
   private defaultFluctuation = 0.0;
+  private sceneMorphGain = 1.0;
+  public isCrossfadingMorph = false;
+  private morphOutgoingGain = 1.0;
+  private morphIncomingGain = 0.0;
+  private morphCurveMode: MorphCurveMode = 'equalPower';
+  private morphTargetSceneId: string | null = null;
+  private morphIncomingQuantizer: ScaleQuantizer | null = null;
+
+  public get morphGains(): { outgoing: number; incoming: number } {
+    return { outgoing: this.morphOutgoingGain, incoming: this.morphIncomingGain };
+  }
 
   public get defaultStrokeHarmonizer(): HarmonizerMode {
     return this.defaultHarmonizer;
@@ -246,6 +258,14 @@ export class StrokeManager {
 
   public get canRedo(): boolean {
     return this.redoStack.length > 0;
+  }
+
+  public get sceneMorphVolumeGain(): number {
+    return this.sceneMorphGain;
+  }
+
+  public setSceneMorphVolumeGain(val: number): void {
+    this.sceneMorphGain = Math.max(0, Math.min(1, val));
   }
 
   /** Elapsed clock time in seconds */
@@ -398,7 +418,8 @@ export class StrokeManager {
     reverb?: number,
     fluctuation?: number,
     timingMode?: TimingMode,
-    harmonizer?: HarmonizerMode
+    harmonizer?: HarmonizerMode,
+    recordUndo = true
   ): DrawnStroke {
     const lut = buildArcLengthLUT(path, 64);
     const id = `stroke-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -466,8 +487,10 @@ export class StrokeManager {
     };
 
     this.strokes.push(stroke);
-    this.undoStack.push({ type: 'add', stroke });
-    this.redoStack = [];
+    if (recordUndo) {
+      this.undoStack.push({ type: 'add', stroke });
+      this.redoStack = [];
+    }
     return stroke;
   }
 
@@ -1243,8 +1266,13 @@ export class StrokeManager {
     for (const stroke of this.strokes) {
       if (stroke.style === 'solid' && !stroke.droneVoice && stroke.playhead.lastPitch && this.isStrokeAudible(stroke)) {
         const inst = getInstrument(stroke.instrumentId);
+        const morphMultiplier = stroke.morphRole === 'outgoing'
+          ? this.morphOutgoingGain
+          : stroke.morphRole === 'incoming'
+          ? this.morphIncomingGain
+          : this.sceneMorphGain;
         stroke.droneVoice = new DroneVoice(this.engine);
-        stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, stroke.volume ?? 1.0, stroke.reverb ?? this.defaultReverb);
+        stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, (stroke.volume ?? 1.0) * morphMultiplier, stroke.reverb ?? this.defaultReverb);
       }
     }
   }
@@ -1362,9 +1390,14 @@ export class StrokeManager {
       const solidEffectiveY = Math.max(0, Math.min(maxY, evalResult.point.y + wander));
 
       // 3. Audio & Pitch evaluation (Respecting Volume, Mute, Solo, and Loop Boundary Crossfade)
-      const audible = this.isStrokeAudible(stroke);
       const instrument = getInstrument(stroke.instrumentId);
-      const strokeVol = stroke.volume ?? 1.0;
+      const audible = this.isStrokeAudible(stroke);
+      const strokeMorphMult = stroke.morphRole === 'outgoing'
+        ? this.morphOutgoingGain
+        : stroke.morphRole === 'incoming'
+        ? this.morphIncomingGain
+        : this.sceneMorphGain;
+      const strokeVol = (stroke.volume ?? 1.0) * strokeMorphMult;
 
       // Smooth crossfade near loop boundaries for restart mode
       let crossfadeMultiplier = 1.0;
@@ -1385,15 +1418,20 @@ export class StrokeManager {
         ? calculateBreathing(this.breathingMode, this.masterClockTime, stroke.id)
         : { filterMultiplier: 1.0, volumeMultiplier: 1.0, detuneCents: 0.0 };
 
+      // Determine active quantizer: incoming strokes use their scene's quantizer during crossfade
+      const strokeQuantizer = (stroke.morphRole === 'incoming' && this.morphIncomingQuantizer)
+        ? this.morphIncomingQuantizer
+        : quantizer;
+
       // Update playhead swell for visual halo breathing
       ph.currentSwell = breathing.volumeMultiplier;
 
       if (stroke.style === 'solid') {
-        const pitch = quantizer.quantizeContinuous(solidEffectiveY, canvasHeight);
+        const pitch = strokeQuantizer.quantizeContinuous(solidEffectiveY, canvasHeight);
         ph.lastPitch = pitch;
 
         if (audible) {
-          const chord = getHarmonizerFrequencies(stroke.harmonizer, pitch.frequency, pitch.scaleDegree, quantizer);
+          const chord = getHarmonizerFrequencies(stroke.harmonizer, pitch.frequency, pitch.scaleDegree, strokeQuantizer);
           if ((!stroke.droneVoice || !stroke.droneVoice.isPlaying) && this.engine.isReady) {
             stroke.droneVoice = new DroneVoice(this.engine);
             stroke.droneVoice.start(pitch.frequency, instrument, effectiveVol, strokeReverb, audioTime);
@@ -1429,7 +1467,7 @@ export class StrokeManager {
           ? getHitJitter(stroke.id, nextIndex) * strokeFluctuation * PITCH_FLUCTUATION_OFFSET
           : 0;
         const triggerY = Math.max(0, Math.min(maxY, evalResult.point.y + jitter));
-        const pitch = quantizer.quantizeDiscrete(triggerY, canvasHeight);
+        const pitch = strokeQuantizer.quantizeDiscrete(triggerY, canvasHeight);
         ph.lastPitch = pitch;
 
         if (isTriggerHit) {
@@ -1452,7 +1490,7 @@ export class StrokeManager {
               : 0;
             const finalFreq = pitch.frequency * Math.pow(2, microCents / 1200);
 
-            const chord = getHarmonizerFrequencies(stroke.harmonizer, finalFreq, pitch.scaleDegree, quantizer);
+            const chord = getHarmonizerFrequencies(stroke.harmonizer, finalFreq, pitch.scaleDegree, strokeQuantizer);
             chord.frequencies.forEach((f, idx) => {
               const strumDelay = idx * 0.016; // 16ms acoustic strum spread
               const noteVol = 0.85 * strokeVol * (chord.gains[idx] ?? 0.8);
@@ -1485,7 +1523,7 @@ export class StrokeManager {
           ? getHitJitter(stroke.id, nextIndex) * strokeFluctuation * PITCH_FLUCTUATION_OFFSET
           : 0;
         const triggerY = Math.max(0, Math.min(maxY, evalResult.point.y + jitter));
-        const pitch = quantizer.quantizeDiscrete(triggerY, canvasHeight);
+        const pitch = strokeQuantizer.quantizeDiscrete(triggerY, canvasHeight);
         ph.lastPitch = pitch;
 
         if (isTriggerHit) {
@@ -1509,7 +1547,7 @@ export class StrokeManager {
               : 0;
             const finalFreq = pitch.frequency * Math.pow(2, microCents / 1200);
 
-            const chord = getHarmonizerFrequencies(stroke.harmonizer, finalFreq, pitch.scaleDegree, quantizer);
+            const chord = getHarmonizerFrequencies(stroke.harmonizer, finalFreq, pitch.scaleDegree, strokeQuantizer);
             chord.frequencies.forEach((f, idx) => {
               const noteVol = 0.8 * strokeVol * (chord.gains[idx] ?? 0.8);
               PulseVoice.triggerRatchet(
@@ -1753,9 +1791,9 @@ export class StrokeManager {
     }
   }
 
-  public clearAll(): void {
+  public clearAll(releaseTime: number = 0.2): void {
     for (const stroke of this.strokes) {
-      stroke.droneVoice?.stop();
+      stroke.droneVoice?.stop(releaseTime);
       stroke.droneVoice = null;
     }
     this.strokes = [];
@@ -1764,6 +1802,12 @@ export class StrokeManager {
     this.selectedId = null;
     this.hoveredId = null;
     this.masterClockTime = 0;
+    this.isCrossfadingMorph = false;
+    this.morphTargetSceneId = null;
+    this.morphIncomingQuantizer = null;
+    this.morphOutgoingGain = 1.0;
+    this.morphIncomingGain = 0.0;
+    this.sceneMorphGain = 1.0;
   }
 
   /**
@@ -1779,8 +1823,13 @@ export class StrokeManager {
       stroke.playhead.trail = [];
       if (stroke.style === 'solid' && !stroke.droneVoice && this.engine.isReady && stroke.playhead.lastPitch && this.isStrokeAudible(stroke) && !this.isPaused) {
         const inst = getInstrument(stroke.instrumentId);
+        const strokeMorphMult = stroke.morphRole === 'outgoing'
+          ? this.morphOutgoingGain
+          : stroke.morphRole === 'incoming'
+          ? this.morphIncomingGain
+          : this.sceneMorphGain;
         stroke.droneVoice = new DroneVoice(this.engine);
-        stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, stroke.volume ?? 1.0, stroke.reverb ?? this.defaultReverb);
+        stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, (stroke.volume ?? 1.0) * strokeMorphMult, stroke.reverb ?? this.defaultReverb);
       }
     }
   }
@@ -1813,8 +1862,13 @@ export class StrokeManager {
 
         if (stroke.style === 'solid' && !stroke.droneVoice && this.engine.isReady && stroke.playhead.lastPitch && this.isStrokeAudible(stroke) && !this.isPaused) {
           const inst = getInstrument(stroke.instrumentId);
+          const strokeMorphMult = stroke.morphRole === 'outgoing'
+            ? this.morphOutgoingGain
+            : stroke.morphRole === 'incoming'
+            ? this.morphIncomingGain
+            : this.sceneMorphGain;
           stroke.droneVoice = new DroneVoice(this.engine);
-          stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, stroke.volume ?? 1.0, stroke.reverb ?? this.defaultReverb);
+          stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, (stroke.volume ?? 1.0) * strokeMorphMult, stroke.reverb ?? this.defaultReverb);
         }
       }
     }
@@ -1842,7 +1896,7 @@ export class StrokeManager {
       xAxisModulationMode: this.xModMode,
       breathingMode: this.breathingMode,
       defaultHarmonizer: this.defaultHarmonizer,
-      strokes: this.strokes.map((s) => ({
+      strokes: this.strokes.filter((s) => s.morphRole !== 'incoming').map((s) => ({
         id: s.id,
         instrumentId: s.instrumentId,
         style: s.style,
@@ -1887,9 +1941,10 @@ export class StrokeManager {
     data: SavedComposition,
     quantizer?: ScaleQuantizer,
     canvasHeight?: number,
-    canvasWidth?: number
+    canvasWidth?: number,
+    releaseOldVoicesTime: number = 0.2
   ): void {
-    this.clearAll();
+    this.clearAll(releaseOldVoicesTime);
     this.setBpm(data.bpm);
     if (data.xAxisModulationMode) {
       this.setXAxisModulationMode(data.xAxisModulationMode);
@@ -1921,44 +1976,221 @@ export class StrokeManager {
     }
 
     for (const s of data.strokes) {
-      const clonedPath: SplinePath = {
-        isClosed: s.path.isClosed,
-        segments: s.path.segments.map((seg) => ({
-          p0: { x: seg.p0.x * scaleX, y: seg.p0.y },
-          p1: { x: seg.p1.x * scaleX, y: seg.p1.y },
-          p2: { x: seg.p2.x * scaleX, y: seg.p2.y },
-          p3: { x: seg.p3.x * scaleX, y: seg.p3.y },
-        })),
-      };
-
-      const clonedWave = s.waveParams ? {
-        ...s.waveParams,
-        baseP0: { x: s.waveParams.baseP0.x * scaleX, y: s.waveParams.baseP0.y },
-        baseP1: { x: s.waveParams.baseP1.x * scaleX, y: s.waveParams.baseP1.y },
-      } : undefined;
-
-      const stroke = this.addStroke(
-        clonedPath,
-        s.style,
-        s.instrumentId,
-        140,
-        quantizer,
-        canvasHeight,
-        s.volume ?? 1.0,
-        s.loopQuantize,
-        s.traversal,
-        s.duration,
-        s.speedMultiplier,
-        s.speedMode,
-        s.reverb,
-        s.fluctuation,
-        s.timingMode,
-        s.harmonizer
-      );
-      if (s.muted) stroke.muted = true;
-      if (clonedWave) stroke.waveParams = clonedWave;
+      this.createStrokeFromSaved(s, scaleX, quantizer, canvasHeight);
     }
     this.resyncAllPlayheads();
+  }
+
+  /**
+   * Helper to instantiate a DrawnStroke from a SavedStroke.
+   */
+  public createStrokeFromSaved(
+    s: SavedStroke,
+    scaleX: number = 1.0,
+    quantizer?: ScaleQuantizer,
+    canvasHeight?: number
+  ): DrawnStroke {
+    const clonedPath: SplinePath = {
+      isClosed: s.path.isClosed,
+      segments: s.path.segments.map((seg) => ({
+        p0: { x: seg.p0.x * scaleX, y: seg.p0.y },
+        p1: { x: seg.p1.x * scaleX, y: seg.p1.y },
+        p2: { x: seg.p2.x * scaleX, y: seg.p2.y },
+        p3: { x: seg.p3.x * scaleX, y: seg.p3.y },
+      })),
+    };
+
+    const clonedWave = s.waveParams ? {
+      ...s.waveParams,
+      baseP0: { x: s.waveParams.baseP0.x * scaleX, y: s.waveParams.baseP0.y },
+      baseP1: { x: s.waveParams.baseP1.x * scaleX, y: s.waveParams.baseP1.y },
+    } : undefined;
+
+    const stroke = this.addStroke(
+      clonedPath,
+      s.style,
+      s.instrumentId,
+      140,
+      quantizer,
+      canvasHeight,
+      s.volume ?? 1.0,
+      s.loopQuantize,
+      s.traversal,
+      s.duration,
+      s.speedMultiplier,
+      s.speedMode,
+      s.reverb,
+      s.fluctuation,
+      s.timingMode,
+      s.harmonizer,
+      false
+    );
+    if (s.muted) stroke.muted = true;
+    if (clonedWave) stroke.waveParams = clonedWave;
+    return stroke;
+  }
+
+  /**
+   * Begins a smooth overlapping crossfade towards an incoming scene.
+   * Existing strokes are marked 'outgoing', and the incoming scene's strokes
+   * are instantiated, marked 'incoming', and start playing simultaneously!
+   */
+  public startSceneCrossfade(
+    incomingComp: SavedComposition,
+    quantizer?: ScaleQuantizer,
+    canvasHeight?: number,
+    canvasWidth?: number,
+    curveMode: MorphCurveMode = 'equalPower',
+    targetSceneId?: string
+  ): void {
+    if (this.isCrossfadingMorph && this.morphTargetSceneId === targetSceneId) {
+      return;
+    }
+    if (this.isCrossfadingMorph) {
+      this.cancelSceneCrossfade();
+    }
+
+    this.isCrossfadingMorph = true;
+    this.morphCurveMode = curveMode;
+    this.morphTargetSceneId = targetSceneId || null;
+    this.morphOutgoingGain = 1.0;
+    this.morphIncomingGain = 0.0;
+
+    // 1. Tag all existing strokes as outgoing
+    for (const s of this.strokes) {
+      s.morphRole = 'outgoing';
+      s.morphGain = 1.0;
+    }
+
+    // 2. Compute horizontal scale factor for incoming strokes if needed
+    let scaleX = 1.0;
+    if (canvasWidth && canvasWidth > 0 && typeof incomingComp.canvasWidth === 'number' && incomingComp.canvasWidth > 0) {
+      scaleX = canvasWidth / incomingComp.canvasWidth;
+    }
+
+    // Initialize quantizer dedicated to incoming scene scale/root
+    const targetScale = (incomingComp.scaleId && SCALES[incomingComp.scaleId]) ? SCALES[incomingComp.scaleId] : (quantizer ? quantizer.getConfig().scale : SCALES.dorian);
+    const targetRoot = (incomingComp.rootId && ROOT_NOTES[incomingComp.rootId]) ? ROOT_NOTES[incomingComp.rootId] : (quantizer ? quantizer.getConfig().root : ROOT_NOTES.D2);
+    this.morphIncomingQuantizer = new ScaleQuantizer({
+      scale: targetScale,
+      root: targetRoot,
+      octaveSpan: quantizer ? quantizer.getConfig().octaveSpan : 4,
+    });
+
+    // 3. Instantiate incoming strokes, mark as incoming, and start at 0 gain
+    for (const s of incomingComp.strokes) {
+      const stroke = this.createStrokeFromSaved(s, scaleX, this.morphIncomingQuantizer, canvasHeight);
+      stroke.morphRole = 'incoming';
+      stroke.morphGain = 0.0;
+      if (stroke.droneVoice) {
+        stroke.droneVoice.setVolume(0.0);
+      }
+    }
+
+    // Activate voices for incoming strokes so their audio is live
+    this.activateAudioVoices();
+  }
+
+  /**
+   * Updates crossfade gains for all active strokes based on the current morph ratio (0.0 to 1.0).
+   */
+  public updateSceneCrossfade(ratio: number): { outgoingGain: number; incomingGain: number; reverbBoost: number } {
+    const r = Math.max(0, Math.min(1, ratio));
+
+    let outGain = 1.0;
+    let inGain = 0.0;
+    let reverbBoost = 0.0;
+
+    if (this.morphCurveMode === 'linear') {
+      outGain = 1.0 - r;
+      inGain = r;
+    } else if (this.morphCurveMode === 'reverbWash') {
+      outGain = Math.cos(r * (Math.PI / 2));
+      inGain = Math.sin(r * (Math.PI / 2));
+      reverbBoost = Math.sin(r * Math.PI) * 0.22;
+    } else {
+      // 'equalPower' (default): constant acoustic power
+      outGain = Math.cos(r * (Math.PI / 2));
+      inGain = Math.sin(r * (Math.PI / 2));
+    }
+
+    this.morphOutgoingGain = outGain;
+    this.morphIncomingGain = inGain;
+
+    for (const s of this.strokes) {
+      if (s.morphRole === 'outgoing') {
+        s.morphGain = outGain;
+      } else if (s.morphRole === 'incoming') {
+        s.morphGain = inGain;
+      }
+    }
+
+    return { outgoingGain: outGain, incomingGain: inGain, reverbBoost };
+  }
+
+  /**
+   * Completes the crossfade: releases and removes outgoing strokes, promotes incoming strokes
+   * to full active status.
+   */
+  public completeSceneCrossfade(): void {
+    if (!this.isCrossfadingMorph) return;
+
+    // Release outgoing drone voices with gentle release
+    for (const s of this.strokes) {
+      if (s.morphRole === 'outgoing') {
+        s.droneVoice?.stop(0.35);
+        s.droneVoice = null;
+      }
+    }
+
+    // Retain only incoming strokes
+    this.strokes = this.strokes.filter((s) => s.morphRole !== 'outgoing');
+
+    // Remove morph tags from surviving strokes
+    for (const s of this.strokes) {
+      delete s.morphRole;
+      delete s.morphGain;
+    }
+
+    // Deselect any removed stroke
+    if (this.selectedId && !this.strokes.some((s) => s.id === this.selectedId)) {
+      this.selectedId = null;
+    }
+
+    this.isCrossfadingMorph = false;
+    this.morphTargetSceneId = null;
+    this.morphIncomingQuantizer = null;
+    this.morphOutgoingGain = 1.0;
+    this.morphIncomingGain = 1.0;
+    this.sceneMorphGain = 1.0;
+  }
+
+  /**
+   * Cancels active crossfade: releases incoming strokes and restores outgoing strokes.
+   */
+  public cancelSceneCrossfade(): void {
+    if (!this.isCrossfadingMorph) return;
+
+    for (const s of this.strokes) {
+      if (s.morphRole === 'incoming') {
+        s.droneVoice?.stop(0.2);
+        s.droneVoice = null;
+      }
+    }
+
+    this.strokes = this.strokes.filter((s) => s.morphRole !== 'incoming');
+
+    for (const s of this.strokes) {
+      delete s.morphRole;
+      delete s.morphGain;
+    }
+
+    this.isCrossfadingMorph = false;
+    this.morphTargetSceneId = null;
+    this.morphIncomingQuantizer = null;
+    this.morphOutgoingGain = 1.0;
+    this.morphIncomingGain = 0.0;
+    this.sceneMorphGain = 1.0;
   }
 }
 

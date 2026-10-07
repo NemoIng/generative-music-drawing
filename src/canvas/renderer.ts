@@ -271,14 +271,15 @@ export class CanvasRenderer {
     const baseColor = this.getStrokeColor(stroke);
     const effectiveColor = isGreyedOut ? '#a8a29e' : baseColor;
     const vol = typeof stroke.volume === 'number' ? stroke.volume : 1.0;
+    const morphMultiplier = typeof stroke.morphGain === 'number' ? stroke.morphGain : 1.0;
 
     if (hasSolo && !stroke.soloed) {
       // Greyed out because another line is soloed
-      ctx.globalAlpha = 0.20;
+      ctx.globalAlpha = 0.20 * morphMultiplier;
     } else if (stroke.muted) {
-      ctx.globalAlpha = 0.25;
+      ctx.globalAlpha = 0.25 * morphMultiplier;
     } else {
-      ctx.globalAlpha = 0.35 + 0.65 * vol;
+      ctx.globalAlpha = (0.35 + 0.65 * vol) * Math.max(0.04, morphMultiplier);
     }
 
     ctx.beginPath();
@@ -451,13 +452,18 @@ export class CanvasRenderer {
     const baseColor = this.getStrokeColor(stroke);
     const effectiveColor = isGreyedOut ? '#a8a29e' : baseColor;
     const vol = typeof stroke.volume === 'number' ? stroke.volume : 1.0;
+    const morphMultiplier = typeof stroke.morphGain === 'number' ? stroke.morphGain : 1.0;
+    if (morphMultiplier <= 0.02) {
+      ctx.restore();
+      return;
+    }
 
     if (isSoloGreyedOut) {
-      ctx.globalAlpha = 0.16;
+      ctx.globalAlpha = 0.16 * morphMultiplier;
     } else if (stroke.muted) {
-      ctx.globalAlpha = 0.25;
+      ctx.globalAlpha = 0.25 * morphMultiplier;
     } else {
-      ctx.globalAlpha = 0.4 + 0.6 * vol;
+      ctx.globalAlpha = (0.4 + 0.6 * vol) * morphMultiplier;
     }
 
     // 1. Motion Trail

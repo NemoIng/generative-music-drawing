@@ -41,6 +41,7 @@ export class DroneVoice {
   private instrument: InstrumentDefinition = DEFAULT_INSTRUMENT;
   private volume: number = 1.0;
   private reverb: number = 0.4;
+  private currentMasterGain: number = 0.26;
 
   constructor(engine: SoundEngine = soundEngine) {
     this.engine = engine;
@@ -84,9 +85,10 @@ export class DroneVoice {
 
   public setVolume(volume: number, scheduledTime?: number): void {
     this.volume = Math.max(0, Math.min(1, volume));
+    const targetGain = Math.max(0.0001, 0.26 * this.volume);
+    this.currentMasterGain = targetGain;
     if (this.masterGainNode && this._isPlaying) {
       const now = scheduledTime !== undefined ? scheduledTime : this.engine.context.currentTime;
-      const targetGain = Math.max(0.0001, 0.26 * this.volume);
       this.masterGainNode.gain.setTargetAtTime(targetGain, now, 0.03);
     }
   }
@@ -119,6 +121,7 @@ export class DroneVoice {
     // --- Create Master Nodes ---
     this.masterGainNode = ctx.createGain();
     const initialGain = Math.max(0.0001, 0.26 * this.volume);
+    this.currentMasterGain = initialGain;
     this.masterGainNode.gain.setValueAtTime(0.001, now);
     this.masterGainNode.gain.exponentialRampToValueAtTime(initialGain, now + 0.15);
 
@@ -266,6 +269,7 @@ export class DroneVoice {
     const effVol = baseVol * (breathingMod ? breathingMod.volumeMultiplier : 1.0);
     if (this.masterGainNode) {
       const targetGain = Math.max(0.0001, 0.26 * effVol);
+      this.currentMasterGain = targetGain;
       this.masterGainNode.gain.setTargetAtTime(targetGain, now, 0.05);
     }
 
@@ -438,10 +442,11 @@ export class DroneVoice {
     if (!this._isPlaying || !this.masterGainNode) return;
     const ctx = this.engine.context;
     const now = stopTime !== undefined ? stopTime : ctx.currentTime;
-    const actualRelease = Math.max(0.05, releaseTime);
+    const actualRelease = Math.max(0.12, releaseTime);
 
+    const startGain = Math.max(0.0001, this.currentMasterGain);
     this.masterGainNode.gain.cancelScheduledValues(now);
-    this.masterGainNode.gain.setValueAtTime(Math.max(0.0001, this.masterGainNode.gain.value), now);
+    this.masterGainNode.gain.setValueAtTime(startGain, now);
     this.masterGainNode.gain.exponentialRampToValueAtTime(0.0001, now + actualRelease);
 
     const oldOsc1A = this.osc1A;

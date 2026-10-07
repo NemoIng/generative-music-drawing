@@ -30,7 +30,7 @@
           <div class="control-group top-template-group has-tooltip" data-tooltip="Ambient Presets: Instant acoustic scores and saved compositions.">
             <div class="top-row-label-row">
               <label class="top-row-label" for="templateSelect">Preset</label>
-              <span id="dirtyIndicator" class="dirty-badge" style="display:none;" title="Unsaved changes in current composition">Edited</span>
+              <span id="dirtyIndicator" class="dirty-badge" title="Unsaved changes in current composition">Edited</span>
             </div>
             <div class="select-wrapper">
               <select id="templateSelect" class="minimal-select">
@@ -138,6 +138,37 @@
                 data-tooltip="Live Play Mode (L): Click to play notes instantly, drag to leave disappearing trails with 50% reverb."
               >
                 Live Play
+              </button>
+            </div>
+          </div>
+
+          <!-- View Architecture Switcher (Studio Deck / Zen Canvas / Scene Arranger) -->
+          <div class="control-group view-switcher-group has-tooltip" data-tooltip="Interface View (Studio Deck, Zen Canvas, Scene Arranger • Press V to cycle views)">
+            <label class="top-row-label">View</label>
+            <div class="segmented-switch" id="viewModeControl">
+              <button
+                type="button"
+                class="seg-btn active"
+                data-view-mode="studio"
+                title="Studio Deck: Persistent mixer and rack on right"
+              >
+                Studio
+              </button>
+              <button
+                type="button"
+                class="seg-btn"
+                data-view-mode="zen"
+                title="Zen Canvas: Full-bleed distraction-free canvas"
+              >
+                Zen
+              </button>
+              <button
+                type="button"
+                class="seg-btn"
+                data-view-mode="scenes"
+                title="Scene Arranger: Multi-scene progression timeline"
+              >
+                Scenes
               </button>
             </div>
           </div>
@@ -325,7 +356,7 @@
                       Curve
                     </button>
                     <button type="button" class="seg-btn has-tooltip" data-shape="straight" data-tooltip="Straight Note Bar: Horizontal sustained note or rhythm strip (or hold Shift).">
-                      Bar
+                      Bar 
                     </button>
                   </div>
                 </div>
@@ -361,17 +392,17 @@
                     </select>
                   </div>
                 </div>
+              </div>
 
-                <div class="control-group draw-only-control has-tooltip" data-tooltip="Default Line Voicing: Harmonic intervals produced by newly drawn lines (Single Unison, Octave Doubling, Sub-Octave, or Dual Octave).">
-                  <label for="defaultHarmonizerSelect">Default Voicing</label>
-                  <div class="select-wrapper">
-                    <select id="defaultHarmonizerSelect" class="minimal-select">
-                      <option value="single" selected>Single (1x)</option>
-                      <option value="octave">Octave (+8va)</option>
-                      <option value="subOctave">Sub-Octave (-8vb)</option>
-                      <option value="dualOctave">Dual Octave (±8va)</option>
-                    </select>
-                  </div>
+              <div class="control-group draw-only-control has-tooltip" data-tooltip="Default Line Voicing: Harmonic intervals produced by newly drawn lines (Single Unison, Octave Doubling, Sub-Octave, or Dual Octave).">
+                <label for="defaultHarmonizerSelect">Default Voicing</label>
+                <div class="select-wrapper">
+                  <select id="defaultHarmonizerSelect" class="minimal-select">
+                    <option value="single" selected>Single (1x)</option>
+                    <option value="octave">Octave (+8va)</option>
+                    <option value="subOctave">Sub-Octave (-8vb)</option>
+                    <option value="dualOctave">Dual Octave (±8va)</option>
+                  </select>
                 </div>
               </div>
             </div>
@@ -432,15 +463,15 @@
                   Save As...
                 </button>
               </div>
-              <div class="drawer-two-col" style="margin-top: 6px;">
-                <button type="button" id="loadTemplateFileBtn" class="action-btn has-tooltip" data-tooltip="Load Preset File: Open a saved composition JSON file." style="width: 100%;">
+              <div class="drawer-two-col">
+                <button type="button" id="loadTemplateFileBtn" class="action-btn has-tooltip" data-tooltip="Load Preset File: Open a saved composition JSON file.">
                   Load Preset File
                 </button>
-                <input type="file" id="loadFileInput" accept=".json" style="display: none;" />
+                <button type="button" id="infoBtn" class="action-btn text-muted has-tooltip" data-tooltip="Algorithm & Math: View equations.">
+                  Math & Algorithm
+                </button>
               </div>
-              <button id="infoBtn" class="action-btn text-muted has-tooltip" data-tooltip="Algorithm & Math: View equations." style="width: 100%; margin-top: 6px;">
-                Math & Algorithm
-              </button>
+              <input type="file" id="loadFileInput" accept=".json" style="display: none;" />
             </div>
 
             <!-- 6. Keyboard Shortcuts Card -->
@@ -524,6 +555,10 @@
                   <kbd class="shortcut-key">F</kbd>
                 </div>
                 <div class="shortcut-row">
+                  <span class="shortcut-desc">Cycle Views (Studio / Zen / Scenes)</span>
+                  <kbd class="shortcut-key">V</kbd>
+                </div>
+                <div class="shortcut-row">
                   <span class="shortcut-desc">Deselect / Close</span>
                   <kbd class="shortcut-key">Esc</kbd>
                 </div>
@@ -533,8 +568,9 @@
         </div>
       </header>
 
-      <!-- Drawing Canvas Area -->
-      <main class="canvas-container">
+      <!-- Main Workspace Layout supporting Option A (Studio Deck) and Option B (Zen Canvas) -->
+      <div class="workspace-layout" id="workspaceLayout">
+        <main class="canvas-container" id="canvasContainer">
         <!-- Persistent / Collapsible Layers Mixer Panel -->
         <aside id="layerMixerDrawer" class="layer-mixer-drawer" style="display: none;">
           <div class="mixer-header">
@@ -711,9 +747,6 @@
 
         <!-- Interactive Frequency Range Navigator & Vertical Pitch Scrollbar -->
         <aside id="pitchNavigator" class="pitch-navigator" aria-label="Frequency Range Navigator">
-          <button type="button" id="pitchScrollUpBtn" class="pitch-nav-btn has-tooltip" data-tooltip="Scroll UP towards Highest Frequencies (Leads / Chimes / 4.7 kHz) • PageUp / Wheel" title="High Frequencies">
-            Up
-          </button>
           <div id="pitchTrack" class="pitch-track" title="Click or drag to scroll frequency spectrum">
             <span class="pitch-mark pitch-mark-top">4.7 kHz</span>
             <span class="pitch-mark pitch-mark-high">1.2 kHz</span>
@@ -724,12 +757,6 @@
               <span id="pitchThumbLabel" class="pitch-thumb-label">D2–D6</span>
             </div>
           </div>
-          <button type="button" id="pitchScrollDownBtn" class="pitch-nav-btn has-tooltip" data-tooltip="Scroll DOWN towards Lowest Frequencies (Sub-bass / 808 / 18 Hz) • PageDown / Wheel" title="Low Frequencies">
-            Down
-          </button>
-          <button type="button" id="pitchResetBtn" class="pitch-reset-btn has-tooltip" data-tooltip="Reset View: Center on standard middle pitch register (D2–D6) • Home key" title="Center View">
-            Mid
-          </button>
         </aside>
 
         <!-- Initial Gentle Invitation Banner -->
@@ -738,6 +765,78 @@
             <h3>Draw on the canvas or load an ambient template</h3>
             <p>Y = Pitch • X = Stereo Pan & Tone • Arc = Rhythm • Ultra-slow 10–60 BPM & Drone modes</p>
             <span class="hint-small">Click any line to select & voice chords • Open Controls for Scale & Reverb</span>
+          </div>
+        </div>
+
+        <!-- Option B: Zen Mode Floating Glass Pill Dock -->
+        <div id="zenPillDock" class="zen-pill-dock" style="display: none;">
+          <div class="zen-dock-inner">
+            <button type="button" id="zenPlayPauseBtn" class="zen-dock-btn has-tooltip" data-tooltip="Play / Pause (Space / P)">
+              <span id="zenPlayPauseText">Pause</span>
+            </button>
+            <button type="button" id="zenSyncBtn" class="zen-dock-btn has-tooltip" data-tooltip="Sync Lines (R)">
+              Sync
+            </button>
+
+            <div class="zen-dock-divider"></div>
+
+            <!-- Mode Switcher (Draw vs Live Play) -->
+            <div class="segmented-switch mini-switch" id="zenAppModeControl">
+              <button type="button" class="seg-btn active" data-app-mode="draw" title="Draw Mode (P)">Draw</button>
+              <button type="button" class="seg-btn" data-app-mode="live" title="Live Play Mode (L)">Live</button>
+            </div>
+
+            <!-- Inks Palette inside Zen dock -->
+            <div class="zen-swatches" id="zenSwatches">
+              <!-- Swatches populated in main.ts -->
+            </div>
+
+            <!-- Textures (Solid / Dotted / Roll) -->
+            <div class="segmented-switch mini-switch" id="zenStyleControl">
+              <button type="button" class="seg-btn active" data-zen-style="solid" title="Solid Drone">Solid</button>
+              <button type="button" class="seg-btn" data-zen-style="dotted" title="Dotted Chime">Dotted</button>
+              <button type="button" class="seg-btn" data-zen-style="striped" title="Roll / Ratchet">Roll</button>
+            </div>
+
+            <div class="zen-dock-divider"></div>
+
+            <!-- View switchers in Zen dock -->
+            <div class="segmented-switch mini-switch" id="zenViewModeControl">
+              <button type="button" class="seg-btn" data-view-mode="studio" title="Studio Deck (1)">Studio</button>
+              <button type="button" class="seg-btn active" data-view-mode="zen" title="Zen Canvas (2)">Zen</button>
+              <button type="button" class="seg-btn" data-view-mode="scenes" title="Scene Arranger (3)">Scenes</button>
+            </div>
+
+            <button type="button" id="zenUndoBtn" class="zen-dock-btn has-tooltip" data-tooltip="Undo (⌘Z)">Undo</button>
+            <button type="button" id="zenClearBtn" class="zen-dock-btn text-danger has-tooltip" data-tooltip="Clear Canvas">Clear</button>
+          </div>
+        </div>
+
+        <!-- Option B: Zen Mode Floating Contextual Pill for Selected Line -->
+        <div id="zenContextPill" class="zen-context-pill" style="display: none;">
+          <div class="zen-pill-header">
+            <span id="zenContextDot" class="zen-pill-dot"></span>
+            <span id="zenContextName" class="zen-pill-name">Line #1</span>
+          </div>
+          <div class="zen-pill-controls">
+            <label for="zenContextVolSlider">Vol</label>
+            <input type="range" id="zenContextVolSlider" min="0" max="100" step="1" value="100" class="mini-slider" />
+            <button type="button" id="zenContextMuteBtn" class="zen-pill-btn" title="Mute line">M</button>
+            <button type="button" id="zenContextSoloBtn" class="zen-pill-btn" title="Solo line">S</button>
+            <button type="button" id="zenContextTravBtn" class="zen-pill-btn" title="Toggle Traversal (T)">⇄</button>
+          </div>
+        </div>
+
+        <!-- Minimalistic Running Sequence HUD Indicator (Visible in Studio and Zen modes when sequencing) -->
+        <div id="seqMiniIndicator" class="seq-mini-indicator" style="display: none;" title="Sequence is actively playing. Click to view Scene Arranger (V)">
+          <div class="seq-mini-body">
+            <span class="seq-mini-dot" id="seqMiniDot"></span>
+            <span class="seq-mini-name" id="seqMiniName">Scene 1</span>
+            <span class="seq-mini-state" id="seqMiniState">Playing</span>
+            <span class="seq-mini-progress-text" id="seqMiniProgressText">0%</span>
+          </div>
+          <div class="seq-mini-bar-track">
+            <div class="seq-mini-bar-fill" id="seqMiniBarFill"></div>
           </div>
         </div>
 
@@ -774,6 +873,238 @@
           </div>
         </footer>
       </main>
+
+      <!-- Option A: Studio Deck (Persistent Right-Hand Studio Rack) -->
+      <aside id="studioDeck" class="studio-deck" style="display: none;">
+        <div class="studio-deck-header">
+          <div class="studio-deck-title">
+            <span class="studio-title-badge">Studio Deck</span>
+            <span class="studio-title-sub">Persistent Mixer & Rack</span>
+          </div>
+          <div class="studio-deck-tabs">
+            <button type="button" class="studio-tab-btn active" id="studioTabBtnMixer" data-studio-tab="mixer">Layers</button>
+            <button type="button" class="studio-tab-btn" id="studioTabBtnMaster" data-studio-tab="master">Master FX</button>
+          </div>
+        </div>
+
+        <div class="studio-deck-body">
+          <!-- Studio Tab 1: Active Layers Mixer & Docked Line Inspector -->
+          <div id="studioTabMixer" class="studio-tab-pane active">
+            <div class="studio-mixer-header">
+              <div class="studio-mixer-title">
+                <span>Active Layers</span>
+                <span id="studioLayerCount" class="badge">0</span>
+              </div>
+              <div class="studio-mixer-actions">
+                <button type="button" id="studioMuteAllBtn" class="action-btn action-btn-xs" title="Mute all layers">Mute All</button>
+                <button type="button" id="studioUnmuteAllBtn" class="action-btn action-btn-xs" title="Unmute all layers">Unmute</button>
+              </div>
+            </div>
+
+            <!-- Persistent Scrollable Cards List -->
+            <div id="studioMixerList" class="studio-mixer-list">
+              <!-- Populated dynamically with rich layer cards -->
+            </div>
+
+            <!-- Docked Inspector Section -->
+            <div id="studioDockedInspector" class="studio-docked-inspector is-empty">
+              <div class="docked-inspector-header">
+                <div class="docked-inspector-title">
+                  <span class="docked-dot" id="dockedBadgeDot"></span>
+                  <span id="dockedInspectorLabel">Line Inspector</span>
+                </div>
+                <div class="docked-header-right">
+                  <span id="dockedInspectorSub" class="sub-label">Select a line to inspect</span>
+                  <button type="button" id="dockedInspectorToggleBtn" class="docked-collapse-btn" title="Toggle Inspector collapse (show more lines)" aria-label="Toggle Inspector" style="display: none;">▲</button>
+                </div>
+              </div>
+              <div id="dockedInspectorContent" class="docked-inspector-content" style="display: none;">
+                <!-- Voicing row -->
+                <div class="docked-row">
+                  <label class="docked-label">Voicing</label>
+                  <div class="select-wrapper mini-select-wrapper docked-select-wrap">
+                    <select id="studioVoicingSelect" class="minimal-select track-mini-select">
+                      <option value="single" selected>Single (1x)</option>
+                      <option value="octave">Octave (+8va)</option>
+                      <option value="subOctave">Sub-Octave (-8vb)</option>
+                      <option value="dualOctave">Dual Octave (±8va)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <!-- Timing Group -->
+                <div class="docked-group">
+                  <div class="docked-row">
+                    <label class="docked-label">Timing</label>
+                    <div class="segmented-switch mini-switch" id="studioTimingToggle">
+                      <button type="button" class="seg-btn active" data-timing-mode="speed">Speed</button>
+                      <button type="button" class="seg-btn" data-timing-mode="timer">Timer</button>
+                    </div>
+                  </div>
+                  <div class="docked-slider-row" id="studioTimingSliderRow">
+                    <span class="docked-sublabel" id="studioTimingModeLabel">Speed</span>
+                    <input type="range" id="studioTimingSlider" min="0.1" max="4.0" step="0.05" value="1.0" class="docked-range-slider" />
+                    <span id="studioTimingVal" class="docked-val-badge">1.00x</span>
+                  </div>
+                </div>
+
+                <!-- Traversal row -->
+                <div class="docked-row">
+                  <label class="docked-label">Traversal</label>
+                  <div class="segmented-switch mini-switch" id="studioTraversalSwitch">
+                    <button type="button" class="seg-btn active" data-track-traversal="restart">Restart</button>
+                    <button type="button" class="seg-btn" data-track-traversal="bounce">Bounce</button>
+                  </div>
+                </div>
+
+                <!-- Wave Shape & Amplitude Group -->
+                <div class="docked-group">
+                  <div class="docked-row">
+                    <label class="docked-label">Wave Shape</label>
+                    <div class="docked-wave-select-row">
+                      <div class="select-wrapper mini-select-wrapper docked-select-wrap">
+                        <select id="studioWaveShapeSelect" class="minimal-select track-mini-select">
+                          <option value="sine" selected>Sine</option>
+                          <option value="tangent">Tangent</option>
+                          <option value="triangle">Triangle</option>
+                          <option value="square">Square</option>
+                          <option value="sawtooth">Sawtooth</option>
+                          <option value="arch">Arch</option>
+                        </select>
+                      </div>
+                      <button type="button" id="studioWaveSineBtn" class="docked-chip-btn" title="Toggle wave shape on/off">Wave</button>
+                    </div>
+                  </div>
+                  <div class="docked-slider-row">
+                    <span class="docked-sublabel">Amp</span>
+                    <input type="range" id="studioWaveAmpSlider" min="0" max="100" step="1" value="0" class="docked-range-slider" />
+                    <span id="studioWaveAmpVal" class="docked-val-badge">0px</span>
+                  </div>
+                </div>
+
+                <!-- Action buttons row -->
+                <div class="docked-actions">
+                  <button type="button" id="studioDupTrackBtn" class="docked-btn">Duplicate</button>
+                  <button type="button" id="studioDelTrackBtn" class="docked-btn btn-danger">Delete</button>
+                  <button type="button" id="studioDeselectTrackBtn" class="docked-btn btn-subtle">Done</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Studio Tab 2: Master FX & Global Parameters -->
+          <div id="studioTabMaster" class="studio-tab-pane" style="display: none;">
+            <div class="studio-master-card">
+              <div class="studio-card-title">Acoustic Atmosphere & Master Controls</div>
+              
+              <div class="control-group slider-group">
+                <div class="slider-header">
+                  <label for="studioMasterBpmSlider">Tempo</label>
+                  <span id="studioMasterBpmVal" class="value-badge">32 BPM</span>
+                </div>
+                <input type="range" id="studioMasterBpmSlider" min="10" max="180" step="1" value="32" class="minimal-slider" />
+              </div>
+
+              <div class="control-group slider-group">
+                <div class="slider-header">
+                  <label for="studioMasterReverbSlider">Cathedral Reverb</label>
+                  <span id="studioMasterReverbVal" class="value-badge">65%</span>
+                </div>
+                <input type="range" id="studioMasterReverbSlider" min="0" max="100" step="1" value="65" class="minimal-slider" />
+              </div>
+
+              <div class="drawer-two-col">
+                <div class="control-group">
+                  <label for="studioScaleSelect">Modal Scale</label>
+                  <div class="select-wrapper">
+                    <select id="studioScaleSelect" class="minimal-select">
+                      <option value="dorian" selected>Dorian</option>
+                      <option value="lydian">Lydian</option>
+                      <option value="major">Major (Ionian)</option>
+                      <option value="mixolydian">Mixolydian</option>
+                      <option value="minorPentatonic">Minor Pentatonic</option>
+                      <option value="majorPentatonic">Major Pentatonic</option>
+                      <option value="aeolian">Aeolian</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="control-group">
+                  <label for="studioRootSelect">Root Pitch</label>
+                  <div class="select-wrapper">
+                    <select id="studioRootSelect" class="minimal-select">
+                      <option value="D2">D2 (73 Hz)</option>
+                      <option value="E2">E2 (82 Hz)</option>
+                      <option value="G2">G2 (98 Hz)</option>
+                      <option value="A2">A2 (110 Hz)</option>
+                      <option value="D3" selected>D3 (147 Hz)</option>
+                      <option value="E3">E3 (165 Hz)</option>
+                      <option value="A3">A3 (220 Hz)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div class="control-group">
+                <label for="studioXAxisSelect">X-Axis Modulation</label>
+                <div class="select-wrapper">
+                  <select id="studioXAxisSelect" class="minimal-select">
+                    <option value="panAndTone" selected>Stereo Pan + Tone</option>
+                    <option value="panOnly">Stereo Pan Only</option>
+                    <option value="spaceDepth">Reverb Space Depth</option>
+                    <option value="none">None (No Effects)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="studio-btn-row">
+                <button type="button" id="studioSyncBtn" class="action-btn action-btn-sm" style="flex:1;">Sync Lines (R)</button>
+                <button type="button" id="studioRandomizeBtn" class="action-btn action-btn-sm" style="flex:1;">Randomize (⇧R)</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- Option C: Scene Arranger Deck (Persistent Bottom Timeline) -->
+    <section id="sceneArrangerDeck" class="scene-arranger-deck" style="display: none;">
+      <div class="scene-arranger-header">
+        <div class="scene-arranger-title-group">
+          <span class="scene-arranger-title">Scene Arranger</span>
+          <span class="scene-arranger-hint">Compose evolving ambient movements & crossfade morphs</span>
+        </div>
+        <div class="scene-arranger-controls">
+          <button type="button" id="scenePlaySeqBtn" class="action-btn action-btn-sm">
+            <span id="sceneSeqPlayText">Play Sequence</span>
+          </button>
+          <div class="scene-morph-wrap has-tooltip" data-tooltip="Morph Duration: Crossfade seconds between scene movements (2s - 25s)">
+            <label for="sceneMorphSlider">Morph</label>
+            <input type="range" id="sceneMorphSlider" min="2" max="25" step="1" value="6" class="minimal-slider" />
+            <span id="sceneMorphVal" class="value-badge">6s</span>
+          </div>
+          <div class="scene-blend-wrap has-tooltip" data-tooltip="Transition Blend Style: Lush Overlap (equal-power constant energy), Reverb Wash (ambient swell), or Linear (straight fade)">
+            <label class="scene-blend-label">Blend</label>
+            <div class="segmented-switch mini-switch" id="sceneMorphBlendSwitch">
+              <button type="button" class="seg-btn active" data-blend="equalPower" title="Lush Overlap: Equal-power acoustic energy preservation (no volume drop)">Lush</button>
+              <button type="button" class="seg-btn" data-blend="reverbWash" title="Reverb Wash: Lush crossfade with an organic ambient reverb wash swell">Wash</button>
+              <button type="button" class="seg-btn" data-blend="linear" title="Linear Blend: Straight linear crossfade">Linear</button>
+            </div>
+            <select id="sceneMorphCurveSelect" class="hidden" title="Morph Blend Mode">
+              <option value="equalPower" selected>Lush Overlap</option>
+              <option value="reverbWash">Reverb Wash</option>
+              <option value="linear">Linear Blend</option>
+            </select>
+          </div>
+          <button type="button" id="sceneAddBtn" class="action-btn action-btn-sm">+ New Scene</button>
+          <button type="button" id="sceneDupBtn" class="action-btn action-btn-sm">Duplicate</button>
+          <button type="button" id="sceneDelBtn" class="action-btn action-btn-sm text-danger">Delete</button>
+        </div>
+      </div>
+      <div id="sceneCardsList" class="scene-cards-list">
+        <!-- Dynamically populated Scene Cards -->
+      </div>
+    </section>
 
       <!-- Math & Algorithm Modal -->
       <div id="infoModal" class="modal hidden">

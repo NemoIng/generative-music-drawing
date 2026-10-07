@@ -140,14 +140,10 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     expect(nav).toBeDefined();
     expect(nav?.getAttribute('aria-label')).toBe('Frequency Range Navigator');
 
-    const upBtn = doc.getElementById('pitchScrollUpBtn');
-    expect(upBtn).toBeDefined();
-
-    const downBtn = doc.getElementById('pitchScrollDownBtn');
-    expect(downBtn).toBeDefined();
-
-    const resetBtn = doc.getElementById('pitchResetBtn');
-    expect(resetBtn).toBeDefined();
+    // Up, Down, Mid buttons removed from scrollbar for a clean mini-map HUD
+    expect(doc.getElementById('pitchScrollUpBtn')).toBeNull();
+    expect(doc.getElementById('pitchScrollDownBtn')).toBeNull();
+    expect(doc.getElementById('pitchResetBtn')).toBeNull();
 
     const track = doc.getElementById('pitchTrack');
     expect(track).toBeDefined();
@@ -478,6 +474,39 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     expect(keysText.some((t) => t.includes('Shift + R'))).toBe(true);
     expect(keysText.some((t) => t.includes('L'))).toBe(true);
     expect(keysText.some((t) => t.includes('Esc'))).toBe(true);
+  });
+
+  it('contains delete buttons across inspector, studio deck, and layers mixer', () => {
+    const deleteTrackBtn = doc.getElementById('deleteTrackBtn');
+    expect(deleteTrackBtn).toBeDefined();
+
+    const studioDelTrackBtn = doc.getElementById('studioDelTrackBtn');
+    expect(studioDelTrackBtn).toBeDefined();
+
+    const studioMixerList = doc.getElementById('studioMixerList');
+    expect(studioMixerList).toBeDefined();
+
+    const layerMixerList = doc.getElementById('layerMixerList');
+    expect(layerMixerList).toBeDefined();
+
+    const studioLayerCount = doc.getElementById('studioLayerCount');
+    expect(studioLayerCount).toBeDefined();
+
+    const layerCountBadge = doc.getElementById('layerCountBadge');
+    expect(layerCountBadge).toBeDefined();
+  });
+
+  it('contains dirtyIndicator element within top-template-group with zero layout shift structure', () => {
+    const dirtyIndicator = doc.getElementById('dirtyIndicator');
+    expect(dirtyIndicator).toBeDefined();
+    expect(dirtyIndicator?.classList.contains('dirty-badge')).toBe(true);
+
+    const templateGroup = doc.querySelector('.top-template-group');
+    expect(templateGroup).toBeDefined();
+
+    const labelRow = templateGroup?.querySelector('.top-row-label-row');
+    expect(labelRow).toBeDefined();
+    expect(labelRow?.contains(dirtyIndicator)).toBe(true);
   });
 });
 

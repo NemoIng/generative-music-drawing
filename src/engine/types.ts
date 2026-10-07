@@ -11,6 +11,7 @@ export type TimingMode = 'speed' | 'timer';
 export type LoopQuantizeMode = 'freeform' | '1bar' | '2bars' | '4bars' | '8bars';
 export type SpeedMode = 'speed' | 'timer' | 'bars';
 export type HarmonizerMode = 'single' | 'octave' | 'subOctave' | 'dualOctave' | 'fifth' | 'triad' | 'seventh';
+export type MorphCurveMode = 'equalPower' | 'reverbWash' | 'linear';
 export type { XAxisModulationMode, WaveShapeType, BreathingMode };
 
 export interface StrokePlayhead {
@@ -50,6 +51,8 @@ export interface DrawnStroke {
   loopQuantize?: LoopQuantizeMode;
   traversal?: TraversalMode;
   harmonizer?: HarmonizerMode;
+  morphRole?: 'outgoing' | 'incoming';
+  morphGain?: number;
 }
 
 export interface SavedComposition {
@@ -92,3 +95,5 @@ export interface SavedComposition {
     waveParams?: WaveParams;
   }>;
 }
+
+export type SavedStroke = SavedComposition['strokes'][number];

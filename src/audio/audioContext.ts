@@ -157,6 +157,10 @@ export class SoundEngine {
     }
   }
 
+  public get reverbMix(): number {
+    return this._reverbMix;
+  }
+
   public setReverbMix(val: number): void {
     this._reverbMix = Math.max(0, Math.min(1, val));
     if (this.wetReverbGain && this.ctx) {

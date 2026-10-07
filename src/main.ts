@@ -4,12 +4,14 @@ import { SCALES, ROOT_NOTES } from './audio/scales';
 import { StrokeManager, getNextVersionName } from './engine/strokeManager';
 import { CanvasRenderer } from './canvas/renderer';
 import { InputHandler, DrawShape } from './canvas/inputHandler';
-import { StrokeStyle, TraversalMode, HarmonizerMode, BreathingMode, XAxisModulationMode, LoopQuantizeMode, WaveShapeType, SavedComposition } from './engine/types';
+import { DrawnStroke, StrokeStyle, TraversalMode, HarmonizerMode, BreathingMode, XAxisModulationMode, LoopQuantizeMode, WaveShapeType, SavedComposition, MorphCurveMode } from './engine/types';
 import { INSTRUMENTS, DEFAULT_INSTRUMENT, getInstrument, getInstrumentColor } from './audio/instruments';
 import { TEMPLATES, buildTemplateStrokes } from './audio/templates';
 import { soundEngine } from './audio/audioContext';
 import { SplinePath, Point2D } from './math/types';
 import { LiveRecorder, simulateAndExportMp3, downloadBlob } from './audio/mp3Export';
+import { ViewModeManager, ViewMode } from './ui/viewModes';
+import { SceneManager, SceneData, SceneSequenceTickResult } from './engine/sceneManager';
 
 // DOM Elements
 const canvasEl = document.getElementById('musicCanvas') as HTMLCanvasElement;
@@ -59,7 +61,7 @@ const trackTraversalButtons = document.querySelectorAll<HTMLButtonElement>('#tra
 const scaleSelect = document.getElementById('scaleSelect') as HTMLSelectElement;
 const rootSelect = document.getElementById('rootSelect') as HTMLSelectElement;
 const generalSyncSelect = document.getElementById('generalSyncSelect') as HTMLSelectElement;
-const appModeButtons = document.querySelectorAll<HTMLButtonElement>('#appModeControl .seg-btn');
+const appModeButtons = document.querySelectorAll<HTMLButtonElement>('[data-app-mode]');
 const strokeModeButtons = document.querySelectorAll<HTMLButtonElement>('#strokeModeControl .seg-btn');
 const bpmSlider = document.getElementById('bpmSlider') as HTMLInputElement;
 const bpmVal = document.getElementById('bpmVal') as HTMLSpanElement;
@@ -150,7 +152,10 @@ let isCompositionDirty = false;
 function setCompositionDirty(dirty: boolean): void {
   isCompositionDirty = dirty;
   if (dirtyIndicator) {
-    dirtyIndicator.style.display = dirty ? 'inline-block' : 'none';
+    dirtyIndicator.classList.toggle('is-visible', dirty);
+    dirtyIndicator.style.opacity = dirty ? '1' : '0';
+    dirtyIndicator.style.visibility = dirty ? 'visible' : 'hidden';
+    dirtyIndicator.style.display = 'inline-flex';
   }
   const baseTitle = 'Harmonic Geometry • Generative Music Drawing';
   document.title = dirty ? `• ${baseTitle}` : baseTitle;
@@ -194,9 +199,6 @@ function applyGeneralSync(val: string): void {
 
 // Pitch Navigator Controls
 const pitchNavigator = document.getElementById('pitchNavigator') as HTMLElement;
-const pitchScrollUpBtn = document.getElementById('pitchScrollUpBtn') as HTMLButtonElement;
-const pitchScrollDownBtn = document.getElementById('pitchScrollDownBtn') as HTMLButtonElement;
-const pitchResetBtn = document.getElementById('pitchResetBtn') as HTMLButtonElement;
 const pitchTrack = document.getElementById('pitchTrack') as HTMLElement;
 const pitchThumb = document.getElementById('pitchThumb') as HTMLElement;
 const pitchThumbLabel = document.getElementById('pitchThumbLabel') as HTMLSpanElement;
@@ -213,6 +215,93 @@ const liveSnapBtn = document.getElementById('liveSnapBtn') as HTMLButtonElement 
 const liveTrailSlider = document.getElementById('liveTrailSlider') as HTMLInputElement | null;
 const liveTrailVal = document.getElementById('liveTrailVal') as HTMLSpanElement | null;
 const drawOnlyControls = document.querySelectorAll<HTMLElement>('.draw-only-control');
+
+// View Architecture Elements (Studio Deck, Zen Canvas, Scene Arranger)
+const appContainerEl = document.getElementById('app') as HTMLElement | null;
+const topBarEl = document.querySelector('.top-bar') as HTMLElement | null;
+const bottomBarEl = document.querySelector('.bottom-bar') as HTMLElement | null;
+const studioDeckEl = document.getElementById('studioDeck') as HTMLElement | null;
+const zenPillDockEl = document.getElementById('zenPillDock') as HTMLElement | null;
+const zenContextPillEl = document.getElementById('zenContextPill') as HTMLElement | null;
+const sceneArrangerDeckEl = document.getElementById('sceneArrangerDeck') as HTMLElement | null;
+
+// Studio Deck Elements
+const studioTabBtnMixer = document.getElementById('studioTabBtnMixer') as HTMLButtonElement | null;
+const studioTabBtnMaster = document.getElementById('studioTabBtnMaster') as HTMLButtonElement | null;
+const studioTabMixer = document.getElementById('studioTabMixer') as HTMLElement | null;
+const studioTabMaster = document.getElementById('studioTabMaster') as HTMLElement | null;
+const studioMixerList = document.getElementById('studioMixerList') as HTMLElement | null;
+const studioLayerCount = document.getElementById('studioLayerCount') as HTMLSpanElement | null;
+const studioMuteAllBtn = document.getElementById('studioMuteAllBtn') as HTMLButtonElement | null;
+const studioUnmuteAllBtn = document.getElementById('studioUnmuteAllBtn') as HTMLButtonElement | null;
+
+// Studio Docked Inspector
+const studioDockedInspector = document.getElementById('studioDockedInspector') as HTMLElement | null;
+const dockedInspectorToggleBtn = document.getElementById('dockedInspectorToggleBtn') as HTMLButtonElement | null;
+const studioBadgeDot = document.getElementById('dockedBadgeDot') as HTMLElement | null;
+const studioInspectorLabel = document.getElementById('dockedInspectorLabel') as HTMLElement | null;
+const studioInspectorSub = document.getElementById('dockedInspectorSub') as HTMLElement | null;
+const studioInspectorContent = document.getElementById('dockedInspectorContent') as HTMLElement | null;
+const studioVoicingSelect = document.getElementById('studioVoicingSelect') as HTMLSelectElement | null;
+const studioTimingToggle = document.getElementById('studioTimingToggle') as HTMLElement | null;
+const studioTimingSlider = document.getElementById('studioTimingSlider') as HTMLInputElement | null;
+const studioTimingVal = document.getElementById('studioTimingVal') as HTMLSpanElement | null;
+const studioTraversalSwitch = document.getElementById('studioTraversalSwitch') as HTMLElement | null;
+const studioWaveShapeSelect = document.getElementById('studioWaveShapeSelect') as HTMLSelectElement | null;
+const studioWaveSineBtn = document.getElementById('studioWaveSineBtn') as HTMLButtonElement | null;
+const studioWaveAmpSlider = document.getElementById('studioWaveAmpSlider') as HTMLInputElement | null;
+const studioWaveAmpVal = document.getElementById('studioWaveAmpVal') as HTMLSpanElement | null;
+const studioDupTrackBtn = document.getElementById('studioDupTrackBtn') as HTMLButtonElement | null;
+const studioDelTrackBtn = document.getElementById('studioDelTrackBtn') as HTMLButtonElement | null;
+const studioDeselectTrackBtn = document.getElementById('studioDeselectTrackBtn') as HTMLButtonElement | null;
+const studioTimingModeLabel = document.getElementById('studioTimingModeLabel') as HTMLElement | null;
+
+// Minimalist Running Sequence HUD
+const seqMiniIndicator = document.getElementById('seqMiniIndicator') as HTMLElement | null;
+const seqMiniName = document.getElementById('seqMiniName') as HTMLElement | null;
+const seqMiniState = document.getElementById('seqMiniState') as HTMLElement | null;
+const seqMiniProgressText = document.getElementById('seqMiniProgressText') as HTMLElement | null;
+const seqMiniBarFill = document.getElementById('seqMiniBarFill') as HTMLElement | null;
+
+// Studio Master Controls
+const studioMasterBpmSlider = document.getElementById('studioMasterBpmSlider') as HTMLInputElement | null;
+const studioMasterBpmVal = document.getElementById('studioMasterBpmVal') as HTMLSpanElement | null;
+const studioMasterReverbSlider = document.getElementById('studioMasterReverbSlider') as HTMLInputElement | null;
+const studioMasterReverbVal = document.getElementById('studioMasterReverbVal') as HTMLSpanElement | null;
+const studioScaleSelect = document.getElementById('studioScaleSelect') as HTMLSelectElement | null;
+const studioRootSelect = document.getElementById('studioRootSelect') as HTMLSelectElement | null;
+const studioXAxisSelect = document.getElementById('studioXAxisSelect') as HTMLSelectElement | null;
+const studioSyncBtn = document.getElementById('studioSyncBtn') as HTMLButtonElement | null;
+const studioRandomizeBtn = document.getElementById('studioRandomizeBtn') as HTMLButtonElement | null;
+
+// Zen Mode Elements
+const zenPlayPauseBtn = document.getElementById('zenPlayPauseBtn') as HTMLButtonElement | null;
+const zenPlayPauseText = document.getElementById('zenPlayPauseText') as HTMLSpanElement | null;
+const zenSyncBtn = document.getElementById('zenSyncBtn') as HTMLButtonElement | null;
+const zenSwatches = document.getElementById('zenSwatches') as HTMLElement | null;
+const zenUndoBtn = document.getElementById('zenUndoBtn') as HTMLButtonElement | null;
+const zenClearBtn = document.getElementById('zenClearBtn') as HTMLButtonElement | null;
+
+// Zen Contextual Pill
+const zenContextDot = document.getElementById('zenContextDot') as HTMLElement | null;
+const zenContextName = document.getElementById('zenContextName') as HTMLElement | null;
+const zenContextVolSlider = document.getElementById('zenContextVolSlider') as HTMLInputElement | null;
+const zenContextMuteBtn = document.getElementById('zenContextMuteBtn') as HTMLButtonElement | null;
+const zenContextSoloBtn = document.getElementById('zenContextSoloBtn') as HTMLButtonElement | null;
+const zenContextTravBtn = document.getElementById('zenContextTravBtn') as HTMLButtonElement | null;
+const zenContextCloseBtn = document.getElementById('zenContextCloseBtn') as HTMLButtonElement | null;
+
+// Scene Arranger Elements
+const scenePlaySeqBtn = document.getElementById('scenePlaySeqBtn') as HTMLButtonElement | null;
+const sceneSeqPlayText = document.getElementById('sceneSeqPlayText') as HTMLSpanElement | null;
+const sceneMorphSlider = document.getElementById('sceneMorphSlider') as HTMLInputElement | null;
+const sceneMorphVal = document.getElementById('sceneMorphVal') as HTMLSpanElement | null;
+const sceneMorphCurveSelect = document.getElementById('sceneMorphCurveSelect') as HTMLSelectElement | null;
+const sceneMorphBlendButtons = document.querySelectorAll<HTMLButtonElement>('#sceneMorphBlendSwitch .seg-btn');
+const sceneAddBtn = document.getElementById('sceneAddBtn') as HTMLButtonElement | null;
+const sceneDupBtn = document.getElementById('sceneDupBtn') as HTMLButtonElement | null;
+const sceneDelBtn = document.getElementById('sceneDelBtn') as HTMLButtonElement | null;
+const sceneCardsList = document.getElementById('sceneCardsList') as HTMLElement | null;
 
 // Engine State
 const quantizer = new ScaleQuantizer({
@@ -252,15 +341,14 @@ const inputHandler = new InputHandler(canvasEl, {
     );
 
     strokeManager.activateAudioVoices();
-    setCompositionDirty(true);
-    updateStats();
-    renderLayerMixer();
+    syncCompositionState();
   },
   onDrawChange: (points: Point2D[]) => {
     activeDrawingPoints = points;
   },
   onSelectStroke: (strokeId: string | null) => {
     updateTrackActionsVisibility();
+    updateMixerSelection();
     if (inputHandler.appMode === 'draw' && statMode) {
       statMode.textContent = strokeId ? 'Line Selected (Edit)' : 'Draw / Click to Select';
       statMode.style.color = strokeId ? '#2563eb' : 'inherit';
@@ -414,26 +502,7 @@ pitchNavigator?.addEventListener('wheel', (e: WheelEvent) => {
   flashNavigatorOnScroll();
 }, { passive: false });
 
-// 2. Navigator Buttons: Up (higher freq), Down (lower freq), Reset (mid register)
-pitchScrollUpBtn?.addEventListener('click', () => {
-  quantizer.scrollBy(-quantizer.getPxPerOctave(renderer.height), renderer.height);
-  updatePitchNavigator();
-  flashNavigatorOnScroll();
-});
-
-pitchScrollDownBtn?.addEventListener('click', () => {
-  quantizer.scrollBy(quantizer.getPxPerOctave(renderer.height), renderer.height);
-  updatePitchNavigator();
-  flashNavigatorOnScroll();
-});
-
-pitchResetBtn?.addEventListener('click', () => {
-  quantizer.resetScrollToDefault(renderer.height);
-  updatePitchNavigator();
-  flashNavigatorOnScroll();
-});
-
-// 3. Click directly on track to jump view
+// 2. Click directly on track to jump view
 pitchTrack?.addEventListener('pointerdown', (e: PointerEvent) => {
   if (e.target === pitchThumb || pitchThumb.contains(e.target as Node)) return;
   const trackRect = pitchTrack.getBoundingClientRect();
@@ -778,8 +847,158 @@ function executeQuickSave(): void {
 quickSaveBtn?.addEventListener('click', executeQuickSave);
 
 // ==========================================================================
-// Layers Mixer Panel Logic
+// Layers Mixer Panel Logic & Selection Management
 // ==========================================================================
+let isInspectorCollapsed =
+  typeof localStorage !== 'undefined' ? localStorage.getItem('harmonic_inspector_collapsed') === 'true' : false;
+
+/**
+ * Synchronizes the visual selection state (.selected) across all layer cards
+ * in both Studio Deck and floating Layers Drawer to match strokeManager.selectedStrokeId.
+ */
+function updateMixerSelection(): void {
+  const selectedId = strokeManager.selectedStrokeId;
+  const allCards = document.querySelectorAll('.layer-card');
+  allCards.forEach((card) => {
+    const cardStrokeId = card.getAttribute('data-stroke-id');
+    const isSelected = !!selectedId && cardStrokeId === selectedId;
+    card.classList.toggle('selected', isSelected);
+  });
+}
+
+function createLayerCard(
+  stroke: any,
+  idx: number,
+  hasSolo: boolean
+): HTMLElement {
+  const card = document.createElement('div');
+  const isSelected = stroke.id === strokeManager.selectedStrokeId;
+  const isDimmed = (hasSolo && !stroke.soloed) || !!stroke.muted;
+
+  card.className = `layer-card${isSelected ? ' selected' : ''}${isDimmed ? ' dimmed' : ''}`;
+  card.setAttribute('data-stroke-id', stroke.id);
+
+  const inst = getInstrument(stroke.instrumentId);
+  const instName = inst.name;
+  const color = renderer.getStrokeColor(stroke);
+  const volPct = Math.round((stroke.volume ?? 1.0) * 100);
+  const revPct = Math.round((stroke.reverb ?? 0.4) * 100);
+
+  const totalSec = (stroke.timingMode === 'timer' || stroke.speedMode === 'timer')
+    ? (stroke.duration ?? 30)
+    : (stroke.lut.totalLength / Math.max(1, stroke.playhead.velocity || 100));
+  const timingTag = `${totalSec.toFixed(1)}s`;
+
+  card.innerHTML = `
+    <div class="layer-card-top">
+      <div class="layer-identity">
+        <span class="layer-dot" style="background: ${color}"></span>
+        <span class="layer-name" title="#${idx + 1} ${instName}">#${idx + 1} ${instName}</span>
+        <span class="layer-tag">${timingTag}</span>
+      </div>
+      <div class="layer-actions">
+        <button type="button" class="layer-btn${stroke.muted ? ' active-mute' : ''}" data-action="mute" title="Mute line (M)">M</button>
+        <button type="button" class="layer-btn${stroke.soloed ? ' active-solo' : ''}" data-action="solo" title="Solo line (S)">S</button>
+        <button type="button" class="layer-btn" data-action="duplicate" title="Duplicate line (⌘D)">⧉</button>
+        <button type="button" class="layer-btn text-danger" data-action="delete" title="Delete line (Backspace)">✕</button>
+      </div>
+    </div>
+    <div class="layer-controls-row">
+      <div class="layer-slider-group">
+        <span class="layer-slider-label">Vol</span>
+        <input type="range" class="minimal-slider layer-vol-slider" min="0" max="100" step="1" value="${volPct}" />
+        <span class="layer-slider-val layer-vol-val">${volPct}%</span>
+      </div>
+      <div class="layer-slider-group">
+        <span class="layer-slider-label">Rev</span>
+        <input type="range" class="minimal-slider layer-rev-slider" min="0" max="100" step="1" value="${revPct}" />
+        <span class="layer-slider-val layer-rev-val">${revPct}%</span>
+      </div>
+    </div>
+  `;
+
+  // Select this stroke when clicking anywhere on the card or touching controls
+  card.addEventListener('pointerdown', (e) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('button')) return;
+    if (strokeManager.selectedStrokeId !== stroke.id) {
+      strokeManager.selectStroke(stroke.id);
+      updateTrackActionsVisibility();
+      updateMixerSelection();
+    }
+  });
+
+  card.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('button')) return;
+    if (strokeManager.selectedStrokeId !== stroke.id) {
+      strokeManager.selectStroke(stroke.id);
+      updateTrackActionsVisibility();
+      updateMixerSelection();
+    }
+  });
+
+  // Mute button
+  card.querySelector<HTMLButtonElement>('[data-action="mute"]')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    strokeManager.toggleMute(stroke.id);
+    syncCompositionState();
+  });
+
+  // Solo button
+  card.querySelector<HTMLButtonElement>('[data-action="solo"]')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    strokeManager.toggleSolo(stroke.id);
+    syncCompositionState();
+  });
+
+  // Duplicate button
+  card.querySelector<HTMLButtonElement>('[data-action="duplicate"]')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    strokeManager.duplicateStroke(stroke.id);
+    syncCompositionState();
+  });
+
+  // Delete button
+  card.querySelector<HTMLButtonElement>('[data-action="delete"]')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    strokeManager.removeStroke(stroke.id);
+    syncCompositionState();
+  });
+
+  // Volume slider
+  const volSlider = card.querySelector<HTMLInputElement>('.layer-vol-slider');
+  const volVal = card.querySelector<HTMLSpanElement>('.layer-vol-val');
+  volSlider?.addEventListener('input', (e) => {
+    e.stopPropagation();
+    const v = parseInt(volSlider.value, 10) / 100;
+    if (volVal) volVal.textContent = `${volSlider.value}%`;
+    strokeManager.setStrokeVolume(stroke.id, v);
+    setCompositionDirty(true);
+    if (stroke.id === strokeManager.selectedStrokeId && trackVolSlider && trackVolVal) {
+      trackVolSlider.value = volSlider.value;
+      trackVolVal.textContent = `${volSlider.value}%`;
+    }
+  });
+
+  // Reverb slider
+  const revSlider = card.querySelector<HTMLInputElement>('.layer-rev-slider');
+  const revVal = card.querySelector<HTMLSpanElement>('.layer-rev-val');
+  revSlider?.addEventListener('input', (e) => {
+    e.stopPropagation();
+    const r = parseInt(revSlider.value, 10) / 100;
+    if (revVal) revVal.textContent = `${revSlider.value}%`;
+    strokeManager.setStrokeReverb(stroke.id, r);
+    setCompositionDirty(true);
+    if (stroke.id === strokeManager.selectedStrokeId && trackReverbSlider && trackReverbVal) {
+      trackReverbSlider.value = revSlider.value;
+      trackReverbVal.textContent = `${revSlider.value}%`;
+    }
+  });
+
+  return card;
+}
+
 function renderLayerMixer(): void {
   const strokes = strokeManager.activeStrokes;
   if (layerCountBadge) {
@@ -787,6 +1006,9 @@ function renderLayerMixer(): void {
   }
   if (mixerTrackCount) {
     mixerTrackCount.textContent = `${strokes.length} ${strokes.length === 1 ? 'Line' : 'Lines'}`;
+  }
+  if (typeof renderStudioMixer === 'function') {
+    renderStudioMixer();
   }
   if (!layerMixerList) return;
 
@@ -799,137 +1021,9 @@ function renderLayerMixer(): void {
   layerMixerList.innerHTML = '';
 
   strokes.forEach((stroke, idx) => {
-    const card = document.createElement('div');
-    const isSelected = stroke.id === strokeManager.selectedStrokeId;
-    const isDimmed = (hasSolo && !stroke.soloed) || !!stroke.muted;
-
-    card.className = `layer-card${isSelected ? ' selected' : ''}${isDimmed ? ' dimmed' : ''}`;
-    card.setAttribute('data-stroke-id', stroke.id);
-
-    const inst = getInstrument(stroke.instrumentId);
-    const instName = inst.name;
-    const color = renderer.getStrokeColor(stroke);
-    const volPct = Math.round((stroke.volume ?? 1.0) * 100);
-    const revPct = Math.round((stroke.reverb ?? 0.4) * 100);
-
-    const totalSec = (stroke.timingMode === 'timer' || stroke.speedMode === 'timer')
-      ? (stroke.duration ?? 30)
-      : (stroke.lut.totalLength / Math.max(1, stroke.playhead.velocity || 100));
-    const timingTag = `${totalSec.toFixed(1)}s`;
-
-    card.innerHTML = `
-      <div class="layer-card-top">
-        <div class="layer-identity">
-          <span class="layer-dot" style="background: ${color}"></span>
-          <span class="layer-name">#${idx + 1} ${instName}</span>
-          <span class="layer-tag">${timingTag}</span>
-        </div>
-        <div class="layer-actions">
-          <button type="button" class="layer-btn${stroke.muted ? ' active-mute' : ''}" data-action="mute" title="Mute line">M</button>
-          <button type="button" class="layer-btn${stroke.soloed ? ' active-solo' : ''}" data-action="solo" title="Solo line">S</button>
-          <button type="button" class="layer-btn" data-action="duplicate" title="Duplicate line">⧉</button>
-          <button type="button" class="layer-btn text-danger" data-action="delete" title="Delete line">✕</button>
-        </div>
-      </div>
-      <div class="layer-controls-row">
-        <div class="layer-slider-group">
-          <span class="layer-slider-label">Vol</span>
-          <input type="range" class="minimal-slider layer-vol-slider" min="0" max="100" step="1" value="${volPct}" />
-          <span class="layer-slider-val layer-vol-val">${volPct}%</span>
-        </div>
-        <div class="layer-slider-group">
-          <span class="layer-slider-label">Rev</span>
-          <input type="range" class="minimal-slider layer-rev-slider" min="0" max="100" step="1" value="${revPct}" />
-          <span class="layer-slider-val layer-rev-val">${revPct}%</span>
-        </div>
-      </div>
-    `;
-
-    // Click on card body selects stroke
-    card.addEventListener('click', (e) => {
-      const target = e.target as HTMLElement;
-      if (target.closest('button') || target.closest('input')) return;
-      strokeManager.selectStroke(stroke.id);
-      updateTrackActionsVisibility();
-      renderLayerMixer();
-    });
-
-    // Mute button
-    const muteB = card.querySelector<HTMLButtonElement>('[data-action="mute"]');
-    muteB?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      strokeManager.toggleMute(stroke.id);
-      setCompositionDirty(true);
-      updateStats();
-      updateTrackActionsVisibility();
-      renderLayerMixer();
-    });
-
-    // Solo button
-    const soloB = card.querySelector<HTMLButtonElement>('[data-action="solo"]');
-    soloB?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      strokeManager.toggleSolo(stroke.id);
-      setCompositionDirty(true);
-      updateStats();
-      updateTrackActionsVisibility();
-      renderLayerMixer();
-    });
-
-    // Duplicate button
-    const dupB = card.querySelector<HTMLButtonElement>('[data-action="duplicate"]');
-    dupB?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      strokeManager.duplicateStroke(stroke.id);
-      setCompositionDirty(true);
-      updateStats();
-      updateTrackActionsVisibility();
-      renderLayerMixer();
-    });
-
-    // Delete button
-    const delB = card.querySelector<HTMLButtonElement>('[data-action="delete"]');
-    delB?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      strokeManager.removeStroke(stroke.id);
-      setCompositionDirty(true);
-      updateStats();
-      updateTrackActionsVisibility();
-      renderLayerMixer();
-    });
-
-    // Volume slider
-    const volSlider = card.querySelector<HTMLInputElement>('.layer-vol-slider');
-    const volVal = card.querySelector<HTMLSpanElement>('.layer-vol-val');
-    volSlider?.addEventListener('input', (e) => {
-      e.stopPropagation();
-      const v = parseInt(volSlider.value, 10) / 100;
-      if (volVal) volVal.textContent = `${volSlider.value}%`;
-      strokeManager.setStrokeVolume(stroke.id, v);
-      setCompositionDirty(true);
-      if (stroke.id === strokeManager.selectedStrokeId && trackVolSlider && trackVolVal) {
-        trackVolSlider.value = volSlider.value;
-        trackVolVal.textContent = `${volSlider.value}%`;
-      }
-    });
-
-    // Reverb slider
-    const revSlider = card.querySelector<HTMLInputElement>('.layer-rev-slider');
-    const revVal = card.querySelector<HTMLSpanElement>('.layer-rev-val');
-    revSlider?.addEventListener('input', (e) => {
-      e.stopPropagation();
-      const r = parseInt(revSlider.value, 10) / 100;
-      if (revVal) revVal.textContent = `${revSlider.value}%`;
-      strokeManager.setStrokeReverb(stroke.id, r);
-      setCompositionDirty(true);
-      if (stroke.id === strokeManager.selectedStrokeId && trackReverbSlider && trackReverbVal) {
-        trackReverbSlider.value = revSlider.value;
-        trackReverbVal.textContent = `${revSlider.value}%`;
-      }
-    });
-
-    layerMixerList.appendChild(card);
+    layerMixerList!.appendChild(createLayerCard(stroke, idx, hasSolo));
   });
+  updateMixerSelection();
 }
 
 layersToggleBtn?.addEventListener('click', () => {
@@ -968,6 +1062,979 @@ mixerUnmuteAllBtn?.addEventListener('click', () => {
   updateTrackActionsVisibility();
   renderLayerMixer();
 });
+
+// ==========================================================================
+// View Architecture Implementations (Studio Deck, Zen Canvas, Scene Arranger)
+// ==========================================================================
+
+const sceneManager = new SceneManager();
+
+const viewModeManager = new ViewModeManager({
+  onViewChange: (mode: ViewMode) => {
+    if (mode === 'scenes') {
+      if (seqMiniIndicator) seqMiniIndicator.style.display = 'none';
+      renderSceneCards();
+      updateTrackActionsVisibility();
+    } else {
+      if (mode === 'studio') {
+        renderStudioMixer();
+      } else if (mode === 'zen') {
+        armZenAutoDim();
+      }
+      updateTrackActionsVisibility();
+      if (sceneManager.isSequencing()) {
+        const prog = sceneManager.getSequenceProgress();
+        updateSeqMiniIndicator({
+          sceneChanged: false,
+          currentScene: sceneManager.getCurrentScene(),
+          nextScene: sceneManager.getNextScene(),
+          progressRatio: prog.ratio,
+          isMorphing: false,
+          morphRatio: 0,
+        });
+      }
+    }
+  },
+  onResizeRequired: () => {
+    handleResize();
+  },
+});
+
+viewModeManager.initDOM({
+  app: appContainerEl,
+  studioDeck: studioDeckEl,
+  zenDock: zenPillDockEl,
+  sceneDeck: sceneArrangerDeckEl,
+  topBar: topBarEl,
+  bottomBar: bottomBarEl,
+  pitchNav: pitchNavigator,
+});
+
+// Wire view mode buttons across the app
+document.querySelectorAll<HTMLElement>('[data-view-mode]').forEach((btn) => {
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const mode = btn.getAttribute('data-view-mode') as ViewMode;
+    if (mode) {
+      viewModeManager.setMode(mode);
+    }
+  });
+});
+
+// Studio Deck Tab Switching (Layers Mixer vs Master FX)
+studioTabBtnMixer?.addEventListener('click', () => {
+  studioTabBtnMixer?.classList.add('active');
+  studioTabBtnMaster?.classList.remove('active');
+  if (studioTabMixer) studioTabMixer.style.display = 'flex';
+  if (studioTabMaster) studioTabMaster.style.display = 'none';
+  renderStudioMixer();
+});
+
+studioTabBtnMaster?.addEventListener('click', () => {
+  studioTabBtnMaster?.classList.add('active');
+  studioTabBtnMixer?.classList.remove('active');
+  if (studioTabMaster) studioTabMaster.style.display = 'flex';
+  if (studioTabMixer) studioTabMixer.style.display = 'none';
+  // Synchronize master FX controls
+  if (studioMasterBpmSlider && studioMasterBpmVal) {
+    studioMasterBpmSlider.value = strokeManager.currentBpm.toString();
+    studioMasterBpmVal.textContent = `${strokeManager.currentBpm} BPM`;
+  }
+  if (studioMasterReverbSlider && studioMasterReverbVal) {
+    const revPct = Math.round(soundEngine.reverbMix * 100);
+    studioMasterReverbSlider.value = revPct.toString();
+    studioMasterReverbVal.textContent = `${revPct}%`;
+  }
+  if (studioScaleSelect) studioScaleSelect.value = scaleSelect.value;
+  if (studioRootSelect) studioRootSelect.value = rootSelect.value;
+  if (studioXAxisSelect) studioXAxisSelect.value = xAxisSelect.value;
+});
+
+// Studio Master FX Controls
+studioMasterBpmSlider?.addEventListener('input', () => {
+  if (!studioMasterBpmSlider) return;
+  const bpm = parseInt(studioMasterBpmSlider.value, 10);
+  if (studioMasterBpmVal) studioMasterBpmVal.textContent = `${bpm} BPM`;
+  strokeManager.setBpm(bpm);
+  bpmSlider.value = bpm.toString();
+  bpmVal.textContent = `${bpm} BPM`;
+  statTempo.textContent = `${bpm} BPM`;
+  setCompositionDirty(true);
+});
+
+studioMasterReverbSlider?.addEventListener('input', () => {
+  if (!studioMasterReverbSlider) return;
+  const pct = parseInt(studioMasterReverbSlider.value, 10);
+  if (studioMasterReverbVal) studioMasterReverbVal.textContent = `${pct}%`;
+  soundEngine.setReverbMix(pct / 100);
+  spaceSlider.value = pct.toString();
+  spaceVal.textContent = `${pct}%`;
+  setCompositionDirty(true);
+});
+
+studioScaleSelect?.addEventListener('change', () => {
+  if (!studioScaleSelect) return;
+  const scaleKey = studioScaleSelect.value;
+  scaleSelect.value = scaleKey;
+  if (SCALES[scaleKey]) {
+    quantizer.updateConfig({ scale: SCALES[scaleKey] });
+    setCompositionDirty(true);
+  }
+});
+
+studioRootSelect?.addEventListener('change', () => {
+  if (!studioRootSelect) return;
+  const rootKey = studioRootSelect.value;
+  rootSelect.value = rootKey;
+  if (ROOT_NOTES[rootKey]) {
+    quantizer.updateConfig({ root: ROOT_NOTES[rootKey] });
+    setCompositionDirty(true);
+  }
+});
+
+studioXAxisSelect?.addEventListener('change', () => {
+  if (!studioXAxisSelect) return;
+  const mode = studioXAxisSelect.value as XAxisModulationMode;
+  xAxisSelect.value = mode;
+  strokeManager.setXAxisModulationMode(mode);
+  setCompositionDirty(true);
+});
+
+studioSyncBtn?.addEventListener('click', () => {
+  strokeManager.resyncAllPlayheads();
+});
+
+studioRandomizeBtn?.addEventListener('click', () => {
+  strokeManager.randomizeAllPlayheads();
+});
+
+studioMuteAllBtn?.addEventListener('click', () => {
+  strokeManager.activeStrokes.forEach((s) => strokeManager.setStrokeMuted(s.id, true));
+  setCompositionDirty(true);
+  updateStats();
+  updateTrackActionsVisibility();
+  renderLayerMixer();
+  renderStudioMixer();
+});
+
+studioUnmuteAllBtn?.addEventListener('click', () => {
+  strokeManager.activeStrokes.forEach((s) => strokeManager.setStrokeMuted(s.id, false));
+  setCompositionDirty(true);
+  updateStats();
+  updateTrackActionsVisibility();
+  renderLayerMixer();
+  renderStudioMixer();
+});
+
+// Render persistent Layer Mixer cards inside Studio Deck
+function renderStudioMixer(): void {
+  const strokes = strokeManager.activeStrokes;
+  if (studioLayerCount) {
+    studioLayerCount.textContent = strokes.length.toString();
+  }
+  if (!studioMixerList) return;
+
+  if (strokes.length === 0) {
+    studioMixerList.innerHTML = '<div class="mixer-empty-state">No lines drawn yet. Draw on the canvas to add ambient sound layers.</div>';
+    updateStudioDockedInspector();
+    return;
+  }
+
+  const hasSolo = strokeManager.hasSoloedStrokes;
+  studioMixerList.innerHTML = '';
+
+  strokes.forEach((stroke, idx) => {
+    studioMixerList!.appendChild(createLayerCard(stroke, idx, hasSolo));
+  });
+
+  updateStudioDockedInspector();
+  updateMixerSelection();
+}
+
+// Docked Inspector inside Studio Deck
+function updateStudioDockedInspector(): void {
+  const selectedId = strokeManager.selectedStrokeId;
+  if (!studioDockedInspector) return;
+
+  if (!selectedId) {
+    studioDockedInspector.classList.add('is-empty');
+    studioDockedInspector.classList.remove('has-selection', 'is-collapsed');
+    if (dockedInspectorToggleBtn) dockedInspectorToggleBtn.style.display = 'none';
+    if (studioInspectorContent) studioInspectorContent.style.display = 'none';
+    if (studioInspectorSub) studioInspectorSub.textContent = 'Select a line to inspect';
+    if (studioBadgeDot) studioBadgeDot.style.background = 'transparent';
+    if (studioInspectorLabel) studioInspectorLabel.textContent = 'Line Inspector';
+    return;
+  }
+
+  const stroke = strokeManager.activeStrokes.find((s) => s.id === selectedId);
+  if (!stroke) return;
+
+  studioDockedInspector.classList.remove('is-empty');
+  studioDockedInspector.classList.add('has-selection');
+  if (dockedInspectorToggleBtn) {
+    dockedInspectorToggleBtn.style.display = 'inline-flex';
+    dockedInspectorToggleBtn.textContent = isInspectorCollapsed ? '▲' : '▼';
+    dockedInspectorToggleBtn.setAttribute(
+      'title',
+      isInspectorCollapsed ? 'Expand Line Inspector' : 'Collapse Line Inspector (show more lines)'
+    );
+  }
+
+  if (isInspectorCollapsed) {
+    studioDockedInspector.classList.add('is-collapsed');
+    if (studioInspectorContent) studioInspectorContent.style.display = 'none';
+  } else {
+    studioDockedInspector.classList.remove('is-collapsed');
+    if (studioInspectorContent) studioInspectorContent.style.display = 'flex';
+  }
+
+  const idx = strokeManager.activeStrokes.indexOf(stroke);
+  const inst = getInstrument(stroke.instrumentId);
+  const color = renderer.getStrokeColor(stroke);
+
+  if (studioInspectorLabel) studioInspectorLabel.textContent = inst.name;
+  if (studioInspectorSub) studioInspectorSub.textContent = `Line #${idx + 1} (${stroke.style})`;
+  if (studioBadgeDot) studioBadgeDot.style.background = color;
+
+  if (studioVoicingSelect) {
+    studioVoicingSelect.value = stroke.harmonizer ?? 'single';
+  }
+
+  const isTimer = stroke.timingMode === 'timer' || stroke.speedMode === 'timer';
+  if (studioTimingModeLabel) {
+    studioTimingModeLabel.textContent = isTimer ? 'Timer' : 'Speed';
+  }
+  studioTimingToggle?.querySelectorAll<HTMLButtonElement>('.seg-btn').forEach((b) => {
+    b.classList.toggle('active', (b.getAttribute('data-timing-mode') === 'timer') === isTimer);
+  });
+
+  if (studioTimingSlider && studioTimingVal) {
+    if (isTimer) {
+      studioTimingSlider.min = '1';
+      studioTimingSlider.max = '300';
+      studioTimingSlider.step = '1';
+      studioTimingSlider.value = (stroke.duration ?? 30).toString();
+      studioTimingVal.textContent = `${stroke.duration ?? 30}s`;
+    } else {
+      studioTimingSlider.min = '0.1';
+      studioTimingSlider.max = '4.0';
+      studioTimingSlider.step = '0.05';
+      studioTimingSlider.value = (stroke.speedMultiplier ?? 1.0).toString();
+      studioTimingVal.textContent = `${(stroke.speedMultiplier ?? 1.0).toFixed(2)}x`;
+    }
+  }
+
+  const isBounce = stroke.traversal === 'bounce' || (stroke.traversal as string) === 'pingpong';
+  studioTraversalSwitch?.querySelectorAll<HTMLButtonElement>('.seg-btn').forEach((b) => {
+    b.classList.toggle('active', (b.getAttribute('data-track-traversal') === 'bounce') === isBounce);
+  });
+
+  if (studioWaveShapeSelect) {
+    studioWaveShapeSelect.value = stroke.waveParams?.shapeType ?? 'sine';
+  }
+  if (studioWaveAmpSlider && studioWaveAmpVal) {
+    const amp = stroke.waveParams?.amplitude ?? 0;
+    studioWaveAmpSlider.value = amp.toString();
+    studioWaveAmpVal.textContent = `${Math.round(amp)}px`;
+  }
+  if (studioWaveSineBtn) {
+    studioWaveSineBtn.classList.toggle('active', (stroke.waveParams?.amplitude ?? 0) > 0);
+  }
+}
+
+// Studio Inspector Controls Events
+studioVoicingSelect?.addEventListener('change', () => {
+  if (!studioVoicingSelect || !strokeManager.selectedStrokeId) return;
+  const mode = studioVoicingSelect.value as HarmonizerMode;
+  strokeManager.setStrokeHarmonizer(strokeManager.selectedStrokeId, mode);
+  setCompositionDirty(true);
+  updateTrackActionsVisibility();
+});
+
+studioTimingToggle?.querySelectorAll<HTMLButtonElement>('.seg-btn').forEach((b) => {
+  b.addEventListener('click', () => {
+    if (!strokeManager.selectedStrokeId) return;
+    const mode = b.getAttribute('data-timing-mode') as 'speed' | 'timer';
+    strokeManager.setStrokeTimingMode(strokeManager.selectedStrokeId, mode);
+    if (studioTimingModeLabel) {
+      studioTimingModeLabel.textContent = mode === 'timer' ? 'Timer' : 'Speed';
+    }
+    setCompositionDirty(true);
+    updateTrackActionsVisibility();
+    renderStudioMixer();
+  });
+});
+
+studioTimingSlider?.addEventListener('input', () => {
+  if (!studioTimingSlider || !strokeManager.selectedStrokeId) return;
+  const stroke = strokeManager.activeStrokes.find((s) => s.id === strokeManager.selectedStrokeId);
+  if (!stroke) return;
+
+  const isTimer = stroke.timingMode === 'timer' || stroke.speedMode === 'timer';
+  if (isTimer) {
+    const val = parseInt(studioTimingSlider.value, 10);
+    if (studioTimingVal) studioTimingVal.textContent = `${val}s`;
+    strokeManager.setStrokeDuration(stroke.id, val);
+  } else {
+    const val = parseFloat(studioTimingSlider.value);
+    if (studioTimingVal) studioTimingVal.textContent = `${val.toFixed(2)}x`;
+    strokeManager.setStrokeSpeed(stroke.id, val);
+  }
+  setCompositionDirty(true);
+  renderLayerMixer();
+  renderStudioMixer();
+});
+
+studioTraversalSwitch?.querySelectorAll<HTMLButtonElement>('.seg-btn').forEach((b) => {
+  b.addEventListener('click', () => {
+    if (!strokeManager.selectedStrokeId) return;
+    const trav = b.getAttribute('data-track-traversal') as TraversalMode;
+    strokeManager.setStrokeTraversal(strokeManager.selectedStrokeId, trav);
+    setCompositionDirty(true);
+    updateTrackActionsVisibility();
+    renderStudioMixer();
+  });
+});
+
+studioWaveShapeSelect?.addEventListener('change', () => {
+  if (!studioWaveShapeSelect || !strokeManager.selectedStrokeId) return;
+  const shape = studioWaveShapeSelect.value as WaveShapeType;
+  const amp = studioWaveAmpSlider ? parseFloat(studioWaveAmpSlider.value) : 20;
+  strokeManager.restructureStrokeWave(strokeManager.selectedStrokeId, Math.max(10, amp), 2, shape, true);
+  setCompositionDirty(true);
+  updateTrackActionsVisibility();
+});
+
+studioWaveSineBtn?.addEventListener('click', () => {
+  if (!strokeManager.selectedStrokeId) return;
+  const stroke = strokeManager.activeStrokes.find((s) => s.id === strokeManager.selectedStrokeId);
+  if (!stroke) return;
+  const hasWave = (stroke.waveParams?.amplitude ?? 0) > 0;
+  if (hasWave) {
+    strokeManager.restructureStrokeWave(stroke.id, 0, 2, 'sine', true);
+  } else {
+    strokeManager.restructureStrokeWave(stroke.id, 20, 2, 'sine', true);
+  }
+  setCompositionDirty(true);
+  updateTrackActionsVisibility();
+});
+
+studioWaveAmpSlider?.addEventListener('input', () => {
+  if (!studioWaveAmpSlider || !strokeManager.selectedStrokeId) return;
+  const amp = parseFloat(studioWaveAmpSlider.value);
+  if (studioWaveAmpVal) studioWaveAmpVal.textContent = `${Math.round(amp)}px`;
+  const shape = (studioWaveShapeSelect?.value ?? 'sine') as WaveShapeType;
+  strokeManager.restructureStrokeWave(strokeManager.selectedStrokeId, amp, 2, shape, false);
+  setCompositionDirty(true);
+});
+
+studioDupTrackBtn?.addEventListener('click', () => {
+  if (strokeManager.selectedStrokeId) {
+    strokeManager.duplicateSelected(quantizer, renderer.height);
+    syncCompositionState();
+  }
+});
+
+studioDelTrackBtn?.addEventListener('click', () => {
+  if (strokeManager.selectedStrokeId) {
+    strokeManager.deleteSelected();
+    syncCompositionState();
+  }
+});
+
+studioDeselectTrackBtn?.addEventListener('click', () => {
+  strokeManager.selectStroke(null);
+  updateTrackActionsVisibility();
+  renderStudioMixer();
+});
+
+dockedInspectorToggleBtn?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  isInspectorCollapsed = !isInspectorCollapsed;
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem('harmonic_inspector_collapsed', isInspectorCollapsed.toString());
+  }
+  updateStudioDockedInspector();
+});
+
+const dockedInspectorHeader = studioDockedInspector?.querySelector('.docked-inspector-header');
+dockedInspectorHeader?.addEventListener('click', (e) => {
+  const target = e.target as HTMLElement;
+  if (target.closest('button')) return;
+  if (strokeManager.selectedStrokeId) {
+    isInspectorCollapsed = !isInspectorCollapsed;
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('harmonic_inspector_collapsed', isInspectorCollapsed.toString());
+    }
+    updateStudioDockedInspector();
+  }
+});
+
+// Zen Mode Initialization
+function initZenMode(): void {
+  if (zenSwatches) {
+    zenSwatches.innerHTML = '';
+    const insts = Object.values(INSTRUMENTS);
+    insts.forEach((inst) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `swatch-btn${inst.id === currentInstrumentId ? ' active' : ''}`;
+      btn.setAttribute('data-instrument', inst.id);
+      btn.style.setProperty('--swatch-c', inst.color);
+      btn.title = inst.name;
+      btn.innerHTML = '<span class="swatch-dot"></span>';
+
+      btn.addEventListener('click', () => {
+        selectInstrument(inst.id);
+        zenSwatches?.querySelectorAll('.swatch-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
+      zenSwatches.appendChild(btn);
+    });
+  }
+
+  zenPlayPauseBtn?.addEventListener('click', () => {
+    togglePlayPause();
+    if (zenPlayPauseText) {
+      zenPlayPauseText.textContent = strokeManager.paused ? 'Play' : 'Pause';
+    }
+  });
+
+  zenSyncBtn?.addEventListener('click', () => {
+    strokeManager.resyncAllPlayheads();
+  });
+
+  zenUndoBtn?.addEventListener('click', () => {
+    strokeManager.undo();
+    syncCompositionState();
+  });
+
+  zenClearBtn?.addEventListener('click', () => {
+    clearBtn.click();
+  });
+
+  document.querySelectorAll<HTMLElement>('#zenAppModeControl .seg-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const mode = btn.getAttribute('data-app-mode') as 'draw' | 'live';
+      if (mode) {
+        setAppMode(mode);
+      }
+    });
+  });
+
+  document.querySelectorAll<HTMLElement>('#zenStyleControl .seg-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const style = btn.getAttribute('data-zen-style') as StrokeStyle;
+      if (style) {
+        currentStyle = style;
+        document.querySelectorAll<HTMLElement>('#zenStyleControl .seg-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        // sync top texture
+        document.querySelectorAll<HTMLElement>('#strokeModeControl .seg-btn').forEach((b) => {
+          b.classList.toggle('active', b.getAttribute('data-style') === style);
+        });
+      }
+    });
+  });
+
+  // Zen Contextual Pill Handlers
+  zenContextCloseBtn?.addEventListener('click', () => {
+    strokeManager.selectStroke(null);
+    updateTrackActionsVisibility();
+  });
+
+  zenContextVolSlider?.addEventListener('input', () => {
+    if (!zenContextVolSlider || !strokeManager.selectedStrokeId) return;
+    const v = parseInt(zenContextVolSlider.value, 10) / 100;
+    strokeManager.setStrokeVolume(strokeManager.selectedStrokeId, v);
+    setCompositionDirty(true);
+  });
+
+  zenContextMuteBtn?.addEventListener('click', () => {
+    if (!strokeManager.selectedStrokeId) return;
+    strokeManager.toggleMute(strokeManager.selectedStrokeId);
+    setCompositionDirty(true);
+    updateTrackActionsVisibility();
+    renderStudioMixer();
+  });
+
+  zenContextSoloBtn?.addEventListener('click', () => {
+    if (!strokeManager.selectedStrokeId) return;
+    strokeManager.toggleSolo(strokeManager.selectedStrokeId);
+    setCompositionDirty(true);
+    updateTrackActionsVisibility();
+    renderStudioMixer();
+  });
+
+  zenContextTravBtn?.addEventListener('click', () => {
+    if (!strokeManager.selectedStrokeId) return;
+    const s = strokeManager.activeStrokes.find((st) => st.id === strokeManager.selectedStrokeId);
+    if (s) {
+      const currentTrav = (s.traversal === 'bounce' || (s.traversal as string) === 'pingpong') ? 'bounce' : 'restart';
+      const nextTrav = currentTrav === 'bounce' ? 'restart' : 'bounce';
+      strokeManager.setStrokeTraversal(s.id, nextTrav);
+      setCompositionDirty(true);
+      updateTrackActionsVisibility();
+      renderStudioMixer();
+    }
+  });
+}
+
+let zenAutoDimTimer: number | null = null;
+function armZenAutoDim(): void {
+  if (zenAutoDimTimer) window.clearTimeout(zenAutoDimTimer);
+  zenPillDockEl?.classList.remove('zen-dimmed');
+
+  zenAutoDimTimer = window.setTimeout(() => {
+    if (viewModeManager.getMode() === 'zen' && !strokeManager.paused) {
+      zenPillDockEl?.classList.add('zen-dimmed');
+    }
+  }, 3500);
+}
+
+window.addEventListener('pointermove', () => {
+  if (viewModeManager.getMode() === 'zen') {
+    armZenAutoDim();
+  }
+});
+
+// Update Zen Contextual Pill
+function updateZenContextPill(stroke?: DrawnStroke): void {
+  if (!zenContextPillEl) return;
+  if (!stroke || viewModeManager.getMode() !== 'zen') {
+    zenContextPillEl.style.display = 'none';
+    return;
+  }
+
+  zenContextPillEl.style.display = 'flex';
+  const inst = getInstrument(stroke.instrumentId);
+  const color = renderer.getStrokeColor(stroke);
+  const idx = strokeManager.activeStrokes.indexOf(stroke);
+
+  if (zenContextDot) zenContextDot.style.background = color;
+  if (zenContextName) zenContextName.textContent = `#${idx + 1} ${inst.name}`;
+  if (zenContextVolSlider) zenContextVolSlider.value = Math.round((stroke.volume ?? 1.0) * 100).toString();
+  if (zenContextMuteBtn) zenContextMuteBtn.classList.toggle('active-mute', !!stroke.muted);
+  if (zenContextSoloBtn) zenContextSoloBtn.classList.toggle('active-solo', !!stroke.soloed);
+}
+
+// Scene Arranger Implementation
+function renderSceneCards(): void {
+  if (!sceneCardsList) return;
+  const scenes = sceneManager.getScenes();
+  const currentScene = sceneManager.getCurrentScene();
+  sceneCardsList.innerHTML = '';
+
+  scenes.forEach((scene) => {
+    const card = document.createElement('div');
+    const isActive = scene.id === currentScene.id;
+    card.className = `scene-card${isActive ? ' active' : ''}`;
+    card.setAttribute('data-scene-id', scene.id);
+    card.setAttribute('draggable', 'true');
+
+    const strokeCount = isActive ? strokeManager.activeStrokes.length : scene.strokes.length;
+
+    card.innerHTML = `
+      <div class="scene-card-top">
+        <span class="scene-card-name" contenteditable="true" spellcheck="false" title="Click to rename scene">${scene.name}</span>
+        ${isActive ? `<span class="scene-card-badge" id="badge_${scene.id}">Active</span>` : ''}
+      </div>
+      <div class="scene-card-meta">
+        <span class="scene-card-chip">${strokeCount} lines</span>
+        <label class="scene-card-chip scene-card-chip-input has-tooltip" data-tooltip="Hold Length: Duration in seconds before transitioning (5s - 300s)">
+          <input type="number" class="scene-card-duration-input" min="5" max="300" step="1" value="${scene.durationSec}" />s
+        </label>
+        <label class="scene-card-chip scene-card-chip-input has-tooltip" data-tooltip="Scene Tempo: BPM for this movement (10 - 240 BPM)">
+          <input type="number" class="scene-card-bpm-input" min="10" max="240" step="1" value="${scene.bpm || 32}" /> BPM
+        </label>
+      </div>
+      <div class="scene-progress-track" id="track_${scene.id}" title="Click along the countdown bar to speed up & audition morphing">
+        <div class="scene-progress-bar" id="progress_${scene.id}"></div>
+      </div>
+    `;
+
+    const nameEl = card.querySelector<HTMLElement>('.scene-card-name');
+    const trackEl = card.querySelector<HTMLElement>(`#track_${scene.id}`);
+    const durInput = card.querySelector<HTMLInputElement>('.scene-card-duration-input');
+    const bpmInput = card.querySelector<HTMLInputElement>('.scene-card-bpm-input');
+
+    // Interactive duration input
+    if (durInput) {
+      const applyDur = () => {
+        let val = parseInt(durInput.value, 10);
+        if (isNaN(val) || val < 5) val = 5;
+        if (val > 300) val = 300;
+        durInput.value = val.toString();
+        sceneManager.setSceneDuration(scene.id, val);
+        setCompositionDirty(true);
+      };
+      durInput.addEventListener('click', (e) => e.stopPropagation());
+      durInput.addEventListener('mousedown', (e) => e.stopPropagation());
+      durInput.addEventListener('focus', () => { card.setAttribute('draggable', 'false'); });
+      durInput.addEventListener('blur', () => {
+        card.setAttribute('draggable', 'true');
+        applyDur();
+      });
+      durInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          durInput.blur();
+        }
+      });
+    }
+
+    // Interactive BPM input
+    if (bpmInput) {
+      const applyBpm = () => {
+        let val = parseInt(bpmInput.value, 10);
+        if (isNaN(val) || val < 10) val = 10;
+        if (val > 240) val = 240;
+        bpmInput.value = val.toString();
+        sceneManager.setSceneBpm(scene.id, val);
+        if (scene.id === sceneManager.getCurrentScene().id) {
+          strokeManager.setBpm(val);
+          bpmSlider.value = val.toString();
+          bpmVal.textContent = `${val} BPM`;
+          statTempo.textContent = `${val} BPM`;
+        }
+        setCompositionDirty(true);
+      };
+      bpmInput.addEventListener('click', (e) => e.stopPropagation());
+      bpmInput.addEventListener('mousedown', (e) => e.stopPropagation());
+      bpmInput.addEventListener('focus', () => { card.setAttribute('draggable', 'false'); });
+      bpmInput.addEventListener('blur', () => {
+        card.setAttribute('draggable', 'true');
+        applyBpm();
+      });
+      bpmInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          bpmInput.blur();
+        }
+      });
+    }
+
+    // Interactive countdown bar seeking: speed up to audition morphing!
+    trackEl?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const rect = trackEl.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const ratio = Math.max(0, Math.min(0.99, clickX / rect.width));
+
+      // If clicking another scene's track, switch to that scene first
+      if (scene.id !== sceneManager.getCurrentScene().id) {
+        switchScene(scene.id);
+      }
+
+      // Automatically activate sequence if not yet running so morphing auditions right away
+      if (!sceneManager.isSequencing()) {
+        sceneManager.updateCurrentScene({
+          strokes: strokeManager.exportComposition().strokes,
+          bpm: strokeManager.currentBpm,
+        });
+        sceneManager.startSequence();
+        if (sceneSeqPlayText) sceneSeqPlayText.textContent = 'Stop Sequence';
+        scenePlaySeqBtn?.classList.add('active');
+      }
+
+      // Seek current scene forward
+      sceneManager.seekCurrentScene(ratio);
+
+      // Reflect seek ratio immediately on progress bar
+      const pBar = document.getElementById(`progress_${scene.id}`);
+      if (pBar) {
+        pBar.style.width = `${(ratio * 100).toFixed(1)}%`;
+      }
+    });
+
+    // Drag-and-drop reordering
+    card.addEventListener('dragstart', (e) => {
+      if (document.activeElement === nameEl || document.activeElement === durInput || document.activeElement === bpmInput) {
+        e.preventDefault();
+        return;
+      }
+      card.classList.add('dragging');
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', scene.id);
+      }
+    });
+
+    card.addEventListener('dragend', () => {
+      card.classList.remove('dragging');
+      document.querySelectorAll('.scene-card').forEach((c) => c.classList.remove('drag-over'));
+    });
+
+    card.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'move';
+      }
+      card.classList.add('drag-over');
+    });
+
+    card.addEventListener('dragleave', () => {
+      card.classList.remove('drag-over');
+    });
+
+    card.addEventListener('drop', (e) => {
+      e.preventDefault();
+      card.classList.remove('drag-over');
+      const sourceId = e.dataTransfer?.getData('text/plain');
+      if (sourceId && sourceId !== scene.id) {
+        const reordered = sceneManager.reorderScene(sourceId, scene.id);
+        if (reordered) {
+          setCompositionDirty(true);
+          renderSceneCards();
+        }
+      }
+    });
+
+    // Click on card body to switch scene
+    card.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      if (target.classList.contains('scene-card-name') || target.closest('.scene-progress-track') || target.closest('.scene-card-chip-input')) return;
+      if (scene.id !== sceneManager.getCurrentScene().id) {
+        switchScene(scene.id);
+      }
+    });
+
+    // Editable name blur event (disable drag while editing text)
+    nameEl?.addEventListener('focus', () => {
+      card.setAttribute('draggable', 'false');
+    });
+    nameEl?.addEventListener('blur', () => {
+      card.setAttribute('draggable', 'true');
+      if (nameEl.textContent) {
+        sceneManager.renameScene(scene.id, nameEl.textContent.trim());
+        setCompositionDirty(true);
+      }
+    });
+    nameEl?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        nameEl.blur();
+      }
+    });
+
+    sceneCardsList.appendChild(card);
+  });
+}
+
+function syncCompositionState(): void {
+  setCompositionDirty(true);
+  updateStats();
+  updateTrackActionsVisibility();
+  renderLayerMixer();
+  renderStudioMixer();
+  try {
+    if (typeof sceneManager !== 'undefined') {
+      sceneManager.updateCurrentScene({
+        strokes: strokeManager.exportComposition().strokes,
+      });
+      if (typeof renderSceneCards === 'function') {
+        renderSceneCards();
+      }
+    }
+  } catch {
+    // sceneManager not initialized yet
+  }
+}
+
+function switchScene(sceneId: string): void {
+  strokeManager.cancelSceneCrossfade();
+  // 1. Snapshot current canvas strokes into currently active scene
+  sceneManager.updateCurrentScene({
+    strokes: strokeManager.exportComposition().strokes,
+    bpm: strokeManager.currentBpm,
+    scaleId: scaleSelect.value,
+    rootId: rootSelect.value,
+    spaceReverb: soundEngine.reverbMix,
+    xAxisModulationMode: xAxisSelect.value as XAxisModulationMode,
+  });
+
+  // 2. Select target scene
+  const target = sceneManager.selectScene(sceneId);
+  if (target) {
+    loadScene(target);
+  }
+}
+
+function loadScene(scene: SceneData): void {
+  strokeManager.cancelSceneCrossfade();
+  const comp: SavedComposition = {
+    version: 1,
+    name: scene.name,
+    timestamp: Date.now(),
+    bpm: scene.bpm || 32,
+    scaleId: scene.scaleId || 'dorian',
+    rootId: scene.rootId || 'D2',
+    spaceReverb: scene.spaceReverb ?? 0.65,
+    xAxisModulationMode: scene.xAxisModulationMode || 'panAndTone',
+    strokes: JSON.parse(JSON.stringify(scene.strokes || [])),
+  };
+
+  strokeManager.setSceneMorphVolumeGain(1.0);
+  strokeManager.importComposition(comp, quantizer, renderer.height, renderer.width, 0.2);
+
+  if (soundEngine.isReady) {
+    strokeManager.activateAudioVoices();
+  }
+
+  if (comp.scaleId && SCALES[comp.scaleId]) {
+    quantizer.updateConfig({ scale: SCALES[comp.scaleId] });
+    scaleSelect.value = comp.scaleId;
+  }
+  if (comp.rootId && ROOT_NOTES[comp.rootId]) {
+    quantizer.updateConfig({ root: ROOT_NOTES[comp.rootId] });
+    rootSelect.value = comp.rootId;
+  }
+  if (comp.bpm) {
+    strokeManager.setBpm(comp.bpm);
+    bpmSlider.value = comp.bpm.toString();
+    bpmVal.textContent = `${comp.bpm} BPM`;
+    statTempo.textContent = `${comp.bpm} BPM`;
+  }
+  if (comp.spaceReverb !== undefined) {
+    soundEngine.setReverbMix(comp.spaceReverb);
+    spaceSlider.value = Math.round(comp.spaceReverb * 100).toString();
+    spaceVal.textContent = `${Math.round(comp.spaceReverb * 100)}%`;
+  }
+
+  updateStats();
+  updateTrackActionsVisibility();
+  renderLayerMixer();
+  renderStudioMixer();
+  renderSceneCards();
+}
+
+// Scene Arranger Controls
+sceneAddBtn?.addEventListener('click', () => {
+  // Snapshot current
+  sceneManager.updateCurrentScene({
+    strokes: strokeManager.exportComposition().strokes,
+    bpm: strokeManager.currentBpm,
+  });
+  const newScene = sceneManager.addScene();
+  switchScene(newScene.id);
+});
+
+sceneDupBtn?.addEventListener('click', () => {
+  sceneManager.updateCurrentScene({
+    strokes: strokeManager.exportComposition().strokes,
+    bpm: strokeManager.currentBpm,
+  });
+  const dup = sceneManager.duplicateCurrentScene();
+  switchScene(dup.id);
+});
+
+sceneDelBtn?.addEventListener('click', () => {
+  const currentId = sceneManager.getCurrentScene().id;
+  const deleted = sceneManager.deleteScene(currentId);
+  if (deleted) {
+    loadScene(sceneManager.getCurrentScene());
+  }
+});
+
+sceneMorphSlider?.addEventListener('input', () => {
+  if (!sceneMorphSlider) return;
+  const s = parseInt(sceneMorphSlider.value, 10);
+  if (sceneMorphVal) sceneMorphVal.textContent = `${s}s`;
+  sceneManager.setMorphDuration(s);
+});
+
+sceneMorphBlendButtons.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const mode = btn.getAttribute('data-blend') as MorphCurveMode | null;
+    if (!mode) return;
+    sceneMorphBlendButtons.forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    sceneManager.setMorphCurveMode(mode);
+    if (sceneMorphCurveSelect) {
+      sceneMorphCurveSelect.value = mode;
+    }
+  });
+});
+
+sceneMorphCurveSelect?.addEventListener('change', () => {
+  if (!sceneMorphCurveSelect) return;
+  const mode = sceneMorphCurveSelect.value as MorphCurveMode;
+  sceneManager.setMorphCurveMode(mode);
+  sceneMorphBlendButtons.forEach((b) => {
+    b.classList.toggle('active', b.getAttribute('data-blend') === mode);
+  });
+});
+
+scenePlaySeqBtn?.addEventListener('click', () => {
+  if (sceneManager.isSequencing()) {
+    sceneManager.stopSequence();
+    strokeManager.cancelSceneCrossfade();
+    if (seqMiniIndicator) seqMiniIndicator.style.display = 'none';
+    if (sceneSeqPlayText) sceneSeqPlayText.textContent = 'Play Sequence';
+    scenePlaySeqBtn.classList.remove('active');
+  } else {
+    // Snapshot current
+    sceneManager.updateCurrentScene({
+      strokes: strokeManager.exportComposition().strokes,
+      bpm: strokeManager.currentBpm,
+    });
+    sceneManager.startSequence();
+    if (sceneSeqPlayText) sceneSeqPlayText.textContent = 'Stop Sequence';
+    scenePlaySeqBtn.classList.add('active');
+  }
+  renderSceneCards();
+});
+
+// Click mini HUD indicator to jump straight to Scene Arranger, or click on track to seek!
+seqMiniIndicator?.addEventListener('click', (e) => {
+  const target = e.target as HTMLElement;
+  const miniTrack = target.closest('.seq-mini-bar-track') as HTMLElement | null;
+  if (miniTrack) {
+    const rect = miniTrack.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const ratio = Math.max(0, Math.min(0.99, clickX / rect.width));
+    sceneManager.seekCurrentScene(ratio);
+    return;
+  }
+  viewModeManager.setMode('scenes');
+});
+
+function updateSeqMiniIndicator(seq: SceneSequenceTickResult): void {
+  if (!seqMiniIndicator) return;
+  const currentView = typeof viewModeManager !== 'undefined' ? viewModeManager.getMode() : 'studio';
+  if (currentView === 'scenes' || !sceneManager.isSequencing()) {
+    seqMiniIndicator.style.display = 'none';
+    return;
+  }
+
+  seqMiniIndicator.style.display = 'flex';
+  seqMiniIndicator.classList.toggle('is-morphing', seq.isMorphing);
+
+  if (seqMiniName) {
+    if (seq.isMorphing && seq.nextScene) {
+      seqMiniName.textContent = `Morphing → ${seq.nextScene.name}`;
+    } else {
+      seqMiniName.textContent = seq.currentScene.name;
+    }
+  }
+
+  if (seqMiniState) {
+    seqMiniState.textContent = seq.isMorphing ? 'Morph' : 'Seq';
+  }
+
+  if (seqMiniProgressText) {
+    const pct = Math.round(seq.progressRatio * 100);
+    seqMiniProgressText.textContent = `${pct}%`;
+  }
+
+  if (seqMiniBarFill) {
+    seqMiniBarFill.style.width = `${(seq.progressRatio * 100).toFixed(1)}%`;
+  }
+}
+
+initZenMode();
+
 
 // ==========================================================================
 // Record & MP3 Export Handlers
@@ -1290,6 +2357,18 @@ async function loadTemplate(tId: string, initAudio = true): Promise<void> {
   updateStats();
   updateTrackActionsVisibility();
   renderLayerMixer();
+
+  // Keep initial/current scene synchronized with loaded preset strokes and render cards
+  sceneManager.updateCurrentScene({
+    name: `Scene 1: ${template.name}`,
+    strokes: strokeManager.exportComposition().strokes,
+    bpm: template.bpm,
+    scaleId: template.scaleId,
+    rootId: template.rootId,
+    spaceReverb: template.spaceReverb ?? 0.65,
+    xAxisModulationMode: template.xAxisModulation || 'panAndTone',
+  });
+  renderSceneCards();
 }
 
 templateSelect.addEventListener('change', async () => {
@@ -1522,12 +2601,27 @@ octavesSlider?.addEventListener('input', () => {
 
 // Track Inspector Volume / Timing / Traversal / Wave Reshape / Mute / Solo / Delete Controls
 function updateTrackActionsVisibility(): void {
+  updateMixerSelection();
   const selectedId = strokeManager.selectedStrokeId;
+  const currentView = typeof viewModeManager !== 'undefined' ? viewModeManager.getMode() : 'studio';
+
   if (selectedId) {
     statMode.textContent = 'Line Selected';
-    trackInspectorBar.style.display = 'flex';
-    trackInspectorBar.classList.remove('hidden');
     const stroke = strokeManager.activeStrokes.find((s) => s.id === selectedId);
+
+    if (currentView === 'studio') {
+      trackInspectorBar.style.display = 'none';
+      trackInspectorBar.classList.add('hidden');
+      updateStudioDockedInspector();
+    } else if (currentView === 'zen') {
+      trackInspectorBar.style.display = 'none';
+      trackInspectorBar.classList.add('hidden');
+      updateZenContextPill(stroke);
+    } else {
+      trackInspectorBar.style.display = 'flex';
+      trackInspectorBar.classList.remove('hidden');
+    }
+
     if (stroke) {
       // Dynamic inspector positioning:
       // When a line is drawn high on screen (screenMinY < 170px), flip inspector to bottom of canvas
@@ -1679,6 +2773,8 @@ function updateTrackActionsVisibility(): void {
     trackInspectorBar.classList.add('hidden');
     trackInspectorBar.style.top = '';
     trackInspectorBar.style.bottom = '';
+    updateStudioDockedInspector();
+    updateZenContextPill();
     // Restore top bar to global current style
     strokeModeButtons.forEach((b) => {
       b.classList.toggle('active', b.getAttribute('data-style') === currentStyle);
@@ -1958,22 +3054,21 @@ wavePeriodSlider.addEventListener('change', () => {
 deleteTrackBtn.addEventListener('click', () => {
   if (strokeManager.selectedStrokeId) {
     strokeManager.deleteSelected();
-    updateStats();
-    updateTrackActionsVisibility();
+    syncCompositionState();
   }
 });
 
 muteBtn.addEventListener('click', () => {
   if (strokeManager.selectedStrokeId) {
     strokeManager.toggleMute(strokeManager.selectedStrokeId);
-    updateTrackActionsVisibility();
+    syncCompositionState();
   }
 });
 
 soloBtn.addEventListener('click', () => {
   if (strokeManager.selectedStrokeId) {
     strokeManager.toggleSolo(strokeManager.selectedStrokeId);
-    updateTrackActionsVisibility();
+    syncCompositionState();
   }
 });
 
@@ -1984,8 +3079,7 @@ duplicateTrackBtn?.addEventListener('click', () => {
       if (soundEngine.isReady) {
         strokeManager.activateAudioVoices();
       }
-      updateStats();
-      updateTrackActionsVisibility();
+      syncCompositionState();
     }
   }
 });
@@ -2009,10 +3103,7 @@ playPauseBtn.addEventListener('click', togglePlayPause);
 // Undo Action
 undoBtn.addEventListener('click', () => {
   strokeManager.undo();
-  setCompositionDirty(true);
-  updateStats();
-  updateTrackActionsVisibility();
-  renderLayerMixer();
+  syncCompositionState();
 });
 
 clearBtn.addEventListener('click', () => {
@@ -2027,6 +3118,17 @@ clearBtn.addEventListener('click', () => {
   updateStats();
   updateTrackActionsVisibility();
   renderLayerMixer();
+  renderStudioMixer();
+  try {
+    if (typeof sceneManager !== 'undefined') {
+      sceneManager.updateCurrentScene({
+        strokes: [],
+      });
+      if (typeof renderSceneCards === 'function') {
+        renderSceneCards();
+      }
+    }
+  } catch {}
 });
 
 infoBtn.addEventListener('click', () => {
@@ -2195,6 +3297,13 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     return;
   }
 
+  // View Mode Shortcut: V cycles through Studio -> Zen -> Scenes -> Studio
+  if (e.key.toLowerCase() === 'v' && !e.metaKey && !e.ctrlKey) {
+    e.preventDefault();
+    viewModeManager.cycleNextMode();
+    return;
+  }
+
   // Quick Save: Cmd+S / Ctrl+S
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's' && !e.shiftKey) {
     e.preventDefault();
@@ -2227,16 +3336,14 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     } else {
       strokeManager.undo();
     }
-    updateStats();
-    updateTrackActionsVisibility();
+    syncCompositionState();
     return;
   }
 
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y') {
     e.preventDefault();
     strokeManager.redo();
-    updateStats();
-    updateTrackActionsVisibility();
+    syncCompositionState();
     return;
   }
 
@@ -2258,8 +3365,7 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
         if (soundEngine.isReady) {
           strokeManager.activateAudioVoices();
         }
-        updateStats();
-        updateTrackActionsVisibility();
+        syncCompositionState();
       }
       return;
     }
@@ -2274,8 +3380,7 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
         if (soundEngine.isReady) {
           strokeManager.activateAudioVoices();
         }
-        updateStats();
-        updateTrackActionsVisibility();
+        syncCompositionState();
       }
       return;
     }
@@ -2286,16 +3391,19 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     if (strokeManager.selectedStrokeId) {
       e.preventDefault();
       strokeManager.deleteSelected();
-      updateStats();
-      updateTrackActionsVisibility();
+      syncCompositionState();
       return;
     }
   }
 
-  // 4. Escape: Close record modal or deselect active stroke
+  // 4. Escape: Close record modal, close controls drawer, or deselect active stroke
   if (e.key === 'Escape') {
     if (recordModal && !recordModal.classList.contains('hidden')) {
       closeRecordModal();
+      return;
+    }
+    if (advancedDrawer && advancedDrawer.style.display !== 'none') {
+      setDrawerOpen(false);
       return;
     }
     if (strokeManager.selectedStrokeId) {
@@ -2508,6 +3616,132 @@ function animationLoop(nowMs: number): void {
 
   // 1. Update constant-velocity playheads, Y pitch, X stereo modulation, and measure progress
   strokeManager.update(smoothedDt, renderer.width, renderer.height, quantizer);
+
+  // 1b. Update Scene Arranger progression sequence if active
+  if (typeof sceneManager !== 'undefined' && sceneManager.isSequencing()) {
+    // Only advance sequence timer when playing (not paused)!
+    if (!strokeManager.paused) {
+      const seq = sceneManager.tickSequence(smoothedDt);
+
+      if (seq.sceneChanged) {
+        if (strokeManager.isCrossfadingMorph) {
+          strokeManager.updateSceneCrossfade(1.0);
+          strokeManager.completeSceneCrossfade();
+        } else {
+          loadScene(seq.currentScene);
+        }
+
+        // Update quantizer scale and root to the new scene
+        if (seq.currentScene.scaleId || seq.currentScene.rootId) {
+          const scaleKey = (seq.currentScene.scaleId || 'dorian') as keyof typeof SCALES;
+          const scaleObj = SCALES[scaleKey] || SCALES.dorian;
+          const rootKey = (seq.currentScene.rootId || 'D2') as keyof typeof ROOT_NOTES;
+          const rootObj = ROOT_NOTES[rootKey] || ROOT_NOTES.D2;
+          quantizer.updateConfig({
+            scale: scaleObj,
+            root: rootObj,
+          });
+          if (scaleSelect) scaleSelect.value = seq.currentScene.scaleId || 'dorian';
+          if (rootSelect) rootSelect.value = seq.currentScene.rootId || 'D2';
+          updatePitchNavigator();
+        }
+
+        // Finalize BPM and Reverb
+        strokeManager.setBpm(seq.currentScene.bpm || 32);
+        bpmSlider.value = (seq.currentScene.bpm || 32).toString();
+        bpmVal.textContent = `${seq.currentScene.bpm || 32} BPM`;
+        statTempo.textContent = `${seq.currentScene.bpm || 32} BPM`;
+
+        const targetRev = seq.currentScene.spaceReverb ?? 0.65;
+        soundEngine.setReverbMix(targetRev);
+        if (spaceSlider) spaceSlider.value = Math.round(targetRev * 100).toString();
+        if (spaceVal) spaceVal.textContent = `${Math.round(targetRev * 100)}%`;
+
+        currentLoadedPresetName = seq.currentScene.name;
+        renderStudioMixer();
+        renderLayerMixer();
+        updateStats();
+        renderSceneCards();
+      } else if (seq.isMorphing && seq.nextScene) {
+        // 1. Start overlapping crossfade if not yet started
+        if (!strokeManager.isCrossfadingMorph) {
+          const nextComp: SavedComposition = {
+            version: 1,
+            name: seq.nextScene.name,
+            timestamp: Date.now(),
+            bpm: seq.nextScene.bpm || 32,
+            scaleId: seq.nextScene.scaleId || 'dorian',
+            rootId: seq.nextScene.rootId || 'D2',
+            spaceReverb: seq.nextScene.spaceReverb ?? 0.65,
+            xAxisModulationMode: seq.nextScene.xAxisModulationMode || 'panAndTone',
+            strokes: JSON.parse(JSON.stringify(seq.nextScene.strokes || [])),
+          };
+          const morphCurve = sceneManager.getMorphCurveMode();
+          strokeManager.startSceneCrossfade(
+            nextComp,
+            quantizer,
+            renderer.height,
+            renderer.width,
+            morphCurve,
+            seq.nextScene.id
+          );
+        }
+
+        // 2. Update crossfade gains each frame (equal power / reverb wash / linear)
+        const { reverbBoost } = strokeManager.updateSceneCrossfade(seq.morphRatio);
+
+        // 3. Smoothly interpolate BPM
+        const curBpm = seq.currentScene.bpm || 32;
+        const nextBpm = seq.nextScene.bpm || 32;
+        const interpolatedBpm = Math.round(curBpm + (nextBpm - curBpm) * seq.morphRatio);
+        if (strokeManager.currentBpm !== interpolatedBpm) {
+          strokeManager.setBpm(interpolatedBpm);
+          bpmVal.textContent = `${interpolatedBpm} BPM`;
+          statTempo.textContent = `${interpolatedBpm} BPM`;
+        }
+
+        // 4. Smoothly interpolate Space Reverb + add reverbBoost if in reverbWash mode
+        const curRev = seq.currentScene.spaceReverb ?? 0.65;
+        const nextRev = seq.nextScene.spaceReverb ?? 0.65;
+        const baseRev = curRev + (nextRev - curRev) * seq.morphRatio;
+        const finalRev = Math.max(0, Math.min(1, baseRev + reverbBoost));
+        soundEngine.setReverbMix(finalRev);
+        if (spaceVal) spaceVal.textContent = `${Math.round(finalRev * 100)}%`;
+      } else {
+        if (strokeManager.isCrossfadingMorph) {
+          strokeManager.cancelSceneCrossfade();
+        }
+      }
+
+      // Update active scene progress bar
+      const activeProgressBar = document.getElementById(`progress_${seq.currentScene.id}`);
+      if (activeProgressBar) {
+        activeProgressBar.style.width = `${(seq.progressRatio * 100).toFixed(1)}%`;
+      }
+
+      // Update card morph state & badge
+      const activeCardEl = document.querySelector(`.scene-card[data-scene-id="${seq.currentScene.id}"]`);
+      if (activeCardEl) {
+        activeCardEl.classList.toggle('is-morphing', seq.isMorphing);
+      }
+      const activeBadgeEl = document.getElementById(`badge_${seq.currentScene.id}`);
+      if (activeBadgeEl) {
+        if (seq.isMorphing) {
+          activeBadgeEl.className = 'scene-card-morph-badge';
+          const curveLabel = sceneManager.getMorphCurveMode() === 'reverbWash' ? 'Atmospheric Morph' : 'Crossfade Overlap';
+          activeBadgeEl.textContent = `${curveLabel} ${Math.round(seq.morphRatio * 100)}%`;
+        } else {
+          activeBadgeEl.className = 'scene-card-badge';
+          activeBadgeEl.textContent = 'Active';
+        }
+      }
+
+      // Update Minimalist HUD Indicator for other views (Studio & Zen)
+      updateSeqMiniIndicator(seq);
+    }
+  } else {
+    if (seqMiniIndicator) seqMiniIndicator.style.display = 'none';
+  }
 
   // 2. Clear canvas to warm paper tone
   renderer.clear();
