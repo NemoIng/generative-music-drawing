@@ -1326,6 +1326,57 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
     sm.setStrokeMuted(s1.id, false);
     expect(s1.muted).toBe(false);
   });
+
+  it('supports modifying stroke speed multiplier by 0.1 increments', () => {
+    const sm = new StrokeManager();
+    const s = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+    expect(s.speedMultiplier).toBe(1.0);
+
+    // Increase by 0.1
+    const nextSpeed = Math.round(((s.speedMultiplier ?? 1.0) + 0.1) * 10) / 10;
+    sm.setStrokeSpeed(s.id, nextSpeed);
+    expect(s.speedMultiplier).toBe(1.1);
+
+    // Decrease by 0.1 twice
+    const slower1 = Math.round(((s.speedMultiplier ?? 1.0) - 0.1) * 10) / 10;
+    sm.setStrokeSpeed(s.id, slower1);
+    expect(s.speedMultiplier).toBe(1.0);
+
+    const slower2 = Math.round(((s.speedMultiplier ?? 1.0) - 0.1) * 10) / 10;
+    sm.setStrokeSpeed(s.id, slower2);
+    expect(s.speedMultiplier).toBe(0.9);
+  });
+
+  it('supports modifying timer duration by 5 seconds increments', () => {
+    const sm = new StrokeManager();
+    const s = sm.addStroke(dummyPath, 'solid', 'indigo', 100, undefined, undefined, 0, '2bars', 'restart', 30, 1.0, 'timer');
+    expect(s.duration).toBe(30);
+
+    // Increase by 5s
+    sm.setStrokeDuration(s.id, (s.duration ?? 30) + 5);
+    expect(s.duration).toBe(35);
+
+    // Decrease by 5s twice
+    sm.setStrokeDuration(s.id, (s.duration ?? 35) - 5);
+    expect(s.duration).toBe(30);
+
+    sm.setStrokeDuration(s.id, (s.duration ?? 30) - 5);
+    expect(s.duration).toBe(25);
+  });
+
+  it('supports toggling stroke traversal between restart and bounce', () => {
+    const sm = new StrokeManager();
+    const s = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+    expect(s.traversal).toBe('restart');
+
+    // Toggle to bounce
+    sm.setStrokeTraversal(s.id, 'bounce');
+    expect(s.traversal).toBe('bounce');
+
+    // Toggle back to restart
+    sm.setStrokeTraversal(s.id, 'restart');
+    expect(s.traversal).toBe('restart');
+  });
 });
 
 

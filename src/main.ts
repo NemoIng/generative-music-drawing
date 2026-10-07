@@ -2331,11 +2331,25 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     return;
   }
 
-  // 7. Theme toggle shortcut: T
-  if (e.key.toLowerCase() === 't') {
+  // 7. Traversal toggle shortcut: T (Straight / Bounce)
+  if (e.key.toLowerCase() === 't' && !e.metaKey && !e.ctrlKey) {
     e.preventDefault();
-    const isDark = document.body.classList.contains('dark-mode');
-    setTheme(!isDark);
+    const targetStrokeId = strokeManager.selectedStrokeId || (strokeManager.activeStrokes.length === 1 ? strokeManager.activeStrokes[0].id : null);
+    if (targetStrokeId) {
+      const stroke = strokeManager.activeStrokes.find((s) => s.id === targetStrokeId);
+      if (stroke) {
+        const currentTrav = (stroke.traversal === 'bounce' || (stroke.traversal as string) === 'pingpong') ? 'bounce' : 'restart';
+        const nextTrav: TraversalMode = currentTrav === 'bounce' ? 'restart' : 'bounce';
+        strokeManager.setStrokeTraversal(stroke.id, nextTrav);
+        setCompositionDirty(true);
+        updateTrackActionsVisibility();
+        renderLayerMixer();
+        return;
+      }
+    }
+    // If no stroke is selected, toggle the default traversal mode for future strokes
+    const nextDefTrav: TraversalMode = strokeManager.mode === 'bounce' ? 'restart' : 'bounce';
+    strokeManager.setTraversalMode(nextDefTrav);
     return;
   }
 
@@ -2364,15 +2378,46 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
   }
 
   // 10. Volume adjustment for selected stroke: [ or Down = -5%, ] or Up = +5%
-  if (strokeManager.selectedStrokeId && (e.key === '[' || e.key === ']' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-    const stroke = strokeManager.activeStrokes.find((s) => s.id === strokeManager.selectedStrokeId);
-    if (stroke) {
-      e.preventDefault();
-      const currentVol = stroke.volume ?? 1.0;
-      const delta = (e.key === ']' || e.key === 'ArrowUp') ? 0.05 : -0.05;
-      const nextVol = Math.max(0, Math.min(1, Math.round((currentVol + delta) * 100) / 100));
-      strokeManager.setStrokeVolume(stroke.id, nextVol, true);
-      updateTrackActionsVisibility();
+  if (e.key === '[' || e.key === ']' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+    const targetStrokeId = strokeManager.selectedStrokeId || (strokeManager.activeStrokes.length === 1 ? strokeManager.activeStrokes[0].id : null);
+    if (targetStrokeId) {
+      const stroke = strokeManager.activeStrokes.find((s) => s.id === targetStrokeId);
+      if (stroke) {
+        e.preventDefault();
+        const currentVol = stroke.volume ?? 1.0;
+        const delta = (e.key === ']' || e.key === 'ArrowUp') ? 0.05 : -0.05;
+        const nextVol = Math.max(0, Math.min(1, Math.round((currentVol + delta) * 100) / 100));
+        strokeManager.setStrokeVolume(stroke.id, nextVol, true);
+        setCompositionDirty(true);
+        updateTrackActionsVisibility();
+        renderLayerMixer();
+      }
+    }
+  }
+
+  // 10b. Speed / Timing adjustment for selected stroke: Left = -0.1x / -5s, Right = +0.1x / +5s
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    const targetStrokeId = strokeManager.selectedStrokeId || (strokeManager.activeStrokes.length === 1 ? strokeManager.activeStrokes[0].id : null);
+    if (targetStrokeId) {
+      const stroke = strokeManager.activeStrokes.find((s) => s.id === targetStrokeId);
+      if (stroke) {
+        e.preventDefault();
+        const isTimer = stroke.timingMode === 'timer' || stroke.speedMode === 'timer';
+        if (isTimer) {
+          const currentDur = Math.round(stroke.duration ?? 30);
+          const delta = e.key === 'ArrowRight' ? 5 : -5;
+          const nextDur = Math.max(1, Math.min(300, currentDur + delta));
+          strokeManager.setStrokeDuration(stroke.id, nextDur, true);
+        } else {
+          const currentSpeed = stroke.speedMultiplier ?? 1.0;
+          const delta = e.key === 'ArrowRight' ? 0.1 : -0.1;
+          const nextSpeed = Math.max(0.1, Math.min(5.0, Math.round((currentSpeed + delta) * 10) / 10));
+          strokeManager.setStrokeSpeed(stroke.id, nextSpeed, true);
+        }
+        setCompositionDirty(true);
+        updateTrackActionsVisibility();
+        renderLayerMixer();
+      }
     }
   }
 

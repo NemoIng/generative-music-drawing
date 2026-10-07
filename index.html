@@ -497,7 +497,11 @@
                 </div>
                 <div class="shortcut-row">
                   <span class="shortcut-desc">Line Volume Up / Down</span>
-                  <kbd class="shortcut-key">[ / ]</kbd>
+                  <kbd class="shortcut-key">↑ / ↓</kbd>
+                </div>
+                <div class="shortcut-row">
+                  <span class="shortcut-desc">Line Speed / Timer (±0.1x / ±5s)</span>
+                  <kbd class="shortcut-key">← / →</kbd>
                 </div>
                 <div class="shortcut-row">
                   <span class="shortcut-desc">Delete Line</span>
@@ -512,7 +516,7 @@
                   <kbd class="shortcut-key">Home</kbd>
                 </div>
                 <div class="shortcut-row">
-                  <span class="shortcut-desc">Toggle Theme</span>
+                  <span class="shortcut-desc">Toggle Traversal (Straight / Bounce)</span>
                   <kbd class="shortcut-key">T</kbd>
                 </div>
                 <div class="shortcut-row">
@@ -605,7 +609,7 @@
             <!-- Row 2: Timing (Speed vs Timer), Traversal (Restart vs Bounce), and Shape Restructuring -->
             <div class="track-inspector-row track-inspector-row-bottom">
               <!-- Individual Line Timing: Speed vs Timer (Free default, timer for drones) -->
-              <div class="inspector-cell inspector-speed-cell has-tooltip" data-tooltip="Line Timing: Control pacing with Speed (multiplier) or Timer (duration in seconds). For long ambient drones, set the timer really high.">
+              <div class="inspector-cell inspector-speed-cell has-tooltip" data-tooltip="Line Timing (← / →): Control pacing with Speed (multiplier) or Timer (duration in seconds). Left/Right arrows modify by 0.1x or 5s.">
                 <div class="inspector-speed-header">
                   <label>Timing</label>
                   <div class="speed-mode-toggle" id="speedModeToggle">
@@ -644,7 +648,7 @@
               </div>
 
               <!-- Individual Line Traversal: Restart vs Bounce -->
-              <div class="inspector-cell has-tooltip" data-tooltip="Line Traversal: Restart from line start, or Bounce back and forth.">
+              <div class="inspector-cell has-tooltip" data-tooltip="Line Traversal (T): Restart (straight) from line start, or Bounce back and forth.">
                 <label>Traversal</label>
                 <div class="segmented-switch mini-switch" id="trackTraversalControl">
                   <button type="button" class="seg-btn active" data-track-traversal="restart">Restart</button>
@@ -758,7 +762,7 @@
             <button type="button" id="clearBtn" class="action-btn action-btn-sm text-danger has-tooltip" data-tooltip="Clear Canvas: Remove all curves.">
               Clear
             </button>
-            <button type="button" id="themeToggleBtn" class="action-btn action-btn-sm has-tooltip" data-tooltip="Theme (T): Toggle Dark / Light canvas appearance.">
+            <button type="button" id="themeToggleBtn" class="action-btn action-btn-sm has-tooltip" data-tooltip="Theme: Toggle Dark / Light canvas appearance.">
               <span id="themeText">Dark</span><span id="themeIcon" style="display:none"></span>
             </button>
             <button type="button" id="fullscreenBtn" class="action-btn action-btn-sm has-tooltip" data-tooltip="Fullscreen (F): Expand canvas to fill entire screen.">
