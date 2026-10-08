@@ -41,6 +41,7 @@ type UndoAction =
   | { type: 'fluctuation'; strokeId: string; oldFluctuation: number; newFluctuation: number }
   | { type: 'distortion'; strokeId: string; oldDistortion: number; newDistortion: number }
   | { type: 'filterCutoff'; strokeId: string; oldFilterCutoff: number; newFilterCutoff: number }
+  | { type: 'lofi'; strokeId: string; oldLofi: number; newLofi: number }
   | {
       type: 'reshape';
       strokeId: string;
@@ -103,6 +104,7 @@ export interface StrokeClipboardData {
   isPoint?: boolean;
   distortion?: number;
   filterCutoff?: number;
+  lofi?: number;
 }
 
 export class StrokeManager {
@@ -430,7 +432,8 @@ export class StrokeManager {
     recordUndo = true,
     isPoint = false,
     distortion = 0.0,
-    filterCutoff = 1.0
+    filterCutoff = 1.0,
+    lofi = 0.0
   ): DrawnStroke {
     const lut = buildArcLengthLUT(path, 64);
     const id = `stroke-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -440,6 +443,7 @@ export class StrokeManager {
     const strokeFluctuation = typeof fluctuation === 'number' ? Math.max(0, Math.min(1, fluctuation)) : this.defaultFluctuation;
     const strokeDistortion = typeof distortion === 'number' ? Math.max(0, Math.min(1, distortion)) : 0.0;
     const strokeFilterCutoff = typeof filterCutoff === 'number' ? Math.max(0, Math.min(1, filterCutoff)) : 1.0;
+    const strokeLofi = typeof lofi === 'number' ? Math.max(0, Math.min(1, lofi)) : 0.0;
     const effectiveLoopQuantize = loopQuantize ?? this.quantizeMode;
     const effectiveTraversal: TraversalMode = (traversal === 'bounce' || (traversal as string) === 'pingpong') ? 'bounce' : 'restart';
     const effectiveDuration = duration ?? this.defaultDuration;
@@ -461,7 +465,7 @@ export class StrokeManager {
     let droneVoice: DroneVoice | null = null;
     if (style === 'solid' && this.engine.isReady && initialPitch && !this.isPaused) {
       droneVoice = new DroneVoice(this.engine);
-      droneVoice.start(initialPitch.frequency, instrument, strokeVolume, strokeReverb, undefined, strokeDistortion, strokeFilterCutoff);
+      droneVoice.start(initialPitch.frequency, instrument, strokeVolume, strokeReverb, undefined, strokeDistortion, strokeFilterCutoff, strokeLofi);
     }
 
     const stroke: DrawnStroke = {
@@ -492,6 +496,7 @@ export class StrokeManager {
       fluctuation: strokeFluctuation,
       distortion: strokeDistortion,
       filterCutoff: strokeFilterCutoff,
+      lofi: strokeLofi,
       isPoint,
       duration: effectiveDuration,
       speedMultiplier: effectiveSpeedMult,
@@ -636,6 +641,33 @@ export class StrokeManager {
         strokeId,
         oldFilterCutoff: oldCutoff,
         newFilterCutoff: clampedCutoff,
+      });
+      this.redoStack = [];
+    }
+    return true;
+  }
+
+  /**
+   * Sets the lo-fi bit-depth quantization crunch (0.0 clean to 1.0 lo-fi grit) of an individual stroke with undo support.
+   */
+  public setStrokeLofi(strokeId: string, lofi: number, recordUndo = true): boolean {
+    const stroke = this.strokes.find((s) => s.id === strokeId);
+    if (!stroke) return false;
+    const clampedLofi = Math.max(0, Math.min(1, Math.round(lofi * 100) / 100));
+    const oldLofi = stroke.lofi ?? 0.0;
+    if (Math.abs(oldLofi - clampedLofi) < 0.001) return false;
+
+    stroke.lofi = clampedLofi;
+    if (stroke.droneVoice) {
+      stroke.droneVoice.setLofi(clampedLofi);
+    }
+
+    if (recordUndo) {
+      this.undoStack.push({
+        type: 'lofi',
+        strokeId,
+        oldLofi,
+        newLofi: clampedLofi,
       });
       this.redoStack = [];
     }
@@ -1152,6 +1184,7 @@ export class StrokeManager {
       isPoint: stroke.isPoint,
       distortion: stroke.distortion ?? 0.0,
       filterCutoff: stroke.filterCutoff ?? 1.0,
+      lofi: stroke.lofi ?? 0.0,
       waveParams: stroke.waveParams
         ? {
             ...stroke.waveParams,
@@ -1213,7 +1246,8 @@ export class StrokeManager {
       true,
       this.clipboard.isPoint ?? false,
       this.clipboard.distortion ?? 0.0,
-      this.clipboard.filterCutoff ?? 1.0
+      this.clipboard.filterCutoff ?? 1.0,
+      this.clipboard.lofi ?? 0.0
     );
 
     if (this.clipboard.waveParams) {
@@ -1591,7 +1625,7 @@ export class StrokeManager {
           const chord = getHarmonizerFrequencies(stroke.harmonizer, pitch.frequency, pitch.scaleDegree, strokeQuantizer);
           if ((!stroke.droneVoice || !stroke.droneVoice.isPlaying) && this.engine.isReady) {
             stroke.droneVoice = new DroneVoice(this.engine);
-            stroke.droneVoice.start(pitch.frequency, instrument, effectiveVol, strokeReverb, audioTime, stroke.distortion ?? 0.0, stroke.filterCutoff ?? 1.0);
+            stroke.droneVoice.start(pitch.frequency, instrument, effectiveVol, strokeReverb, audioTime, stroke.distortion ?? 0.0, stroke.filterCutoff ?? 1.0, stroke.lofi ?? 0.0);
           } else if (stroke.droneVoice) {
             stroke.droneVoice.updateDual(
               pitch.freqA ?? pitch.freq1 ?? pitch.frequency,
@@ -1685,7 +1719,8 @@ export class StrokeManager {
                 this.engine,
                 audioTime,
                 stroke.distortion ?? 0.0,
-                stroke.filterCutoff ?? 1.0
+                stroke.filterCutoff ?? 1.0,
+                stroke.lofi ?? 0.0
               );
             });
           }
@@ -1760,7 +1795,8 @@ export class StrokeManager {
                 this.engine,
                 audioTime,
                 stroke.distortion ?? 0.0,
-                stroke.filterCutoff ?? 1.0
+                stroke.filterCutoff ?? 1.0,
+                stroke.lofi ?? 0.0
               );
             });
           }
@@ -1828,6 +1864,13 @@ export class StrokeManager {
       if (stroke) {
         stroke.filterCutoff = action.oldFilterCutoff;
         stroke.droneVoice?.setFilterCutoff(action.oldFilterCutoff);
+      }
+      this.redoStack.push(action);
+    } else if (action.type === 'lofi') {
+      const stroke = this.strokes.find((s) => s.id === action.strokeId);
+      if (stroke) {
+        stroke.lofi = action.oldLofi;
+        stroke.droneVoice?.setLofi(action.oldLofi);
       }
       this.redoStack.push(action);
     } else if (action.type === 'style') {
@@ -1939,6 +1982,13 @@ export class StrokeManager {
       if (stroke) {
         stroke.filterCutoff = action.newFilterCutoff;
         stroke.droneVoice?.setFilterCutoff(action.newFilterCutoff);
+      }
+      this.undoStack.push(action);
+    } else if (action.type === 'lofi') {
+      const stroke = this.strokes.find((s) => s.id === action.strokeId);
+      if (stroke) {
+        stroke.lofi = action.newLofi;
+        stroke.droneVoice?.setLofi(action.newLofi);
       }
       this.undoStack.push(action);
     } else if (action.type === 'style') {
@@ -2314,6 +2364,7 @@ export class StrokeManager {
         fluctuation: s.fluctuation ?? this.defaultFluctuation,
         distortion: s.distortion ?? 0.0,
         filterCutoff: s.filterCutoff ?? 1.0,
+        lofi: s.lofi ?? 0.0,
         isPoint: s.isPoint,
         muted: !!s.muted,
         path: JSON.parse(JSON.stringify(s.path)),
@@ -2431,7 +2482,8 @@ export class StrokeManager {
       false,
       s.isPoint ?? false,
       s.distortion ?? 0.0,
-      s.filterCutoff ?? 1.0
+      s.filterCutoff ?? 1.0,
+      s.lofi ?? 0.0
     );
     if (s.muted) stroke.muted = true;
     if (clonedWave) stroke.waveParams = clonedWave;

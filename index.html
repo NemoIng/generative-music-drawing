@@ -610,6 +610,15 @@
                 </div>
               </div>
 
+              <!-- Individual Line Lo-Fi Crunch -->
+              <div class="inspector-cell has-tooltip" data-tooltip="Line Lo-Fi Crunch: Bit-depth reduction and digital sampler grit (0% clean hi-fi to 100% vintage crunchy bite).">
+                <label for="trackLofiSlider">Lo-Fi</label>
+                <div class="track-slider-wrap">
+                  <input type="range" id="trackLofiSlider" min="0" max="100" step="1" value="0" class="track-vol-slider" />
+                  <span id="trackLofiVal" class="track-vol-val">0%</span>
+                </div>
+              </div>
+
               <!-- Actions: Mute / Solo / Duplicate / Delete / Done -->
               <div class="inspector-actions">
                 <button id="muteBtn" class="action-btn has-tooltip" data-tooltip="Mute selected line (M)">Mute</button>
@@ -963,6 +972,28 @@
                     <span class="docked-sublabel">Amp</span>
                     <input type="range" id="studioWaveAmpSlider" min="0" max="100" step="1" value="0" class="docked-range-slider" />
                     <span id="studioWaveAmpVal" class="docked-val-badge">0px</span>
+                  </div>
+                </div>
+
+                <!-- Per-Line Tone & Grit Effects Group (Drive, Tone Filter, Lo-Fi Crunch) -->
+                <div class="docked-group">
+                  <div class="docked-row">
+                    <label class="docked-label">Tone &amp; Grit</label>
+                  </div>
+                  <div class="docked-slider-row has-tooltip" data-tooltip="Line Distortion: Warm saturation &amp; harmonic overdrive (0% clean to 100% saturated bite).">
+                    <span class="docked-sublabel">Dist</span>
+                    <input type="range" id="studioDistortionSlider" min="0" max="100" step="1" value="0" class="docked-range-slider" />
+                    <span id="studioDistortionVal" class="docked-val-badge">0%</span>
+                  </div>
+                  <div class="docked-slider-row has-tooltip" data-tooltip="Line Tone Filter: Warm analog lowpass cutoff (0% warm/dark to 100% open/bright).">
+                    <span class="docked-sublabel">Tone</span>
+                    <input type="range" id="studioFilterSlider" min="0" max="100" step="1" value="100" class="docked-range-slider" />
+                    <span id="studioFilterVal" class="docked-val-badge">100%</span>
+                  </div>
+                  <div class="docked-slider-row has-tooltip" data-tooltip="Line Lo-Fi Crunch: Bit-depth reduction and digital sampler crunch (0% clean hi-fi to 100% vintage grit).">
+                    <span class="docked-sublabel">Lo-Fi</span>
+                    <input type="range" id="studioLofiSlider" min="0" max="100" step="1" value="0" class="docked-range-slider" />
+                    <span id="studioLofiVal" class="docked-val-badge">0%</span>
                   </div>
                 </div>
 

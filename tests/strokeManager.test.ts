@@ -1854,6 +1854,73 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
       expect(lineEffectiveVol).toBeLessThan(0.4); // line near seam is attenuated as expected
     });
   });
+
+  describe('Option 2: Per-Line Lo-Fi Crunch & Tone Duo Effects', () => {
+    it('manages per-line distortion, filterCutoff, and lofi settings with undo/redo', () => {
+      const sm = new StrokeManager();
+      const stroke = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+
+      expect(stroke.distortion).toBe(0.0);
+      expect(stroke.filterCutoff).toBe(1.0);
+      expect(stroke.lofi).toBe(0.0);
+
+      // 1. Modify distortion
+      sm.setStrokeDistortion(stroke.id, 0.45);
+      expect(stroke.distortion).toBe(0.45);
+
+      // 2. Modify tone filter cutoff
+      sm.setStrokeFilterCutoff(stroke.id, 0.6);
+      expect(stroke.filterCutoff).toBe(0.6);
+
+      // 3. Modify lo-fi crunch
+      sm.setStrokeLofi(stroke.id, 0.75);
+      expect(stroke.lofi).toBe(0.75);
+
+      // 4. Test Undo sequence
+      sm.undo(); // undo lofi
+      expect(stroke.lofi).toBe(0.0);
+      expect(stroke.filterCutoff).toBe(0.6);
+      expect(stroke.distortion).toBe(0.45);
+
+      sm.undo(); // undo filterCutoff
+      expect(stroke.filterCutoff).toBe(1.0);
+      expect(stroke.distortion).toBe(0.45);
+
+      sm.undo(); // undo distortion
+      expect(stroke.distortion).toBe(0.0);
+
+      // 5. Test Redo sequence
+      sm.redo(); // redo distortion
+      expect(stroke.distortion).toBe(0.45);
+
+      sm.redo(); // redo filterCutoff
+      expect(stroke.filterCutoff).toBe(0.6);
+
+      sm.redo(); // redo lofi
+      expect(stroke.lofi).toBe(0.75);
+    });
+
+    it('exports and imports per-line distortion, filterCutoff, and lofi settings accurately', () => {
+      const sm = new StrokeManager();
+      const s = sm.addStroke(dummyPath, 'solid', 'indigo', 100, undefined, undefined, 1.0, '2bars', 'restart', 30, 1.0, 'speed', 0.4, 0.0, 'speed', 'single', false, false, 0.5, 0.35, 0.8);
+
+      expect(s.distortion).toBe(0.5);
+      expect(s.filterCutoff).toBe(0.35);
+      expect(s.lofi).toBe(0.8);
+
+      const exported = sm.exportComposition('Lofi Track');
+      expect(exported.strokes[0].distortion).toBe(0.5);
+      expect(exported.strokes[0].filterCutoff).toBe(0.35);
+      expect(exported.strokes[0].lofi).toBe(0.8);
+
+      const sm2 = new StrokeManager();
+      sm2.importComposition(exported);
+      expect(sm2.activeStrokes.length).toBe(1);
+      expect(sm2.activeStrokes[0].distortion).toBe(0.5);
+      expect(sm2.activeStrokes[0].filterCutoff).toBe(0.35);
+      expect(sm2.activeStrokes[0].lofi).toBe(0.8);
+    });
+  });
 });
 
 

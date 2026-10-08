@@ -82,6 +82,8 @@ const trackDistortionSlider = document.getElementById('trackDistortionSlider') a
 const trackDistortionVal = document.getElementById('trackDistortionVal') as HTMLSpanElement | null;
 const trackFilterSlider = document.getElementById('trackFilterSlider') as HTMLInputElement | null;
 const trackFilterVal = document.getElementById('trackFilterVal') as HTMLSpanElement | null;
+const trackLofiSlider = document.getElementById('trackLofiSlider') as HTMLInputElement | null;
+const trackLofiVal = document.getElementById('trackLofiVal') as HTMLSpanElement | null;
 const waveShapeSelect = document.getElementById('waveShapeSelect') as HTMLSelectElement;
 const waveSineBtn = document.getElementById('waveSineBtn') as HTMLButtonElement;
 const waveAmpSlider = document.getElementById('waveAmpSlider') as HTMLInputElement;
@@ -272,6 +274,12 @@ const studioDupTrackBtn = document.getElementById('studioDupTrackBtn') as HTMLBu
 const studioDelTrackBtn = document.getElementById('studioDelTrackBtn') as HTMLButtonElement | null;
 const studioDeselectTrackBtn = document.getElementById('studioDeselectTrackBtn') as HTMLButtonElement | null;
 const studioTimingModeLabel = document.getElementById('studioTimingModeLabel') as HTMLElement | null;
+const studioDistortionSlider = document.getElementById('studioDistortionSlider') as HTMLInputElement | null;
+const studioDistortionVal = document.getElementById('studioDistortionVal') as HTMLSpanElement | null;
+const studioFilterSlider = document.getElementById('studioFilterSlider') as HTMLInputElement | null;
+const studioFilterVal = document.getElementById('studioFilterVal') as HTMLSpanElement | null;
+const studioLofiSlider = document.getElementById('studioLofiSlider') as HTMLInputElement | null;
+const studioLofiVal = document.getElementById('studioLofiVal') as HTMLSpanElement | null;
 
 // Minimalist Running Sequence HUD
 const seqMiniIndicator = document.getElementById('seqMiniIndicator') as HTMLElement | null;
@@ -1470,6 +1478,25 @@ function updateStudioDockedInspector(): void {
   if (studioWaveSineBtn) {
     studioWaveSineBtn.classList.toggle('active', (stroke.waveParams?.amplitude ?? 0) > 0);
   }
+
+  // Tone & Grit controls sync
+  const dist = typeof stroke.distortion === 'number' ? stroke.distortion : 0.0;
+  if (studioDistortionSlider && studioDistortionVal) {
+    studioDistortionSlider.value = Math.round(dist * 100).toString();
+    studioDistortionVal.textContent = `${Math.round(dist * 100)}%`;
+  }
+
+  const cutoff = typeof stroke.filterCutoff === 'number' ? stroke.filterCutoff : 1.0;
+  if (studioFilterSlider && studioFilterVal) {
+    studioFilterSlider.value = Math.round(cutoff * 100).toString();
+    studioFilterVal.textContent = `${Math.round(cutoff * 100)}%`;
+  }
+
+  const lofi = typeof stroke.lofi === 'number' ? stroke.lofi : 0.0;
+  if (studioLofiSlider && studioLofiVal) {
+    studioLofiSlider.value = Math.round(lofi * 100).toString();
+    studioLofiVal.textContent = `${Math.round(lofi * 100)}%`;
+  }
 }
 
 // Studio Inspector Controls Events
@@ -1556,6 +1583,67 @@ studioWaveAmpSlider?.addEventListener('input', () => {
   const shape = (studioWaveShapeSelect?.value ?? 'sine') as WaveShapeType;
   strokeManager.restructureStrokeWave(strokeManager.selectedStrokeId, amp, 2, shape, false);
   setCompositionDirty(true);
+});
+
+// Studio Tone & Grit Event Listeners
+studioDistortionSlider?.addEventListener('input', () => {
+  if (strokeManager.selectedStrokeId && studioDistortionSlider && studioDistortionVal) {
+    const d = parseFloat(studioDistortionSlider.value) / 100;
+    studioDistortionVal.textContent = `${Math.round(d * 100)}%`;
+    if (trackDistortionSlider && trackDistortionVal) {
+      trackDistortionSlider.value = studioDistortionSlider.value;
+      trackDistortionVal.textContent = `${Math.round(d * 100)}%`;
+    }
+    strokeManager.setStrokeDistortion(strokeManager.selectedStrokeId, d, false);
+  }
+});
+
+studioDistortionSlider?.addEventListener('change', () => {
+  if (strokeManager.selectedStrokeId && studioDistortionSlider) {
+    const d = parseFloat(studioDistortionSlider.value) / 100;
+    strokeManager.setStrokeDistortion(strokeManager.selectedStrokeId, d, true);
+    setCompositionDirty(true);
+  }
+});
+
+studioFilterSlider?.addEventListener('input', () => {
+  if (strokeManager.selectedStrokeId && studioFilterSlider && studioFilterVal) {
+    const c = parseFloat(studioFilterSlider.value) / 100;
+    studioFilterVal.textContent = `${Math.round(c * 100)}%`;
+    if (trackFilterSlider && trackFilterVal) {
+      trackFilterSlider.value = studioFilterSlider.value;
+      trackFilterVal.textContent = `${Math.round(c * 100)}%`;
+    }
+    strokeManager.setStrokeFilterCutoff(strokeManager.selectedStrokeId, c, false);
+  }
+});
+
+studioFilterSlider?.addEventListener('change', () => {
+  if (strokeManager.selectedStrokeId && studioFilterSlider) {
+    const c = parseFloat(studioFilterSlider.value) / 100;
+    strokeManager.setStrokeFilterCutoff(strokeManager.selectedStrokeId, c, true);
+    setCompositionDirty(true);
+  }
+});
+
+studioLofiSlider?.addEventListener('input', () => {
+  if (strokeManager.selectedStrokeId && studioLofiSlider && studioLofiVal) {
+    const cr = parseFloat(studioLofiSlider.value) / 100;
+    studioLofiVal.textContent = `${Math.round(cr * 100)}%`;
+    if (trackLofiSlider && trackLofiVal) {
+      trackLofiSlider.value = studioLofiSlider.value;
+      trackLofiVal.textContent = `${Math.round(cr * 100)}%`;
+    }
+    strokeManager.setStrokeLofi(strokeManager.selectedStrokeId, cr, false);
+  }
+});
+
+studioLofiSlider?.addEventListener('change', () => {
+  if (strokeManager.selectedStrokeId && studioLofiSlider) {
+    const cr = parseFloat(studioLofiSlider.value) / 100;
+    strokeManager.setStrokeLofi(strokeManager.selectedStrokeId, cr, true);
+    setCompositionDirty(true);
+  }
 });
 
 studioDupTrackBtn?.addEventListener('click', () => {
@@ -2945,6 +3033,12 @@ function updateTrackActionsVisibility(): void {
         trackFilterVal.textContent = `${Math.round(cutoff * 100)}%`;
       }
 
+      const lofi = typeof stroke.lofi === 'number' ? stroke.lofi : 0.0;
+      if (trackLofiSlider && trackLofiVal) {
+        trackLofiSlider.value = Math.round(lofi * 100).toString();
+        trackLofiVal.textContent = `${Math.round(lofi * 100)}%`;
+      }
+
       // Wave parameters sync (hidden for stationary dot notes)
       const trackWaveControl = document.getElementById('trackWaveControl');
       if (trackWaveControl) {
@@ -3245,6 +3339,10 @@ trackDistortionSlider?.addEventListener('input', () => {
   if (strokeManager.selectedStrokeId && trackDistortionSlider && trackDistortionVal) {
     const dist = parseFloat(trackDistortionSlider.value) / 100;
     trackDistortionVal.textContent = `${Math.round(dist * 100)}%`;
+    if (studioDistortionSlider && studioDistortionVal) {
+      studioDistortionSlider.value = trackDistortionSlider.value;
+      studioDistortionVal.textContent = `${Math.round(dist * 100)}%`;
+    }
     strokeManager.setStrokeDistortion(strokeManager.selectedStrokeId, dist, false);
   }
 });
@@ -3253,6 +3351,7 @@ trackDistortionSlider?.addEventListener('change', () => {
   if (strokeManager.selectedStrokeId && trackDistortionSlider) {
     const dist = parseFloat(trackDistortionSlider.value) / 100;
     strokeManager.setStrokeDistortion(strokeManager.selectedStrokeId, dist, true);
+    setCompositionDirty(true);
   }
 });
 
@@ -3261,6 +3360,10 @@ trackFilterSlider?.addEventListener('input', () => {
   if (strokeManager.selectedStrokeId && trackFilterSlider && trackFilterVal) {
     const cutoff = parseFloat(trackFilterSlider.value) / 100;
     trackFilterVal.textContent = `${Math.round(cutoff * 100)}%`;
+    if (studioFilterSlider && studioFilterVal) {
+      studioFilterSlider.value = trackFilterSlider.value;
+      studioFilterVal.textContent = `${Math.round(cutoff * 100)}%`;
+    }
     strokeManager.setStrokeFilterCutoff(strokeManager.selectedStrokeId, cutoff, false);
   }
 });
@@ -3269,6 +3372,28 @@ trackFilterSlider?.addEventListener('change', () => {
   if (strokeManager.selectedStrokeId && trackFilterSlider) {
     const cutoff = parseFloat(trackFilterSlider.value) / 100;
     strokeManager.setStrokeFilterCutoff(strokeManager.selectedStrokeId, cutoff, true);
+    setCompositionDirty(true);
+  }
+});
+
+// Lo-Fi Crunch Slider Event Listeners
+trackLofiSlider?.addEventListener('input', () => {
+  if (strokeManager.selectedStrokeId && trackLofiSlider && trackLofiVal) {
+    const lofi = parseFloat(trackLofiSlider.value) / 100;
+    trackLofiVal.textContent = `${Math.round(lofi * 100)}%`;
+    if (studioLofiSlider && studioLofiVal) {
+      studioLofiSlider.value = trackLofiSlider.value;
+      studioLofiVal.textContent = `${Math.round(lofi * 100)}%`;
+    }
+    strokeManager.setStrokeLofi(strokeManager.selectedStrokeId, lofi, false);
+  }
+});
+
+trackLofiSlider?.addEventListener('change', () => {
+  if (strokeManager.selectedStrokeId && trackLofiSlider) {
+    const lofi = parseFloat(trackLofiSlider.value) / 100;
+    strokeManager.setStrokeLofi(strokeManager.selectedStrokeId, lofi, true);
+    setCompositionDirty(true);
   }
 });
 
