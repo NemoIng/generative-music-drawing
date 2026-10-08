@@ -47,10 +47,10 @@ export const TEMPLATES: Record<string, MusicalTemplate> = {
     xAxisModulation: 'panAndTone',
     breathingMode: 'deep',
     strokes: (w: number, h: number, _quantizer: ScaleQuantizer) => {
-      const subBassY = h * 0.82;
-      const celloY = h * 0.60;
-      const organY = h * 0.42;
-      const tineY = h * 0.50;
+      const subBassY = h * 0.958;
+      const celloY = h * 0.828;
+      const organY = h * 0.695;
+      const tineY = h * 0.768;
 
       return [
         // 1. Slate Analog Sub-Bass Drone (Sustained Bounce, 90s timer)
@@ -140,10 +140,10 @@ export const TEMPLATES: Record<string, MusicalTemplate> = {
     xAxisModulation: 'panAndTone',
     breathingMode: 'deep',
     strokes: (w: number, h: number, _quantizer: ScaleQuantizer) => {
-      const organRootY = h * 0.72;
-      const celloY = h * 0.58;
-      const harpY = h * 0.46;
-      const bellY = h * 0.32;
+      const organRootY = h * 0.903;
+      const celloY = h * 0.809;
+      const harpY = h * 0.735;
+      const bellY = h * 0.613;
 
       return [
         // 1. Spruce Glass Organ Foundation (Bounce, 80s timer)
@@ -232,10 +232,10 @@ export const TEMPLATES: Record<string, MusicalTemplate> = {
     xAxisModulation: 'panAndTone',
     breathingMode: 'drift',
     strokes: (w: number, h: number, _quantizer: ScaleQuantizer) => {
-      const celloY = h * 0.78;
-      const kalimbaY = h * 0.62;
-      const harpY = h * 0.44;
-      const fluteY = h * 0.36;
+      const celloY = h * 0.915;
+      const kalimbaY = h * 0.853;
+      const harpY = h * 0.758;
+      const fluteY = h * 0.707;
 
       return [
         // 1. Indigo Bowed Cello Bass Foundation (Bounce, 70s timer)
@@ -323,10 +323,10 @@ export const TEMPLATES: Record<string, MusicalTemplate> = {
     xAxisModulation: 'panAndTone',
     breathingMode: 'gentle',
     strokes: (w: number, h: number, _quantizer: ScaleQuantizer) => {
-      const bowlY = h * 0.76;
-      const bambooDropsY = h * 0.56;
-      const kotoY = h * 0.42;
-      const chimeY = h * 0.30;
+      const bowlY = h * 0.836;
+      const bambooDropsY = h * 0.700;
+      const kotoY = h * 0.575;
+      const chimeY = h * 0.484;
 
       return [
         // 1. Spruce Glass Organ Singing Bowl Drone (Bounce, 85s timer)
@@ -417,9 +417,9 @@ export const TEMPLATES: Record<string, MusicalTemplate> = {
     strokes: (w: number, h: number, _quantizer: ScaleQuantizer) => {
       const kickY = h * 0.84;
       const clapY = h * 0.58;
-      const bassY = h * 0.74;
-      const stringY = h * 0.46;
-      const organY = h * 0.34;
+      const bassY = h * 0.916;
+      const stringY = h * 0.727;
+      const organY = h * 0.633;
 
       return [
         // 1. Onyx 808 Sub-Bass Kick Pulse (Kick Zone >= 0.72)

@@ -158,11 +158,11 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     const marks = track?.querySelectorAll('.pitch-mark');
     expect(marks?.length).toBe(5);
     const markTexts = Array.from(marks || []).map((m) => m.textContent?.trim());
-    expect(markTexts).toContain('4.7 kHz');
-    expect(markTexts).toContain('1.2 kHz');
-    expect(markTexts).toContain('294 Hz');
-    expect(markTexts).toContain('73 Hz');
-    expect(markTexts).toContain('18 Hz');
+    expect(markTexts).toContain('8.0 kHz');
+    expect(markTexts).toContain('2.0 kHz');
+    expect(markTexts).toContain('630 Hz');
+    expect(markTexts).toContain('200 Hz');
+    expect(markTexts).toContain('100 Hz');
   });
 
   it('contains Live Wand & Performance Controls inside advanced drawer', () => {

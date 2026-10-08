@@ -35,11 +35,23 @@ export interface ScaleGuideline {
 export class ScaleQuantizer {
   private config: QuantizerConfig;
 
-  /** Total number of octaves supported across the scrollable field */
+  /** Minimum supported frequency (100 Hz) */
+  public static readonly MIN_FREQ = 100;
+  /** Start of high-precision middle band (200 Hz) */
+  public static readonly MID_FREQ_LOW = 200;
+  /** End of high-precision middle band (2000 Hz) */
+  public static readonly MID_FREQ_HIGH = 2000;
+  /** Maximum supported frequency (8000 Hz) */
+  public static readonly MAX_FREQ = 8000;
+
+  /** Fraction of vertical coordinate space allocated to 100 Hz - 200 Hz (15%) */
+  public static readonly U_LOW = 0.15;
+  /** Fraction of vertical coordinate space allocated up to 2000 Hz (85%, so 200-2000 Hz takes 70%) */
+  public static readonly U_HIGH = 0.85;
+
+  /** Total number of octaves supported across the scrollable field (backward-compatibility) */
   public readonly totalFieldOctaves = 8;
-  /** Octaves below the base root note (e.g. D0 and D1 below D2) */
   public readonly octavesBelowRoot = 2;
-  /** Octaves above the base root note (up to D8, ~4.7 kHz) */
   public readonly octavesAboveRoot = 6;
 
   private _scrollY = 0;
@@ -89,10 +101,53 @@ export class ScaleQuantizer {
 
   /**
    * Total number of addressable discrete pitches across the vertical axis.
-   * N_notes = O * K
    */
   public get totalNotes(): number {
     return this.config.octaveSpan * this.config.scale.intervals.length;
+  }
+
+  /**
+   * Non-linear mapping from physical frequency (Hz) to normalized vertical coordinate u in [0, 1].
+   * 100 Hz -> 0.0
+   * 200 Hz -> 0.15 (15% height)
+   * 2000 Hz -> 0.85 (70% height allocated for precision between 200 and 2000 Hz)
+   * 8000 Hz -> 1.0 (15% height)
+   */
+  public static frequencyToNormalizedU(freq: number): number {
+    const f = Math.max(ScaleQuantizer.MIN_FREQ, Math.min(ScaleQuantizer.MAX_FREQ, freq));
+    if (f <= ScaleQuantizer.MIN_FREQ) return 0;
+    if (f >= ScaleQuantizer.MAX_FREQ) return 1;
+
+    if (f < ScaleQuantizer.MID_FREQ_LOW) {
+      const t = Math.log2(f / ScaleQuantizer.MIN_FREQ) / Math.log2(ScaleQuantizer.MID_FREQ_LOW / ScaleQuantizer.MIN_FREQ);
+      return t * ScaleQuantizer.U_LOW;
+    } else if (f <= ScaleQuantizer.MID_FREQ_HIGH) {
+      const t = Math.log2(f / ScaleQuantizer.MID_FREQ_LOW) / Math.log2(ScaleQuantizer.MID_FREQ_HIGH / ScaleQuantizer.MID_FREQ_LOW);
+      return ScaleQuantizer.U_LOW + t * (ScaleQuantizer.U_HIGH - ScaleQuantizer.U_LOW);
+    } else {
+      const t = Math.log2(f / ScaleQuantizer.MID_FREQ_HIGH) / Math.log2(ScaleQuantizer.MAX_FREQ / ScaleQuantizer.MID_FREQ_HIGH);
+      return ScaleQuantizer.U_HIGH + t * (1 - ScaleQuantizer.U_HIGH);
+    }
+  }
+
+  /**
+   * Inverse non-linear mapping from normalized vertical coordinate u in [0, 1] to physical frequency (Hz).
+   */
+  public static normalizedUToFrequency(u: number): number {
+    const clampedU = Math.max(0, Math.min(1, u));
+    if (clampedU <= 0) return ScaleQuantizer.MIN_FREQ;
+    if (clampedU >= 1) return ScaleQuantizer.MAX_FREQ;
+
+    if (clampedU < ScaleQuantizer.U_LOW) {
+      const t = clampedU / ScaleQuantizer.U_LOW;
+      return ScaleQuantizer.MIN_FREQ * Math.pow(ScaleQuantizer.MID_FREQ_LOW / ScaleQuantizer.MIN_FREQ, t);
+    } else if (clampedU <= ScaleQuantizer.U_HIGH) {
+      const t = (clampedU - ScaleQuantizer.U_LOW) / (ScaleQuantizer.U_HIGH - ScaleQuantizer.U_LOW);
+      return ScaleQuantizer.MID_FREQ_LOW * Math.pow(ScaleQuantizer.MID_FREQ_HIGH / ScaleQuantizer.MID_FREQ_LOW, t);
+    } else {
+      const t = (clampedU - ScaleQuantizer.U_HIGH) / (1 - ScaleQuantizer.U_HIGH);
+      return ScaleQuantizer.MID_FREQ_HIGH * Math.pow(ScaleQuantizer.MAX_FREQ / ScaleQuantizer.MID_FREQ_HIGH, t);
+    }
   }
 
   /**
@@ -104,74 +159,47 @@ export class ScaleQuantizer {
   }
 
   /**
-   * Total virtual height in pixels of the full 8-octave frequency world.
+   * Total virtual height in pixels of the frequency world.
    */
   public getWorldHeight(viewportHeight: number): number {
-    return this.totalFieldOctaves * this.getPxPerOctave(viewportHeight);
+    return viewportHeight > 0 ? viewportHeight : 800;
   }
 
   /**
-   * World Y coordinate of the base root note (e.g. D2).
+   * World Y coordinate of the base root note.
    */
   public getRootWorldY(viewportHeight: number): number {
-    const pxPerOctave = this.getPxPerOctave(viewportHeight);
-    return (this.totalFieldOctaves - this.octavesBelowRoot) * pxPerOctave;
+    const u = ScaleQuantizer.frequencyToNormalizedU(this.config.root.frequency);
+    return (1 - u) * (viewportHeight > 0 ? viewportHeight : 800);
   }
 
-  /**
-   * Default scroll offset that positions the base root note (D2) at the bottom of the viewport.
-   */
-  public getDefaultScrollY(viewportHeight: number): number {
-    const rootWorldY = this.getRootWorldY(viewportHeight);
-    return Math.max(0, rootWorldY - viewportHeight);
+  public getDefaultScrollY(_viewportHeight: number): number {
+    return 0;
   }
 
-  /**
-   * Maximum scroll offset (lowest frequencies at the bottom of the world).
-   */
-  public getMaxScrollY(viewportHeight: number): number {
-    const worldHeight = this.getWorldHeight(viewportHeight);
-    return Math.max(0, worldHeight - viewportHeight);
+  public getMaxScrollY(_viewportHeight: number): number {
+    return 0;
   }
 
-  /**
-   * Clamps scroll offset within valid bounds [0, maxScrollY].
-   */
-  public clampScrollY(y: number, viewportHeight: number): number {
-    const max = this.getMaxScrollY(viewportHeight);
-    return Math.max(0, Math.min(max, y));
+  public clampScrollY(_y: number, _viewportHeight: number): number {
+    return 0;
   }
 
-  /**
-   * Resets scroll offset to the default centered middle register (D2 to D6).
-   */
-  public resetScrollToDefault(viewportHeight: number): number {
-    this._scrollY = this.getDefaultScrollY(viewportHeight);
-    return this._scrollY;
+  public resetScrollToDefault(_viewportHeight: number): number {
+    this._scrollY = 0;
+    return 0;
   }
 
-  /**
-   * Increments scroll offset by deltaY and clamps within bounds.
-   */
-  public scrollBy(deltaY: number, viewportHeight: number): number {
-    this._scrollY = this.clampScrollY(this._scrollY + deltaY, viewportHeight);
-    return this._scrollY;
+  public scrollBy(_deltaY: number, _viewportHeight: number): number {
+    return 0;
   }
 
-  /**
-   * Converts a screen coordinate into world pitch coordinate.
-   */
   public screenToWorldY(screenY: number, _viewportHeight?: number): number {
-    if (!this._scrollEnabled) return screenY;
-    return screenY + this._scrollY;
+    return screenY;
   }
 
-  /**
-   * Converts a world pitch coordinate into screen coordinate.
-   */
   public worldToScreenY(worldY: number, _viewportHeight?: number): number {
-    if (!this._scrollEnabled) return worldY;
-    return worldY - this._scrollY;
+    return worldY;
   }
 
   /**
@@ -187,10 +215,10 @@ export class ScaleQuantizer {
 
   /**
    * Converts normalized pitch coordinate u into continuous scale degree.
-   * d_cont = u * (N_notes - 1)
    */
   public getContinuousScaleDegree(u: number): number {
-    return u * (this.totalNotes - 1);
+    const targetFreq = ScaleQuantizer.normalizedUToFrequency(u);
+    return this.frequencyToContinuousDegree(targetFreq);
   }
 
   /**
@@ -205,14 +233,43 @@ export class ScaleQuantizer {
   }
 
   /**
+   * Computes frequency in Hz for an exact whole scale degree index k.
+   */
+  public getFrequencyForDegree(k: number): number {
+    const semitones = this.getSemitonesForDegree(k);
+    return this.config.root.frequency * Math.pow(2, semitones / 12);
+  }
+
+  /**
+   * Converts any frequency into a continuous scale degree in the active musical scale.
+   */
+  public frequencyToContinuousDegree(freq: number): number {
+    const rootFreq = this.config.root.frequency;
+    const intervals = this.config.scale.intervals;
+    const K = intervals.length;
+
+    const semi = 12 * Math.log2(Math.max(1, freq) / rootFreq);
+    const m = Math.floor(semi / 12);
+    const remSemi = semi - 12 * m;
+
+    for (let i = 0; i < K; i++) {
+      const curr = intervals[i];
+      const next = i + 1 < K ? intervals[i + 1] : 12;
+      if (remSemi >= curr && remSemi <= next) {
+        const frac = next > curr ? (remSemi - curr) / (next - curr) : 0;
+        return m * K + i + frac;
+      }
+    }
+    return m * K;
+  }
+
+  /**
    * Discrete note snapping (for dotted/striped strokes).
    */
   public quantizeDiscrete(y: number, canvasHeight: number): PitchResult {
-    if (this._scrollEnabled) {
-      return this.quantizeDiscreteWorld(y, canvasHeight);
-    }
     const u = this.normalizeY(y, canvasHeight);
-    const dCont = this.getContinuousScaleDegree(u);
+    const targetFreq = ScaleQuantizer.normalizedUToFrequency(u);
+    const dCont = this.frequencyToContinuousDegree(targetFreq);
     const k = Math.round(dCont);
 
     const semitones = this.getSemitonesForDegree(k);
@@ -232,13 +289,10 @@ export class ScaleQuantizer {
    * Continuous pitch mode (for solid drone strokes) smoothly interpolating across modal intervals.
    */
   public quantizeContinuous(y: number, canvasHeight: number): PitchResult {
-    if (this._scrollEnabled) {
-      return this.quantizeContinuousWorld(y, canvasHeight);
-    }
     const u = this.normalizeY(y, canvasHeight);
-    const dCont = this.getContinuousScaleDegree(u);
+    const targetFreq = ScaleQuantizer.normalizedUToFrequency(u);
+    const dCont = this.frequencyToContinuousDegree(targetFreq);
 
-    // Interpolate semitones across modal intervals without deadband snapping
     const k1 = Math.floor(dCont);
     const k2 = k1 + 1;
     const gamma = dCont - k1;
@@ -250,9 +304,6 @@ export class ScaleQuantizer {
     const freq2 = this.config.root.frequency * Math.pow(2, semi2 / 12);
 
     // Compute transition blend [0, 1] across interval:
-    // When gamma <= 0.15: 100% note 1 (blend = 0)
-    // When gamma >= 0.85: 100% note 2 (blend = 1)
-    // In transition zone [0.15, 0.85]: smooth S-curve blend
     const t = Math.max(0, Math.min(1, (gamma - 0.15) / 0.70));
     const blend = t * t * (3 - 2 * t);
 
@@ -287,169 +338,58 @@ export class ScaleQuantizer {
     };
   }
 
-  /**
-   * Continuous pitch evaluation across the full 8-octave scrollable world.
-   */
   public quantizeContinuousWorld(worldY: number, viewportHeight: number): PitchResult {
-    const pxPerOctave = this.getPxPerOctave(viewportHeight);
-    const rootWorldY = this.getRootWorldY(viewportHeight);
-    const deltaOctaves = (rootWorldY - worldY) / pxPerOctave;
-    const K = this.config.scale.intervals.length;
-    const dCont = deltaOctaves * K;
-
-    const k1 = Math.floor(dCont);
-    const k2 = k1 + 1;
-    const gamma = dCont - k1;
-
-    const semi1 = this.getSemitonesForDegree(k1);
-    const semi2 = this.getSemitonesForDegree(k2);
-
-    const freq1 = this.config.root.frequency * Math.pow(2, semi1 / 12);
-    const freq2 = this.config.root.frequency * Math.pow(2, semi2 / 12);
-
-    // Compute transition blend [0, 1] across interval
-    const t = Math.max(0, Math.min(1, (gamma - 0.15) / 0.70));
-    const blend = t * t * (3 - 2 * t);
-
-    // Equal-power gains for Note 1 and Note 2:
-    const g1 = Math.cos(blend * 0.5 * Math.PI);
-    const g2 = Math.sin(blend * 0.5 * Math.PI);
-
-    // Bank A is for even degrees, Bank B is for odd degrees
-    const isK1Even = ((k1 % 2) + 2) % 2 === 0;
-    const freqA = isK1Even ? freq1 : freq2;
-    const freqB = isK1Even ? freq2 : freq1;
-    const gainA = isK1Even ? g1 : g2;
-    const gainB = isK1Even ? g2 : g1;
-
-    const semitones = (1 - gamma) * semi1 + gamma * semi2;
-    const frequency = this.config.root.frequency * Math.pow(2, semitones / 12);
-    const noteName = getNoteNameFromSemitones(this.config.root.baseMidi, semitones);
-
-    return {
-      frequency,
-      freq1,
-      freq2,
-      freqA,
-      freqB,
-      gainA,
-      gainB,
-      blend,
-      semitones,
-      scaleDegree: dCont,
-      noteName,
-      isSnapped: Math.abs(dCont - Math.round(dCont)) < 0.05,
-    };
+    return this.quantizeContinuous(worldY, viewportHeight);
   }
 
-  /**
-   * Discrete pitch evaluation across the full 8-octave scrollable world.
-   */
   public quantizeDiscreteWorld(worldY: number, viewportHeight: number): PitchResult {
-    const pxPerOctave = this.getPxPerOctave(viewportHeight);
-    const rootWorldY = this.getRootWorldY(viewportHeight);
-    const deltaOctaves = (rootWorldY - worldY) / pxPerOctave;
-    const K = this.config.scale.intervals.length;
-    const dCont = deltaOctaves * K;
-    const k = Math.round(dCont);
-
-    const semitones = this.getSemitonesForDegree(k);
-    const frequency = this.config.root.frequency * Math.pow(2, semitones / 12);
-    const noteName = getNoteNameFromSemitones(this.config.root.baseMidi, semitones);
-
-    return {
-      frequency,
-      semitones,
-      scaleDegree: k,
-      noteName,
-      isSnapped: true,
-    };
+    return this.quantizeDiscrete(worldY, viewportHeight);
   }
 
   /**
-   * Generates all guidelines across the entire 8-octave world.
+   * Generates all guidelines across the entire [100 Hz, 8000 Hz] non-linear spectrum.
    */
   public getAllGuidelines(viewportHeight: number): ScaleGuideline[] {
-    const pxPerOctave = this.getPxPerOctave(viewportHeight);
-    const rootWorldY = this.getRootWorldY(viewportHeight);
-    const K = this.config.scale.intervals.length;
-    const minK = -this.octavesBelowRoot * K;
-    const maxK = (this.totalFieldOctaves - this.octavesBelowRoot) * K;
-    const chordDegs = this.config.chordDegrees;
+    return this.getGuidelines(viewportHeight);
+  }
 
-    const guidelines: ScaleGuideline[] = [];
-    for (let k = minK; k <= maxK; k++) {
-      const deltaOctaves = k / K;
-      const worldY = rootWorldY - deltaOctaves * pxPerOctave;
-      const semitones = this.getSemitonesForDegree(k);
-      const frequency = this.config.root.frequency * Math.pow(2, semitones / 12);
-      const noteName = getNoteNameFromSemitones(this.config.root.baseMidi, semitones);
-      const degInScale = ((k % K) + K) % K;
-      const isRoot = degInScale === 0;
-      const isChordTone = chordDegs !== undefined ? chordDegs.includes(degInScale) : isRoot;
-
-      guidelines.push({
-        y: worldY,
-        screenY: worldY - this._scrollY,
-        scaleDegree: k,
-        noteName,
-        frequency,
-        isRoot,
-        isChordTone,
-      });
-    }
-
-    return guidelines;
+  public getVisibleGuidelines(viewportHeight: number, _scrollY: number): ScaleGuideline[] {
+    return this.getGuidelines(viewportHeight);
   }
 
   /**
-   * Generates guidelines that are visible within the current viewport window.
-   */
-  public getVisibleGuidelines(viewportHeight: number, scrollY: number): ScaleGuideline[] {
-    const all = this.getAllGuidelines(viewportHeight);
-    return all
-      .filter((g) => {
-        const screenY = g.y - scrollY;
-        return screenY >= -30 && screenY <= viewportHeight + 30;
-      })
-      .map((g) => ({
-        ...g,
-        screenY: g.y - scrollY,
-      }));
-  }
-
-  /**
-   * Generates canvas Y guidelines for all scale degrees to render musical grid overlay.
+   * Generates canvas Y guidelines for all scale degrees within [100 Hz, 8000 Hz]
+   * placed according to the non-linear scale.
    */
   public getGuidelines(canvasHeight: number): ScaleGuideline[] {
-    if (this._scrollEnabled) {
-      return this.getVisibleGuidelines(canvasHeight, this._scrollY);
-    }
-    const total = this.totalNotes;
     const guidelines: ScaleGuideline[] = [];
     const K = this.config.scale.intervals.length;
+    const chordDegs = this.config.chordDegrees;
 
-    for (let k = 0; k < total; k++) {
-      const u = total > 1 ? k / (total - 1) : 0;
-      const y = (1 - u) * canvasHeight;
-      const semitones = this.getSemitonesForDegree(k);
-      const frequency = this.config.root.frequency * Math.pow(2, semitones / 12);
-      const noteName = getNoteNameFromSemitones(this.config.root.baseMidi, semitones);
-      const isRoot = k % K === 0;
-      const degInScale = k % K;
-      const isChordTone = this.config.chordDegrees !== undefined
-        ? this.config.chordDegrees.includes(degInScale)
-        : isRoot;
+    // Scan whole degree indices from sub-audio up through 8.5 kHz
+    let k = -20;
+    while (this.getFrequencyForDegree(k) < ScaleQuantizer.MAX_FREQ * 1.5) {
+      const frequency = this.getFrequencyForDegree(k);
+      if (frequency >= ScaleQuantizer.MIN_FREQ && frequency <= ScaleQuantizer.MAX_FREQ) {
+        const u = ScaleQuantizer.frequencyToNormalizedU(frequency);
+        const y = (1 - u) * canvasHeight;
+        const semitones = this.getSemitonesForDegree(k);
+        const noteName = getNoteNameFromSemitones(this.config.root.baseMidi, semitones);
+        const degInScale = ((k % K) + K) % K;
+        const isRoot = degInScale === 0;
+        const isChordTone = chordDegs !== undefined ? chordDegs.includes(degInScale) : isRoot;
 
-      guidelines.push({
-        y,
-        screenY: y,
-        scaleDegree: k,
-        noteName,
-        frequency,
-        isRoot,
-        isChordTone,
-      });
+        guidelines.push({
+          y,
+          screenY: y,
+          scaleDegree: k,
+          noteName,
+          frequency,
+          isRoot,
+          isChordTone,
+        });
+      }
+      k++;
     }
 
     return guidelines;
@@ -458,30 +398,14 @@ export class ScaleQuantizer {
   /**
    * Retrieves summary frequency spectrum info for the interactive pitch navigator HUD.
    */
-  public getFrequencyRangeInfo(viewportHeight: number, scrollY: number) {
-    const worldHeight = this.getWorldHeight(viewportHeight);
-    const maxScroll = this.getMaxScrollY(viewportHeight);
-
-    // Bottom of world = lowest freq (D0)
-    const minFreq = this.config.root.frequency * Math.pow(2, -this.octavesBelowRoot);
-    // Top of world = highest freq (D8)
-    const maxFreq = this.config.root.frequency * Math.pow(2, this.octavesAboveRoot);
-
-    // Visible range
-    const visibleWorldBottom = scrollY + viewportHeight;
-    const visibleWorldTop = scrollY;
-    const visibleWorldCenter = scrollY + viewportHeight / 2;
-
-    const bottomPitch = this.quantizeContinuousWorld(visibleWorldBottom, viewportHeight);
-    const topPitch = this.quantizeContinuousWorld(visibleWorldTop, viewportHeight);
-    const centerPitch = this.quantizeContinuousWorld(visibleWorldCenter, viewportHeight);
-
-    const scrollRatio = maxScroll > 0 ? scrollY / maxScroll : 0;
-    const thumbHeightRatio = worldHeight > 0 ? Math.min(1, viewportHeight / worldHeight) : 1;
+  public getFrequencyRangeInfo(viewportHeight: number, _scrollY: number) {
+    const bottomPitch = this.quantizeContinuous(viewportHeight, viewportHeight);
+    const topPitch = this.quantizeContinuous(0, viewportHeight);
+    const centerPitch = this.quantizeContinuous(viewportHeight / 2, viewportHeight);
 
     return {
-      minFreq,
-      maxFreq,
+      minFreq: ScaleQuantizer.MIN_FREQ,
+      maxFreq: ScaleQuantizer.MAX_FREQ,
       visibleMinFreq: bottomPitch.frequency,
       visibleMaxFreq: topPitch.frequency,
       bottomFreq: bottomPitch.frequency,
@@ -490,8 +414,8 @@ export class ScaleQuantizer {
       topNote: topPitch.noteName,
       centerFreq: centerPitch.frequency,
       centerNote: centerPitch.noteName,
-      scrollRatio, // 0 = top (highest frequency), 1 = bottom (lowest frequency)
-      thumbHeightRatio,
+      scrollRatio: 0,
+      thumbHeightRatio: 1,
     };
   }
 }

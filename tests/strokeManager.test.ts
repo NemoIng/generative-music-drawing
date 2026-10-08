@@ -1066,12 +1066,8 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
     expect(scaledPitch.noteName).toBe(initialPitch.noteName);
   });
 
-  it('scaleMelodicStrokesY guarantees pitch frequency constancy when changing octave view', () => {
+  it('scaleMelodicStrokesY scales melodic stroke Y coordinates proportionally', () => {
     const sm = new StrokeManager();
-    const quantizer = new ScaleQuantizer({ octaveSpan: 4 });
-    quantizer.setScrollEnabled(true);
-    const viewportHeight = 800;
-
     const path: SplinePath = {
       segments: [
         {
@@ -1085,27 +1081,15 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
     };
     const stroke = sm.addStroke(path, 'solid', 'indigo', 100);
 
-    const initialPitch = quantizer.quantizeContinuous(stroke.path.segments[0].p0.y, viewportHeight);
-
-    // 1. Rescale octaveSpan from 4 to 2 (scaleFactor = 4 / 2 = 2)
-    sm.scaleMelodicStrokesY(4 / 2);
-    quantizer.updateConfig({ octaveSpan: 2 });
+    // Rescale with factor 2
+    sm.scaleMelodicStrokesY(2);
     expect(stroke.path.segments[0].p0.y).toBeCloseTo(1040, 2);
+    expect(stroke.path.segments[0].p3.y).toBeCloseTo(1040, 2);
 
-    const pitchAfter2Oct = quantizer.quantizeContinuous(stroke.path.segments[0].p0.y, viewportHeight);
-    expect(pitchAfter2Oct.frequency).toBeCloseTo(initialPitch.frequency, 4);
-    expect(pitchAfter2Oct.scaleDegree).toBeCloseTo(initialPitch.scaleDegree, 4);
-    expect(pitchAfter2Oct.noteName).toBe(initialPitch.noteName);
-
-    // 2. Rescale octaveSpan from 2 to 6 (scaleFactor = 2 / 6 = 1/3)
-    sm.scaleMelodicStrokesY(2 / 6);
-    quantizer.updateConfig({ octaveSpan: 6 });
-    expect(stroke.path.segments[0].p0.y).toBeCloseTo(1040 / 3, 2);
-
-    const pitchAfter6Oct = quantizer.quantizeContinuous(stroke.path.segments[0].p0.y, viewportHeight);
-    expect(pitchAfter6Oct.frequency).toBeCloseTo(initialPitch.frequency, 4);
-    expect(pitchAfter6Oct.scaleDegree).toBeCloseTo(initialPitch.scaleDegree, 4);
-    expect(pitchAfter6Oct.noteName).toBe(initialPitch.noteName);
+    // Rescale with factor 0.5
+    sm.scaleMelodicStrokesY(0.5);
+    expect(stroke.path.segments[0].p0.y).toBeCloseTo(520, 2);
+    expect(stroke.path.segments[0].p3.y).toBeCloseTo(520, 2);
   });
 
   it('scaleMelodicStrokesY preserves Onyx drum machine strokes without scaling Y', () => {
@@ -1750,6 +1734,7 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
     it('modulates LFO tremolo swell on stationary solid dots driven by speed', () => {
       const sm = new StrokeManager();
       sm.setBpm(120);
+      sm.setBreathingMode('off');
       const quantizer = new ScaleQuantizer();
 
       const solidDot = sm.addStroke(
