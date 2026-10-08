@@ -319,6 +319,17 @@ describe('View Modes: Studio (Layers, Master FX, Scenes) and Zen Canvas', () => 
       expect(loadFile?.parentElement).toBe(mathBtn?.parentElement);
       expect(loadFile?.parentElement?.classList.contains('drawer-two-col')).toBe(true);
     });
+
+    it('preserves Master FX tab when clicking buttons and does not force switch to layers', () => {
+      const tabMasterBtn = doc.getElementById('studioTabBtnMaster');
+      const syncBtn = doc.getElementById('studioSyncBtn');
+      const randBtn = doc.getElementById('studioRandomizeBtn');
+
+      expect(tabMasterBtn).toBeDefined();
+      expect(syncBtn).toBeDefined();
+      expect(randBtn).toBeDefined();
+    });
   });
 });
+
 

@@ -379,9 +379,6 @@ const inputHandler = new InputHandler(canvasEl, {
     activeDrawingPoints = points;
   },
   onSelectStroke: (strokeId: string | null) => {
-    if (strokeId && studioTabBtnMaster?.classList.contains('active')) {
-      switchStudioDeckTab('mixer');
-    }
     updateTrackActionsVisibility();
     updateMixerSelection();
     if (inputHandler.appMode === 'draw' && statMode) {
@@ -2818,9 +2815,6 @@ function updateTrackActionsVisibility(): void {
   const currentView = typeof viewModeManager !== 'undefined' ? viewModeManager.getMode() : 'studio';
 
   if (selectedId) {
-    if (studioTabBtnMaster?.classList.contains('active')) {
-      switchStudioDeckTab('mixer');
-    }
     statMode.textContent = 'Line Selected';
     const stroke = strokeManager.activeStrokes.find((s) => s.id === selectedId);
 
