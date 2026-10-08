@@ -2555,8 +2555,41 @@ xAxisSelect.addEventListener('change', () => {
 // Global Floating Tooltip Popover & Contextual Hover Descriptions
 const DEFAULT_HELP = 'Hover over any setting for details';
 const floatingTooltip = document.getElementById('floatingTooltip') as HTMLDivElement | null;
+const toggleTooltipsBtn = document.getElementById('toggleTooltipsBtn') as HTMLButtonElement | null;
+
+// Tooltip enabled state (persisted across sessions in localStorage)
+let areTooltipsEnabled = typeof localStorage !== 'undefined'
+  ? localStorage.getItem('harmonic_tooltips_enabled') !== 'false'
+  : true;
+
+function updateTooltipsToggleUI(): void {
+  if (!toggleTooltipsBtn) return;
+  toggleTooltipsBtn.textContent = areTooltipsEnabled ? 'Hints On' : 'Hints Off';
+  toggleTooltipsBtn.classList.toggle('active', areTooltipsEnabled);
+  toggleTooltipsBtn.setAttribute(
+    'data-tooltip',
+    areTooltipsEnabled
+      ? 'Toggle Tooltips: Turn hover descriptions and popups OFF for an experienced distraction-free view.'
+      : 'Toggle Tooltips: Turn hover descriptions and popups back ON.'
+  );
+}
+
+toggleTooltipsBtn?.addEventListener('click', () => {
+  areTooltipsEnabled = !areTooltipsEnabled;
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem('harmonic_tooltips_enabled', areTooltipsEnabled.toString());
+  }
+  updateTooltipsToggleUI();
+  if (!areTooltipsEnabled) {
+    hideTooltip();
+  }
+});
+
+// Initialize button label and state
+updateTooltipsToggleUI();
 
 function showTooltip(el: HTMLElement) {
+  if (!areTooltipsEnabled) return;
   const text = el.getAttribute('data-tooltip');
   if (!text) return;
 
@@ -2601,6 +2634,7 @@ function hideTooltip() {
 
 // Delegated hover listener to seamlessly support all elements (including dynamically created ones)
 document.addEventListener('mouseover', (e) => {
+  if (!areTooltipsEnabled) return;
   const target = (e.target as HTMLElement)?.closest?.('[data-tooltip]') as HTMLElement | null;
   if (target) {
     showTooltip(target);

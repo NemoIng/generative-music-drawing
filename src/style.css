@@ -142,6 +142,12 @@ body, html {
   letter-spacing: -0.01em;
 }
 
+.drawer-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .drawer-close-btn {
   height: 22px;
   padding: 0 8px;

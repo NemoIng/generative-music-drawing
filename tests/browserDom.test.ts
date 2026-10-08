@@ -694,6 +694,13 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     const randBtn = doc.getElementById('studioRandomizeBtn');
     expect(randBtn?.getAttribute('data-tooltip')).toContain('Randomize Lines');
   });
+
+  it('contains toggleTooltipsBtn button in Controls drawer to disable hover descriptions', () => {
+    const toggleBtn = doc.getElementById('toggleTooltipsBtn');
+    expect(toggleBtn).not.toBeNull();
+    expect(toggleBtn?.textContent?.trim()).toBe('Hints On');
+    expect(toggleBtn?.getAttribute('data-tooltip')).toContain('Toggle Tooltips');
+  });
 });
 
 
