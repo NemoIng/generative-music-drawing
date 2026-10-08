@@ -410,13 +410,27 @@
                 <input type="range" id="bpmSlider" min="10" max="200" step="2" value="100" class="minimal-slider" />
               </div>
 
-              <!-- Master Reverb Space Depth -->
+              <!-- Master Reverb Space Depth & Type Selection -->
               <div class="control-group slider-group has-tooltip" data-tooltip="Space (Reverb): Adjusts room acoustics from intimate & dry (0%) to vast cathedral ambient (100%).">
                 <div class="slider-header">
                   <label for="spaceSlider">Space (Master Reverb)</label>
                   <span id="spaceVal" class="value-badge">35%</span>
                 </div>
                 <input type="range" id="spaceSlider" min="0" max="100" step="1" value="35" class="minimal-slider" />
+              </div>
+
+              <!-- Reverb Acoustic Model -->
+              <div class="control-group has-tooltip" data-tooltip="Acoustic Space Type: Cathedral (grand 4.2s ambient decay), Shimmer (pitch-shifted octave sparkle), Ambient Hall (natural concert hall), Warm Plate (silky steel reflections), or Intimate Chamber (tight dry space).">
+                <label for="reverbTypeSelect">Acoustic Space Model</label>
+                <div class="select-wrapper">
+                  <select id="reverbTypeSelect" class="minimal-select">
+                    <option value="cathedral" selected>Cathedral (4.2s Lush)</option>
+                    <option value="shimmer">Shimmer (Ethereal Glow)</option>
+                    <option value="hall">Ambient Hall (2.4s Warm)</option>
+                    <option value="plate">Warm Plate (1.8s Silky)</option>
+                    <option value="chamber">Intimate Chamber (0.9s Dry)</option>
+                  </select>
+                </div>
               </div>
 
               <!-- Organic Timbral Breathing (Option 3) -->
@@ -430,6 +444,33 @@
                     <option value="off">Off (Static)</option>
                   </select>
                 </div>
+              </div>
+
+              <!-- Sound Dynamics: Stereo Width -->
+              <div class="control-group slider-group has-tooltip" data-tooltip="Stereo Width: Expands master stereo field from mono focus (0%) through natural stereo (100%) to ultra-wide immersive dimension (200%).">
+                <div class="slider-header">
+                  <label for="stereoWidthSlider">Stereo Field Dimension</label>
+                  <span id="stereoWidthVal" class="value-badge">100% (Stereo)</span>
+                </div>
+                <input type="range" id="stereoWidthSlider" min="0" max="200" step="5" value="100" class="minimal-slider" />
+              </div>
+
+              <!-- Sound Dynamics: Tape Warmth & Flutter -->
+              <div class="control-group slider-group has-tooltip" data-tooltip="Tape Warmth: Analog harmonic saturation and low-end warmth that rounds off digital harshness and provides vintage warmth.">
+                <div class="slider-header">
+                  <label for="tapeWarmthSlider">Tape Warmth &amp; Saturation</label>
+                  <span id="tapeWarmthVal" class="value-badge">0% (Clean)</span>
+                </div>
+                <input type="range" id="tapeWarmthSlider" min="0" max="100" step="1" value="0" class="minimal-slider" />
+              </div>
+
+              <!-- Sound Dynamics: Sidechain Ducking -->
+              <div class="control-group slider-group has-tooltip" data-tooltip="Sidechain Ducking: Rhythmic breathing pulse that dips the ambient bed on kick drum beats and playhead impacts for dramatic breathing pump.">
+                <div class="slider-header">
+                  <label for="duckingSlider">Sidechain Ducking (Pump)</label>
+                  <span id="duckingVal" class="value-badge">0% (Off)</span>
+                </div>
+                <input type="range" id="duckingSlider" min="0" max="100" step="1" value="0" class="minimal-slider" />
               </div>
 
               <!-- Canvas Pitch Octave Span -->
@@ -912,10 +953,49 @@
 
               <div class="control-group slider-group">
                 <div class="slider-header">
-                  <label for="studioMasterReverbSlider">Cathedral Reverb</label>
+                  <label for="studioMasterReverbSlider">Reverb Mix</label>
                   <span id="studioMasterReverbVal" class="value-badge">65%</span>
                 </div>
                 <input type="range" id="studioMasterReverbSlider" min="0" max="100" step="1" value="65" class="minimal-slider" />
+              </div>
+
+              <div class="control-group">
+                <label for="studioReverbTypeSelect">Acoustic Space Model</label>
+                <div class="select-wrapper">
+                  <select id="studioReverbTypeSelect" class="minimal-select">
+                    <option value="cathedral" selected>Cathedral (4.2s Lush)</option>
+                    <option value="shimmer">Shimmer (Ethereal Glow)</option>
+                    <option value="hall">Ambient Hall (2.4s Warm)</option>
+                    <option value="plate">Warm Plate (1.8s Silky)</option>
+                    <option value="chamber">Intimate Chamber (0.9s Dry)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="control-group slider-group">
+                <div class="slider-header">
+                  <label for="studioStereoWidthSlider">Stereo Width</label>
+                  <span id="studioStereoWidthVal" class="value-badge">100% (Stereo)</span>
+                </div>
+                <input type="range" id="studioStereoWidthSlider" min="0" max="200" step="5" value="100" class="minimal-slider" />
+              </div>
+
+              <div class="drawer-two-col">
+                <div class="control-group slider-group">
+                  <div class="slider-header">
+                    <label for="studioTapeWarmthSlider">Tape Warmth</label>
+                    <span id="studioTapeWarmthVal" class="value-badge">0%</span>
+                  </div>
+                  <input type="range" id="studioTapeWarmthSlider" min="0" max="100" step="1" value="0" class="minimal-slider" />
+                </div>
+
+                <div class="control-group slider-group">
+                  <div class="slider-header">
+                    <label for="studioDuckingSlider">Ducking (Pump)</label>
+                    <span id="studioDuckingVal" class="value-badge">0%</span>
+                  </div>
+                  <input type="range" id="studioDuckingSlider" min="0" max="100" step="1" value="0" class="minimal-slider" />
+                </div>
               </div>
 
               <div class="drawer-two-col">

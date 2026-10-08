@@ -7,7 +7,7 @@ import { InputHandler, DrawShape } from './canvas/inputHandler';
 import { DrawnStroke, StrokeStyle, TraversalMode, HarmonizerMode, BreathingMode, XAxisModulationMode, LoopQuantizeMode, WaveShapeType, SavedComposition, MorphCurveMode } from './engine/types';
 import { INSTRUMENTS, DEFAULT_INSTRUMENT, getInstrument, getInstrumentColor } from './audio/instruments';
 import { TEMPLATES, buildTemplateStrokes } from './audio/templates';
-import { soundEngine } from './audio/audioContext';
+import { soundEngine, ReverbType } from './audio/audioContext';
 import { SplinePath, Point2D } from './math/types';
 import { LiveRecorder, simulateAndExportMp3, downloadBlob } from './audio/mp3Export';
 import { ViewModeManager, ViewMode } from './ui/viewModes';
@@ -281,11 +281,27 @@ const studioMasterBpmSlider = document.getElementById('studioMasterBpmSlider') a
 const studioMasterBpmVal = document.getElementById('studioMasterBpmVal') as HTMLSpanElement | null;
 const studioMasterReverbSlider = document.getElementById('studioMasterReverbSlider') as HTMLInputElement | null;
 const studioMasterReverbVal = document.getElementById('studioMasterReverbVal') as HTMLSpanElement | null;
+const studioReverbTypeSelect = document.getElementById('studioReverbTypeSelect') as HTMLSelectElement | null;
+const studioStereoWidthSlider = document.getElementById('studioStereoWidthSlider') as HTMLInputElement | null;
+const studioStereoWidthVal = document.getElementById('studioStereoWidthVal') as HTMLSpanElement | null;
+const studioTapeWarmthSlider = document.getElementById('studioTapeWarmthSlider') as HTMLInputElement | null;
+const studioTapeWarmthVal = document.getElementById('studioTapeWarmthVal') as HTMLSpanElement | null;
+const studioDuckingSlider = document.getElementById('studioDuckingSlider') as HTMLInputElement | null;
+const studioDuckingVal = document.getElementById('studioDuckingVal') as HTMLSpanElement | null;
 const studioScaleSelect = document.getElementById('studioScaleSelect') as HTMLSelectElement | null;
 const studioRootSelect = document.getElementById('studioRootSelect') as HTMLSelectElement | null;
 const studioXAxisSelect = document.getElementById('studioXAxisSelect') as HTMLSelectElement | null;
 const studioSyncBtn = document.getElementById('studioSyncBtn') as HTMLButtonElement | null;
 const studioRandomizeBtn = document.getElementById('studioRandomizeBtn') as HTMLButtonElement | null;
+
+// Controls Drawer Reverb & Dynamics Controls
+const reverbTypeSelect = document.getElementById('reverbTypeSelect') as HTMLSelectElement | null;
+const stereoWidthSlider = document.getElementById('stereoWidthSlider') as HTMLInputElement | null;
+const stereoWidthVal = document.getElementById('stereoWidthVal') as HTMLSpanElement | null;
+const tapeWarmthSlider = document.getElementById('tapeWarmthSlider') as HTMLInputElement | null;
+const tapeWarmthVal = document.getElementById('tapeWarmthVal') as HTMLSpanElement | null;
+const duckingSlider = document.getElementById('duckingSlider') as HTMLInputElement | null;
+const duckingVal = document.getElementById('duckingVal') as HTMLSpanElement | null;
 
 // Zen Mode Elements
 const zenPlayPauseBtn = document.getElementById('zenPlayPauseBtn') as HTMLButtonElement | null;
@@ -1178,6 +1194,22 @@ function switchStudioDeckTab(tab: 'mixer' | 'master' | 'scenes'): void {
       studioMasterReverbSlider.value = revPct.toString();
       studioMasterReverbVal.textContent = `${revPct}%`;
     }
+    if (studioReverbTypeSelect) studioReverbTypeSelect.value = soundEngine.reverbType;
+    if (studioStereoWidthSlider && studioStereoWidthVal) {
+      const widthPct = Math.round(soundEngine.stereoWidth * 100);
+      studioStereoWidthSlider.value = widthPct.toString();
+      studioStereoWidthVal.textContent = widthPct === 100 ? '100% (Stereo)' : (widthPct === 0 ? '0% (Mono)' : `${widthPct}%`);
+    }
+    if (studioTapeWarmthSlider && studioTapeWarmthVal) {
+      const warmthPct = Math.round(soundEngine.tapeWarmth * 100);
+      studioTapeWarmthSlider.value = warmthPct.toString();
+      studioTapeWarmthVal.textContent = warmthPct === 0 ? '0% (Clean)' : `${warmthPct}%`;
+    }
+    if (studioDuckingSlider && studioDuckingVal) {
+      const duckPct = Math.round(soundEngine.duckingDepth * 100);
+      studioDuckingSlider.value = duckPct.toString();
+      studioDuckingVal.textContent = duckPct === 0 ? '0% (Off)' : `${duckPct}%`;
+    }
     if (studioScaleSelect) studioScaleSelect.value = scaleSelect.value;
     if (studioRootSelect) studioRootSelect.value = rootSelect.value;
     if (studioXAxisSelect) studioXAxisSelect.value = xAxisSelect.value;
@@ -1205,8 +1237,49 @@ studioMasterReverbSlider?.addEventListener('input', () => {
   const pct = parseInt(studioMasterReverbSlider.value, 10);
   if (studioMasterReverbVal) studioMasterReverbVal.textContent = `${pct}%`;
   soundEngine.setReverbMix(pct / 100);
-  spaceSlider.value = pct.toString();
-  spaceVal.textContent = `${pct}%`;
+  if (spaceSlider) spaceSlider.value = pct.toString();
+  if (spaceVal) spaceVal.textContent = `${pct}%`;
+  setCompositionDirty(true);
+});
+
+studioReverbTypeSelect?.addEventListener('change', () => {
+  if (!studioReverbTypeSelect) return;
+  const type = studioReverbTypeSelect.value as ReverbType;
+  soundEngine.setReverbType(type);
+  if (reverbTypeSelect) reverbTypeSelect.value = type;
+  setCompositionDirty(true);
+});
+
+studioStereoWidthSlider?.addEventListener('input', () => {
+  if (!studioStereoWidthSlider) return;
+  const pct = parseInt(studioStereoWidthSlider.value, 10);
+  soundEngine.setStereoWidth(pct / 100);
+  const text = pct === 100 ? '100% (Stereo)' : (pct === 0 ? '0% (Mono)' : `${pct}%`);
+  if (studioStereoWidthVal) studioStereoWidthVal.textContent = text;
+  if (stereoWidthSlider) stereoWidthSlider.value = pct.toString();
+  if (stereoWidthVal) stereoWidthVal.textContent = text;
+  setCompositionDirty(true);
+});
+
+studioTapeWarmthSlider?.addEventListener('input', () => {
+  if (!studioTapeWarmthSlider) return;
+  const pct = parseInt(studioTapeWarmthSlider.value, 10);
+  soundEngine.setTapeWarmth(pct / 100);
+  const text = pct === 0 ? '0% (Clean)' : `${pct}%`;
+  if (studioTapeWarmthVal) studioTapeWarmthVal.textContent = text;
+  if (tapeWarmthSlider) tapeWarmthSlider.value = pct.toString();
+  if (tapeWarmthVal) tapeWarmthVal.textContent = text;
+  setCompositionDirty(true);
+});
+
+studioDuckingSlider?.addEventListener('input', () => {
+  if (!studioDuckingSlider) return;
+  const pct = parseInt(studioDuckingSlider.value, 10);
+  soundEngine.setDuckingDepth(pct / 100);
+  const text = pct === 0 ? '0% (Off)' : `${pct}%`;
+  if (studioDuckingVal) studioDuckingVal.textContent = text;
+  if (duckingSlider) duckingSlider.value = pct.toString();
+  if (duckingVal) duckingVal.textContent = text;
   setCompositionDirty(true);
 });
 
@@ -2649,6 +2722,53 @@ spaceSlider?.addEventListener('input', () => {
   const val = parseInt(spaceSlider.value, 10);
   spaceVal.textContent = `${val}%`;
   soundEngine.setReverbMix(val / 100);
+  if (studioMasterReverbSlider) studioMasterReverbSlider.value = val.toString();
+  if (studioMasterReverbVal) studioMasterReverbVal.textContent = `${val}%`;
+  setCompositionDirty(true);
+});
+
+// Reverb Space Model
+reverbTypeSelect?.addEventListener('change', () => {
+  if (!reverbTypeSelect) return;
+  const type = reverbTypeSelect.value as ReverbType;
+  soundEngine.setReverbType(type);
+  if (studioReverbTypeSelect) studioReverbTypeSelect.value = type;
+  setCompositionDirty(true);
+});
+
+// Stereo Field Dimension Slider
+stereoWidthSlider?.addEventListener('input', () => {
+  if (!stereoWidthSlider) return;
+  const pct = parseInt(stereoWidthSlider.value, 10);
+  soundEngine.setStereoWidth(pct / 100);
+  const text = pct === 100 ? '100% (Stereo)' : (pct === 0 ? '0% (Mono)' : `${pct}%`);
+  if (stereoWidthVal) stereoWidthVal.textContent = text;
+  if (studioStereoWidthSlider) studioStereoWidthSlider.value = pct.toString();
+  if (studioStereoWidthVal) studioStereoWidthVal.textContent = text;
+  setCompositionDirty(true);
+});
+
+// Tape Warmth & Saturation Slider
+tapeWarmthSlider?.addEventListener('input', () => {
+  if (!tapeWarmthSlider) return;
+  const pct = parseInt(tapeWarmthSlider.value, 10);
+  soundEngine.setTapeWarmth(pct / 100);
+  const text = pct === 0 ? '0% (Clean)' : `${pct}%`;
+  if (tapeWarmthVal) tapeWarmthVal.textContent = text;
+  if (studioTapeWarmthSlider) studioTapeWarmthSlider.value = pct.toString();
+  if (studioTapeWarmthVal) studioTapeWarmthVal.textContent = text;
+  setCompositionDirty(true);
+});
+
+// Sidechain Ducking Pump Slider
+duckingSlider?.addEventListener('input', () => {
+  if (!duckingSlider) return;
+  const pct = parseInt(duckingSlider.value, 10);
+  soundEngine.setDuckingDepth(pct / 100);
+  const text = pct === 0 ? '0% (Off)' : `${pct}%`;
+  if (duckingVal) duckingVal.textContent = text;
+  if (studioDuckingSlider) studioDuckingSlider.value = pct.toString();
+  if (studioDuckingVal) studioDuckingVal.textContent = text;
   setCompositionDirty(true);
 });
 

@@ -633,6 +633,34 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     handleSliderWheel(bpmSlider, -100, true);
     expect(bpmSlider.value).toBe('110');
   });
+
+  it('contains Reverb Space Model options and Sound Dynamics controls across drawer and studio deck', () => {
+    const reverbSelect = doc.getElementById('reverbTypeSelect') as HTMLSelectElement;
+    const studioReverbSelect = doc.getElementById('studioReverbTypeSelect') as HTMLSelectElement;
+    expect(reverbSelect).not.toBeNull();
+    expect(studioReverbSelect).not.toBeNull();
+
+    const expectedReverbTypes = ['cathedral', 'shimmer', 'hall', 'plate', 'chamber'];
+    const drawerOptions = Array.from(reverbSelect.options).map((o) => o.value);
+    const studioOptions = Array.from(studioReverbSelect.options).map((o) => o.value);
+    expect(drawerOptions).toEqual(expectedReverbTypes);
+    expect(studioOptions).toEqual(expectedReverbTypes);
+
+    const stereoWidth = doc.getElementById('stereoWidthSlider') as HTMLInputElement;
+    const studioStereoWidth = doc.getElementById('studioStereoWidthSlider') as HTMLInputElement;
+    expect(stereoWidth).not.toBeNull();
+    expect(studioStereoWidth).not.toBeNull();
+
+    const tapeWarmth = doc.getElementById('tapeWarmthSlider') as HTMLInputElement;
+    const studioTapeWarmth = doc.getElementById('studioTapeWarmthSlider') as HTMLInputElement;
+    expect(tapeWarmth).not.toBeNull();
+    expect(studioTapeWarmth).not.toBeNull();
+
+    const ducking = doc.getElementById('duckingSlider') as HTMLInputElement;
+    const studioDucking = doc.getElementById('studioDuckingSlider') as HTMLInputElement;
+    expect(ducking).not.toBeNull();
+    expect(studioDucking).not.toBeNull();
+  });
 });
 
 

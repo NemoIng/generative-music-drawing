@@ -93,6 +93,9 @@ export class DrumSynth {
     // Kicks are routed primarily dry with optional subtle sub-reverb
     engine.connectVoice(panner, 0.0, Math.min(1, reverb * 0.25));
 
+    // Momentary sidechain ducking pulse on master bus if ducking dynamics is enabled
+    engine.triggerDucking(velocity, 0.28, now);
+
     osc.start(now);
     clickOsc.start(now);
     osc.stop(now + 0.4);
