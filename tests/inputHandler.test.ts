@@ -493,6 +493,241 @@ describe('Unified InputHandler Interaction Model', () => {
       pulseSpy.mockRestore();
       handler.destroy();
     });
+
+    it('creates single stationary note dot when drawShape is point', async () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+      const completeSpy = vi.fn();
+
+      const handler = new InputHandler(mockCanvas, {
+        strokeManager: sm,
+        getQuantizer: () => quantizer,
+        getCurrentInstrument: () => 'amber',
+        getCurrentStyle: () => 'solid',
+        onStrokeComplete: completeSpy,
+      });
+
+      handler.setDrawShape('point');
+      expect(handler.drawShape).toBe('point');
+
+      const pointerDown = listeners['pointerdown'][0];
+      const pointerUp = windowListeners['pointerup'][0];
+
+      await pointerDown({ clientX: 300, clientY: 200, button: 0 } as any);
+      pointerUp({ clientX: 300, clientY: 200 } as any);
+
+      expect(completeSpy).toHaveBeenCalled();
+      const [path, isPoint] = completeSpy.mock.calls[0];
+      expect(isPoint).toBe(true);
+      expect(path.segments.length).toBe(1);
+      expect(path.segments[0].p0.x).toBe(300);
+      expect(path.segments[0].p0.y).toBe(200);
+
+      handler.destroy();
+    });
+  });
+
+  describe('Per-Stroke Distortion and Tone Filter', () => {
+    beforeEach(() => {
+      vi.spyOn(soundEngine, 'isReady', 'get').mockReturnValue(false);
+    });
+
+    it('sets and undoes stroke distortion and filterCutoff correctly', () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+      const stroke = sm.addStroke(dummyPath, 'solid', 'amber', 140, quantizer, 600, 1.0);
+
+      expect(stroke.distortion ?? 0.0).toBe(0.0);
+      expect(stroke.filterCutoff ?? 1.0).toBe(1.0);
+
+      // Set distortion
+      sm.setStrokeDistortion(stroke.id, 0.75);
+      expect(stroke.distortion).toBe(0.75);
+
+      // Undo distortion
+      sm.undo();
+      expect(stroke.distortion).toBe(0.0);
+
+      // Redo distortion
+      sm.redo();
+      expect(stroke.distortion).toBe(0.75);
+
+      // Set filter cutoff
+      sm.setStrokeFilterCutoff(stroke.id, 0.40);
+      expect(stroke.filterCutoff).toBe(0.40);
+
+      // Undo filter cutoff
+      sm.undo();
+      expect(stroke.filterCutoff).toBe(1.0);
+
+      // Redo filter cutoff
+      sm.redo();
+      expect(stroke.filterCutoff).toBe(0.40);
+    });
+
+    it('persists distortion, filterCutoff, and isPoint across export and import', () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+      const stroke = sm.addStroke(
+        dummyPath,
+        'solid',
+        'amber',
+        140,
+        quantizer,
+        600,
+        1.0,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        true,
+        true,
+        0.85,
+        0.35
+      );
+
+      expect(stroke.isPoint).toBe(true);
+      expect(stroke.distortion).toBe(0.85);
+      expect(stroke.filterCutoff).toBe(0.35);
+
+      const exported = sm.exportComposition();
+      expect(exported.strokes[0].isPoint).toBe(true);
+      expect(exported.strokes[0].distortion).toBe(0.85);
+      expect(exported.strokes[0].filterCutoff).toBe(0.35);
+
+      const sm2 = new StrokeManager();
+      sm2.importComposition(exported, quantizer, 600, 800);
+      const importedStroke = sm2.activeStrokes[0];
+      expect(importedStroke.isPoint).toBe(true);
+      expect(importedStroke.distortion).toBe(0.85);
+      expect(importedStroke.filterCutoff).toBe(0.35);
+    });
+
+    it('dynamically updates stationary dot note frequency and playhead position when translated/moved', () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+      const dotPath: SplinePath = {
+        segments: [
+          {
+            p0: { x: 400, y: 500 },
+            p1: { x: 400.1, y: 500 },
+            p2: { x: 400.2, y: 500 },
+            p3: { x: 400.3, y: 500 },
+          },
+        ],
+        isClosed: false,
+      };
+
+      // Create a solid dot stroke at y = 500
+      const dot = sm.addStroke(
+        dotPath,
+        'solid',
+        'indigo',
+        100,
+        quantizer,
+        600,
+        1.0,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        true,
+        true
+      );
+
+      expect(dot.isPoint).toBe(true);
+
+      // Run update at initial position
+      sm.update(0.016, 800, 600, quantizer);
+      expect(dot.playhead.lastEval).toBeDefined();
+      expect(dot.playhead.lastEval?.point.x).toBe(400);
+      expect(dot.playhead.lastEval?.point.y).toBe(500);
+      const initialFreq = dot.playhead.lastPitch?.frequency;
+      expect(initialFreq).toBeGreaterThan(0);
+
+      // Translate the dot upward (lower Y = higher pitch in canvas coordinates)
+      sm.translateStroke(dot.id, 50, -250, true);
+
+      expect(dot.path.segments[0].p0.x).toBe(450);
+      expect(dot.path.segments[0].p0.y).toBe(250);
+      expect(dot.playhead.lastEval?.point.x).toBe(450);
+      expect(dot.playhead.lastEval?.point.y).toBe(250);
+
+      // Run update after translation
+      sm.update(0.016, 800, 600, quantizer);
+
+      const movedFreq = dot.playhead.lastPitch?.frequency;
+      expect(movedFreq).toBeGreaterThan(initialFreq!);
+
+      // Translate back downward and verify pitch drops
+      sm.translateStroke(dot.id, 0, 300, true);
+      sm.update(0.016, 800, 600, quantizer);
+      const lowerFreq = dot.playhead.lastPitch?.frequency;
+      expect(lowerFreq).toBeLessThan(movedFreq!);
+
+      // Test undoing the move restores original coordinates and frequency
+      sm.undo();
+      sm.undo();
+      sm.update(0.016, 800, 600, quantizer);
+      expect(dot.playhead.lastEval?.point.x).toBe(400);
+      expect(dot.playhead.lastEval?.point.y).toBe(500);
+      expect(dot.playhead.lastPitch?.frequency).toBeCloseTo(initialFreq!, 2);
+    });
+
+    it('updates stationary dot note triggering coordinates for dotted and onyx drum machines', () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+      const dotPath: SplinePath = {
+        segments: [
+          {
+            p0: { x: 300, y: 550 }, // lower area = Kick drum
+            p1: { x: 300.1, y: 550 },
+            p2: { x: 300.2, y: 550 },
+            p3: { x: 300.3, y: 550 },
+          },
+        ],
+        isClosed: false,
+      };
+
+      const drumDot = sm.addStroke(
+        dotPath,
+        'dotted',
+        'onyx',
+        100,
+        quantizer,
+        600,
+        1.0,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        true,
+        true
+      );
+
+      sm.update(0.016, 800, 600, quantizer);
+      expect(drumDot.playhead.lastEval?.point.y).toBe(550);
+
+      // Move drum dot to top area (y = 50, Hi-Hat zone)
+      sm.translateStroke(drumDot.id, 0, -500, false);
+      sm.update(0.016, 800, 600, quantizer);
+      expect(drumDot.playhead.lastEval?.point.y).toBe(50);
+    });
   });
 });
 

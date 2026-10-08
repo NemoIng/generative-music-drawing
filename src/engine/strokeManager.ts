@@ -39,6 +39,9 @@ type UndoAction =
   | { type: 'harmonizer'; strokeId: string; oldHarmonizer: HarmonizerMode; newHarmonizer: HarmonizerMode }
   | { type: 'reverb'; strokeId: string; oldReverb: number; newReverb: number }
   | { type: 'fluctuation'; strokeId: string; oldFluctuation: number; newFluctuation: number }
+  | { type: 'distortion'; strokeId: string; oldDistortion: number; newDistortion: number }
+  | { type: 'filterCutoff'; strokeId: string; oldFilterCutoff: number; newFilterCutoff: number }
+  | { type: 'lofi'; strokeId: string; oldLofi: number; newLofi: number }
   | {
       type: 'reshape';
       strokeId: string;
@@ -98,6 +101,10 @@ export interface StrokeClipboardData {
   traversal?: TraversalMode;
   harmonizer?: HarmonizerMode;
   waveParams?: WaveParams;
+  isPoint?: boolean;
+  distortion?: number;
+  filterCutoff?: number;
+  lofi?: number;
 }
 
 export class StrokeManager {
@@ -422,7 +429,11 @@ export class StrokeManager {
     fluctuation?: number,
     timingMode?: TimingMode,
     harmonizer?: HarmonizerMode,
-    recordUndo = true
+    recordUndo = true,
+    isPoint = false,
+    distortion = 0.0,
+    filterCutoff = 1.0,
+    lofi = 0.0
   ): DrawnStroke {
     const lut = buildArcLengthLUT(path, 64);
     const id = `stroke-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -430,6 +441,9 @@ export class StrokeManager {
     const strokeVolume = Math.max(0, Math.min(1, volume));
     const strokeReverb = typeof reverb === 'number' ? Math.max(0, Math.min(1, reverb)) : this.defaultReverb;
     const strokeFluctuation = typeof fluctuation === 'number' ? Math.max(0, Math.min(1, fluctuation)) : this.defaultFluctuation;
+    const strokeDistortion = typeof distortion === 'number' ? Math.max(0, Math.min(1, distortion)) : 0.0;
+    const strokeFilterCutoff = typeof filterCutoff === 'number' ? Math.max(0, Math.min(1, filterCutoff)) : 1.0;
+    const strokeLofi = typeof lofi === 'number' ? Math.max(0, Math.min(1, lofi)) : 0.0;
     const effectiveLoopQuantize = loopQuantize ?? this.quantizeMode;
     const effectiveTraversal: TraversalMode = (traversal === 'bounce' || (traversal as string) === 'pingpong') ? 'bounce' : 'restart';
     const effectiveDuration = duration ?? this.defaultDuration;
@@ -451,7 +465,7 @@ export class StrokeManager {
     let droneVoice: DroneVoice | null = null;
     if (style === 'solid' && this.engine.isReady && initialPitch && !this.isPaused) {
       droneVoice = new DroneVoice(this.engine);
-      droneVoice.start(initialPitch.frequency, instrument, strokeVolume, strokeReverb);
+      droneVoice.start(initialPitch.frequency, instrument, strokeVolume, strokeReverb, undefined, strokeDistortion, strokeFilterCutoff, strokeLofi);
     }
 
     const stroke: DrawnStroke = {
@@ -480,6 +494,10 @@ export class StrokeManager {
       volume: strokeVolume,
       reverb: strokeReverb,
       fluctuation: strokeFluctuation,
+      distortion: strokeDistortion,
+      filterCutoff: strokeFilterCutoff,
+      lofi: strokeLofi,
+      isPoint,
       duration: effectiveDuration,
       speedMultiplier: effectiveSpeedMult,
       timingMode: effectiveTimingMode,
@@ -569,6 +587,87 @@ export class StrokeManager {
         strokeId,
         oldFluctuation,
         newFluctuation: clampedFluctuation,
+      });
+      this.redoStack = [];
+    }
+    return true;
+  }
+
+  /**
+   * Sets the distortion overdrive level (0.0 to 1.0) of an individual stroke with undo support.
+   */
+  public setStrokeDistortion(strokeId: string, distortion: number, recordUndo = true): boolean {
+    const stroke = this.strokes.find((s) => s.id === strokeId);
+    if (!stroke) return false;
+    const clampedDistortion = Math.max(0, Math.min(1, Math.round(distortion * 100) / 100));
+    const oldDistortion = stroke.distortion ?? 0.0;
+    if (Math.abs(oldDistortion - clampedDistortion) < 0.001) return false;
+
+    stroke.distortion = clampedDistortion;
+    if (stroke.droneVoice) {
+      stroke.droneVoice.setDistortion(clampedDistortion);
+    }
+
+    if (recordUndo) {
+      this.undoStack.push({
+        type: 'distortion',
+        strokeId,
+        oldDistortion,
+        newDistortion: clampedDistortion,
+      });
+      this.redoStack = [];
+    }
+    return true;
+  }
+
+  /**
+   * Sets the tone filter cutoff (0.0 warm/dark to 1.0 open/bright) of an individual stroke with undo support.
+   */
+  public setStrokeFilterCutoff(strokeId: string, cutoff: number, recordUndo = true): boolean {
+    const stroke = this.strokes.find((s) => s.id === strokeId);
+    if (!stroke) return false;
+    const clampedCutoff = Math.max(0, Math.min(1, Math.round(cutoff * 100) / 100));
+    const oldCutoff = stroke.filterCutoff ?? 1.0;
+    if (Math.abs(oldCutoff - clampedCutoff) < 0.001) return false;
+
+    stroke.filterCutoff = clampedCutoff;
+    if (stroke.droneVoice) {
+      stroke.droneVoice.setFilterCutoff(clampedCutoff);
+    }
+
+    if (recordUndo) {
+      this.undoStack.push({
+        type: 'filterCutoff',
+        strokeId,
+        oldFilterCutoff: oldCutoff,
+        newFilterCutoff: clampedCutoff,
+      });
+      this.redoStack = [];
+    }
+    return true;
+  }
+
+  /**
+   * Sets the lo-fi bit-depth quantization crunch (0.0 clean to 1.0 lo-fi grit) of an individual stroke with undo support.
+   */
+  public setStrokeLofi(strokeId: string, lofi: number, recordUndo = true): boolean {
+    const stroke = this.strokes.find((s) => s.id === strokeId);
+    if (!stroke) return false;
+    const clampedLofi = Math.max(0, Math.min(1, Math.round(lofi * 100) / 100));
+    const oldLofi = stroke.lofi ?? 0.0;
+    if (Math.abs(oldLofi - clampedLofi) < 0.001) return false;
+
+    stroke.lofi = clampedLofi;
+    if (stroke.droneVoice) {
+      stroke.droneVoice.setLofi(clampedLofi);
+    }
+
+    if (recordUndo) {
+      this.undoStack.push({
+        type: 'lofi',
+        strokeId,
+        oldLofi,
+        newLofi: clampedLofi,
       });
       this.redoStack = [];
     }
@@ -915,9 +1014,23 @@ export class StrokeManager {
       pt.y += dy;
     }
 
-    if (stroke.playhead.lastEval) {
+    if (stroke.isPoint && stroke.path.segments.length > 0) {
+      stroke.playhead.lastEval = {
+        point: { x: stroke.path.segments[0].p0.x, y: stroke.path.segments[0].p0.y },
+        tangent: { x: 1, y: 0 },
+        curvature: 0,
+        segmentIndex: 0,
+        t: 0,
+        speed: 0,
+        s: 0,
+      };
+    } else if (stroke.playhead.lastEval) {
       stroke.playhead.lastEval.point.x += dx;
       stroke.playhead.lastEval.point.y += dy;
+    }
+
+    if (!stroke.isPoint) {
+      stroke.lut = buildArcLengthLUT(stroke.path, 64);
     }
 
     if (stroke.waveParams) {
@@ -1068,6 +1181,10 @@ export class StrokeManager {
       loopQuantize: stroke.loopQuantize ?? this.quantizeMode,
       traversal: stroke.traversal ?? this.traversalMode,
       harmonizer: stroke.harmonizer ?? 'single',
+      isPoint: stroke.isPoint,
+      distortion: stroke.distortion ?? 0.0,
+      filterCutoff: stroke.filterCutoff ?? 1.0,
+      lofi: stroke.lofi ?? 0.0,
       waveParams: stroke.waveParams
         ? {
             ...stroke.waveParams,
@@ -1125,7 +1242,12 @@ export class StrokeManager {
       this.clipboard.reverb,
       this.clipboard.fluctuation,
       this.clipboard.timingMode,
-      this.clipboard.harmonizer
+      this.clipboard.harmonizer,
+      true,
+      this.clipboard.isPoint ?? false,
+      this.clipboard.distortion ?? 0.0,
+      this.clipboard.filterCutoff ?? 1.0,
+      this.clipboard.lofi ?? 0.0
     );
 
     if (this.clipboard.waveParams) {
@@ -1242,6 +1364,17 @@ export class StrokeManager {
     for (let sIdx = this.strokes.length - 1; sIdx >= 0; sIdx--) {
       const stroke = this.strokes[sIdx];
       const testPt = (stroke.instrumentId === 'onyx' || !worldPoint) ? point : worldPoint;
+
+      if (stroke.isPoint && stroke.path.segments.length > 0) {
+        const origin = stroke.path.segments[0].p0;
+        const d = Math.hypot(testPt.x - origin.x, testPt.y - origin.y);
+        if (d < Math.max(bestDist, 20)) {
+          bestDist = d;
+          bestStroke = stroke;
+        }
+        continue;
+      }
+
       const segments = stroke.path.segments;
 
       for (const seg of segments) {
@@ -1319,7 +1452,7 @@ export class StrokeManager {
       if (!stroke.active) continue;
 
       const L = stroke.lut.totalLength;
-      if (L <= 1) continue;
+      if (!stroke.isPoint && L <= 1) continue;
 
       const ph = stroke.playhead;
       if (ph.finished) continue;
@@ -1349,7 +1482,10 @@ export class StrokeManager {
 
       // Handle curve boundary according to traversal mode (restart vs bounce)
       let didWrapOrBounce = false;
-      if (stroke.lut.isClosed) {
+      if (stroke.isPoint) {
+        // Stationary Dot / Point note: fixed on canvas, zero traversal distance
+        nextDist = 0;
+      } else if (stroke.lut.isClosed) {
         if (nextDist >= L || nextDist < 0) didWrapOrBounce = true;
         nextDist = ((nextDist % L) + L) % L;
       } else if (strokeTraversal === 'bounce') {
@@ -1377,19 +1513,29 @@ export class StrokeManager {
       ph.currentDistance = nextDist;
 
       // 1. Evaluate position with Newton-Raphson refinement (2 iterations for sub-pixel accuracy)
-      const evalResult = evaluateAtDistance(stroke.path, stroke.lut, nextDist, {
-        useNewtonRaphson: true,
-        newtonIterations: 2,
-      });
+      const evalResult = stroke.isPoint && stroke.path.segments.length > 0
+        ? {
+            point: { x: stroke.path.segments[0].p0.x, y: stroke.path.segments[0].p0.y },
+            tangent: { x: 1, y: 0 },
+            curvature: 0,
+            segmentIndex: 0,
+            t: 0,
+            speed: 0,
+            s: 0,
+          }
+        : evaluateAtDistance(stroke.path, stroke.lut, nextDist, {
+            useNewtonRaphson: true,
+            newtonIterations: 2,
+          });
 
       // Visual playhead dot glides directly along the geometric curve with 100% precision
       const visualPt: Point2D = evalResult.point;
       ph.lastEval = evalResult;
 
       // 2. Motion Trail (reset immediately on loop boundary wrap/bounce to avoid cross-screen streaks)
-      if (didWrapOrBounce) {
+      if (didWrapOrBounce || stroke.isPoint) {
         ph.trail = [visualPt];
-        if (strokeTraversal === 'bounce' && this.onTriggerSpark) {
+        if (strokeTraversal === 'bounce' && !stroke.isPoint && this.onTriggerSpark) {
           this.onTriggerSpark(visualPt.x, visualPt.y, stroke.color, 8, stroke.instrumentId);
         }
       } else {
@@ -1419,9 +1565,9 @@ export class StrokeManager {
         : this.sceneMorphGain;
       const strokeVol = (stroke.volume ?? 1.0) * strokeMorphMult;
 
-      // Smooth crossfade near loop boundaries for restart mode
+      // Smooth crossfade near loop boundaries for restart mode (bypassed for stationary dots)
       let crossfadeMultiplier = 1.0;
-      if (stroke.style === 'solid' && strokeTraversal === 'restart' && !stroke.lut.isClosed) {
+      if (stroke.style === 'solid' && strokeTraversal === 'restart' && !stroke.lut.isClosed && !stroke.isPoint) {
         const seamMargin = Math.min(30, 0.08 * L);
         const distFromBoundary = Math.min(nextDist, L - nextDist);
         if (distFromBoundary < seamMargin) {
@@ -1438,13 +1584,38 @@ export class StrokeManager {
         ? calculateBreathing(this.breathingMode, this.masterClockTime, stroke.id)
         : { filterMultiplier: 1.0, volumeMultiplier: 1.0, detuneCents: 0.0 };
 
+      // Approach 1: If stroke is a stationary solid dot, speed drives rhythmic LFO tremolo & filter breathing
+      let effBreathing = breathing;
+      if (stroke.isPoint && stroke.style === 'solid') {
+        const effectiveMult = Math.max(0.05, strokeSpeedMult);
+        const f_lfo = strokeTimingMode === 'timer'
+          ? (4 / strokeDuration)
+          : (this.bpm / 60) * effectiveMult;
+
+        let dotHash = 0;
+        for (let i = 0; i < stroke.id.length; i++) {
+          dotHash = (dotHash * 31 + stroke.id.charCodeAt(i)) & 0x7fffffff;
+        }
+        const dotPhi = ((dotHash % 1000) / 1000) * Math.PI * 2;
+        const tremoloWave = 0.5 * (1 + Math.sin(2 * Math.PI * f_lfo * this.masterClockTime + dotPhi));
+        // Tremolo centered around unity gain (0.85x to 1.15x, average 1.0x) so dots have full volume equal to lines
+        const tremoloVol = 0.85 + 0.3 * tremoloWave;
+        const tremoloFilter = 0.9 + 0.25 * tremoloWave;
+
+        effBreathing = {
+          volumeMultiplier: breathing.volumeMultiplier * tremoloVol,
+          filterMultiplier: breathing.filterMultiplier * tremoloFilter,
+          detuneCents: breathing.detuneCents,
+        };
+      }
+
       // Determine active quantizer: incoming strokes use their scene's quantizer during crossfade
       const strokeQuantizer = (stroke.morphRole === 'incoming' && this.morphIncomingQuantizer)
         ? this.morphIncomingQuantizer
         : quantizer;
 
       // Update playhead swell for visual halo breathing
-      ph.currentSwell = breathing.volumeMultiplier;
+      ph.currentSwell = effBreathing.volumeMultiplier;
 
       if (stroke.style === 'solid') {
         const pitch = strokeQuantizer.quantizeContinuous(solidEffectiveY, canvasHeight);
@@ -1454,7 +1625,7 @@ export class StrokeManager {
           const chord = getHarmonizerFrequencies(stroke.harmonizer, pitch.frequency, pitch.scaleDegree, strokeQuantizer);
           if ((!stroke.droneVoice || !stroke.droneVoice.isPlaying) && this.engine.isReady) {
             stroke.droneVoice = new DroneVoice(this.engine);
-            stroke.droneVoice.start(pitch.frequency, instrument, effectiveVol, strokeReverb, audioTime);
+            stroke.droneVoice.start(pitch.frequency, instrument, effectiveVol, strokeReverb, audioTime, stroke.distortion ?? 0.0, stroke.filterCutoff ?? 1.0, stroke.lofi ?? 0.0);
           } else if (stroke.droneVoice) {
             stroke.droneVoice.updateDual(
               pitch.freqA ?? pitch.freq1 ?? pitch.frequency,
@@ -1468,7 +1639,7 @@ export class StrokeManager {
               effectiveVol,
               chord.frequencies,
               chord.gains,
-              breathing,
+              effBreathing,
               audioTime
             );
           }
@@ -1477,117 +1648,155 @@ export class StrokeManager {
           stroke.droneVoice = null;
         }
       } else if (stroke.style === 'dotted') {
-        const dotSpacing = Math.min(DOT_SPACING, Math.max(12, L / 2));
-        const prevIndex = Math.floor(prevDist / dotSpacing);
-        const nextIndex = Math.floor(nextDist / dotSpacing);
-        const isTriggerHit = prevIndex !== nextIndex && audible;
+        let isTriggerHit = false;
+        let hitScreenX = evalResult.point.x;
+        let hitY = evalResult.point.y;
+
+        if (stroke.isPoint) {
+          // Stationary Point / Dot note: rhythmically triggered on measure beats scaled by speed
+          const effectiveMult = Math.max(0.05, strokeSpeedMult);
+          const beatDuration = strokeTimingMode === 'timer'
+            ? Math.max(0.05, strokeDuration / 8)
+            : (60 / this.bpm) / effectiveMult;
+          const prevBeat = Math.floor((this.masterClockTime - dt) / beatDuration);
+          const currBeat = Math.floor(this.masterClockTime / beatDuration);
+          isTriggerHit = prevBeat !== currBeat && audible;
+        } else {
+          const dotSpacing = Math.min(DOT_SPACING, Math.max(12, L / 2));
+          const prevIndex = Math.floor(prevDist / dotSpacing);
+          const nextIndex = Math.floor(nextDist / dotSpacing);
+          isTriggerHit = prevIndex !== nextIndex && audible;
+        }
 
         const PITCH_FLUCTUATION_OFFSET = 52;
         const jitter = (isTriggerHit && strokeFluctuation > 0)
-          ? getHitJitter(stroke.id, nextIndex) * strokeFluctuation * PITCH_FLUCTUATION_OFFSET
+          ? getHitJitter(stroke.id, Math.floor(this.masterClockTime * 10)) * strokeFluctuation * PITCH_FLUCTUATION_OFFSET
           : 0;
-        const triggerY = Math.max(0, Math.min(maxY, evalResult.point.y + jitter));
+        const triggerY = Math.max(0, Math.min(maxY, hitY + jitter));
         const pitch = strokeQuantizer.quantizeDiscrete(triggerY, canvasHeight);
         ph.lastPitch = pitch;
 
         if (isTriggerHit) {
           if (this.onTriggerSpark) {
-            this.onTriggerSpark(evalResult.point.x, evalResult.point.y, stroke.color, 6, stroke.instrumentId);
+            this.onTriggerSpark(hitScreenX, triggerY, stroke.color, 6, stroke.instrumentId);
           }
           if (stroke.instrumentId === 'onyx') {
             const normY = canvasHeight > 0 ? triggerY / canvasHeight : 0.5;
+            const drumGain = stroke.isPoint ? 1.05 * strokeVol : strokeVol;
             if (normY >= 0.72) {
-              DrumSynth.triggerKick(0.95 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode, 0, strokeReverb, this.engine, audioTime);
+              DrumSynth.triggerKick(0.95 * drumGain, hitScreenX, canvasWidth, this.xModMode, 0, strokeReverb, this.engine, audioTime);
             } else if (normY >= 0.48) {
-              DrumSynth.triggerSnare(0.9 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode, 0, strokeReverb, this.engine, audioTime);
+              DrumSynth.triggerSnare(0.9 * drumGain, hitScreenX, canvasWidth, this.xModMode, 0, strokeReverb, this.engine, audioTime);
             } else if (normY >= 0.25) {
               const tomFreq = 100 + (1 - (normY - 0.25) / 0.23) * 120;
-              DrumSynth.triggerTom(tomFreq, 0.85 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode, 0, strokeReverb, this.engine, audioTime);
+              DrumSynth.triggerTom(tomFreq, 0.85 * drumGain, hitScreenX, canvasWidth, this.xModMode, 0, strokeReverb, this.engine, audioTime);
             } else {
-              DrumSynth.triggerHiHat(true, 0.85 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode, 0, strokeReverb, this.engine, audioTime);
+              DrumSynth.triggerHiHat(true, 0.85 * drumGain, hitScreenX, canvasWidth, this.xModMode, 0, strokeReverb, this.engine, audioTime);
             }
           } else {
             // Apply subtle organic microtonal detune (+/- 35 cents) for vintage acoustic tone flutter
             const microCents = strokeFluctuation > 0
-              ? getHitJitter(stroke.id, nextIndex + 47) * strokeFluctuation * 35
+              ? getHitJitter(stroke.id, Math.floor(this.masterClockTime * 10) + 47) * strokeFluctuation * 35
               : 0;
             const finalFreq = pitch.frequency * Math.pow(2, microCents / 1200);
 
             const chord = getHarmonizerFrequencies(stroke.harmonizer, finalFreq, pitch.scaleDegree, strokeQuantizer);
             chord.frequencies.forEach((f, idx) => {
               const strumDelay = idx * 0.016; // 16ms acoustic strum spread
-              const noteVol = 0.85 * strokeVol * (chord.gains[idx] ?? 0.8);
+              const noteVol = (stroke.isPoint ? 1.0 : 0.85) * strokeVol * (chord.gains[idx] ?? 0.8);
               PulseVoice.trigger(
                 f,
                 false,
                 noteVol,
                 instrument,
-                evalResult.point.x,
+                hitScreenX,
                 canvasWidth,
                 this.xModMode,
                 strumDelay,
                 strokeReverb,
-                breathing.filterMultiplier,
-                breathing.volumeMultiplier,
+                effBreathing.filterMultiplier,
+                effBreathing.volumeMultiplier,
                 this.engine,
-                audioTime
+                audioTime,
+                stroke.distortion ?? 0.0,
+                stroke.filterCutoff ?? 1.0,
+                stroke.lofi ?? 0.0
               );
             });
           }
         }
       } else if (stroke.style === 'striped') {
-        const rollSpacing = Math.min(ROLL_SPACING, Math.max(12, L / 2));
-        const prevIndex = Math.floor(prevDist / rollSpacing);
-        const nextIndex = Math.floor(nextDist / rollSpacing);
-        const isTriggerHit = prevIndex !== nextIndex && audible;
+        let isTriggerHit = false;
+        let hitScreenX = evalResult.point.x;
+        let hitY = evalResult.point.y;
+
+        if (stroke.isPoint) {
+          // Stationary Point / Dot note: rhythmically triggered on quarter-beat / rolls scaled by speed
+          const effectiveMult = Math.max(0.05, strokeSpeedMult);
+          const rollDuration = strokeTimingMode === 'timer'
+            ? Math.max(0.025, strokeDuration / 16)
+            : ((60 / this.bpm) * 0.5) / effectiveMult;
+          const prevBeat = Math.floor((this.masterClockTime - dt) / rollDuration);
+          const currBeat = Math.floor(this.masterClockTime / rollDuration);
+          isTriggerHit = prevBeat !== currBeat && audible;
+        } else {
+          const rollSpacing = Math.min(ROLL_SPACING, Math.max(12, L / 2));
+          const prevIndex = Math.floor(prevDist / rollSpacing);
+          const nextIndex = Math.floor(nextDist / rollSpacing);
+          isTriggerHit = prevIndex !== nextIndex && audible;
+        }
 
         const PITCH_FLUCTUATION_OFFSET = 44;
         const jitter = (isTriggerHit && strokeFluctuation > 0)
-          ? getHitJitter(stroke.id, nextIndex) * strokeFluctuation * PITCH_FLUCTUATION_OFFSET
+          ? getHitJitter(stroke.id, Math.floor(this.masterClockTime * 10)) * strokeFluctuation * PITCH_FLUCTUATION_OFFSET
           : 0;
-        const triggerY = Math.max(0, Math.min(maxY, evalResult.point.y + jitter));
+        const triggerY = Math.max(0, Math.min(maxY, hitY + jitter));
         const pitch = strokeQuantizer.quantizeDiscrete(triggerY, canvasHeight);
         ph.lastPitch = pitch;
 
         if (isTriggerHit) {
           if (this.onTriggerSpark) {
-            this.onTriggerSpark(evalResult.point.x, evalResult.point.y, stroke.color, 4, stroke.instrumentId);
+            this.onTriggerSpark(hitScreenX, triggerY, stroke.color, 4, stroke.instrumentId);
           }
           if (stroke.instrumentId === 'onyx') {
             const normY = canvasHeight > 0 ? triggerY / canvasHeight : 0.5;
+            const drumGain = stroke.isPoint ? 1.05 * strokeVol : strokeVol;
             if (normY >= 0.72) {
-              DrumSynth.triggerRoll('kick', 0.95 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode, 120, strokeReverb, this.engine, audioTime);
+              DrumSynth.triggerRoll('kick', 0.95 * drumGain, hitScreenX, canvasWidth, this.xModMode, 120, strokeReverb, this.engine, audioTime);
             } else if (normY >= 0.58) {
-              DrumSynth.triggerRoll('snare', 0.9 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode, 120, strokeReverb, this.engine, audioTime);
+              DrumSynth.triggerRoll('snare', 0.9 * drumGain, hitScreenX, canvasWidth, this.xModMode, 120, strokeReverb, this.engine, audioTime);
             } else if (normY >= 0.48) {
-              DrumSynth.triggerRoll('clap', 0.85 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode, 120, strokeReverb, this.engine, audioTime);
+              DrumSynth.triggerRoll('clap', 0.85 * drumGain, hitScreenX, canvasWidth, this.xModMode, 120, strokeReverb, this.engine, audioTime);
             } else if (normY >= 0.25) {
               const tomFreq = 100 + (1 - (normY - 0.25) / 0.23) * 120;
-              DrumSynth.triggerRoll('tom', 0.85 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode, tomFreq, strokeReverb, this.engine, audioTime);
+              DrumSynth.triggerRoll('tom', 0.85 * drumGain, hitScreenX, canvasWidth, this.xModMode, tomFreq, strokeReverb, this.engine, audioTime);
             } else {
-              DrumSynth.triggerRoll('hihat', 0.85 * strokeVol, evalResult.point.x, canvasWidth, this.xModMode, 120, strokeReverb, this.engine, audioTime);
+              DrumSynth.triggerRoll('hihat', 0.85 * drumGain, hitScreenX, canvasWidth, this.xModMode, 120, strokeReverb, this.engine, audioTime);
             }
           } else {
             const microCents = strokeFluctuation > 0
-              ? getHitJitter(stroke.id, nextIndex + 59) * strokeFluctuation * 30
+              ? getHitJitter(stroke.id, Math.floor(this.masterClockTime * 10) + 59) * strokeFluctuation * 30
               : 0;
             const finalFreq = pitch.frequency * Math.pow(2, microCents / 1200);
 
             const chord = getHarmonizerFrequencies(stroke.harmonizer, finalFreq, pitch.scaleDegree, strokeQuantizer);
             chord.frequencies.forEach((f, idx) => {
-              const noteVol = 0.8 * strokeVol * (chord.gains[idx] ?? 0.8);
+              const noteVol = (stroke.isPoint ? 1.0 : 0.8) * strokeVol * (chord.gains[idx] ?? 0.8);
               PulseVoice.triggerRatchet(
                 f,
                 noteVol,
                 instrument,
-                evalResult.point.x,
+                hitScreenX,
                 canvasWidth,
                 this.xModMode,
                 strokeReverb,
-                breathing.filterMultiplier,
-                breathing.volumeMultiplier,
+                effBreathing.filterMultiplier,
+                effBreathing.volumeMultiplier,
                 this.engine,
-                audioTime
+                audioTime,
+                stroke.distortion ?? 0.0,
+                stroke.filterCutoff ?? 1.0,
+                stroke.lofi ?? 0.0
               );
             });
           }
@@ -1641,6 +1850,27 @@ export class StrokeManager {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) {
         stroke.fluctuation = action.oldFluctuation;
+      }
+      this.redoStack.push(action);
+    } else if (action.type === 'distortion') {
+      const stroke = this.strokes.find((s) => s.id === action.strokeId);
+      if (stroke) {
+        stroke.distortion = action.oldDistortion;
+        stroke.droneVoice?.setDistortion(action.oldDistortion);
+      }
+      this.redoStack.push(action);
+    } else if (action.type === 'filterCutoff') {
+      const stroke = this.strokes.find((s) => s.id === action.strokeId);
+      if (stroke) {
+        stroke.filterCutoff = action.oldFilterCutoff;
+        stroke.droneVoice?.setFilterCutoff(action.oldFilterCutoff);
+      }
+      this.redoStack.push(action);
+    } else if (action.type === 'lofi') {
+      const stroke = this.strokes.find((s) => s.id === action.strokeId);
+      if (stroke) {
+        stroke.lofi = action.oldLofi;
+        stroke.droneVoice?.setLofi(action.oldLofi);
       }
       this.redoStack.push(action);
     } else if (action.type === 'style') {
@@ -1738,6 +1968,27 @@ export class StrokeManager {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) {
         stroke.fluctuation = action.newFluctuation;
+      }
+      this.undoStack.push(action);
+    } else if (action.type === 'distortion') {
+      const stroke = this.strokes.find((s) => s.id === action.strokeId);
+      if (stroke) {
+        stroke.distortion = action.newDistortion;
+        stroke.droneVoice?.setDistortion(action.newDistortion);
+      }
+      this.undoStack.push(action);
+    } else if (action.type === 'filterCutoff') {
+      const stroke = this.strokes.find((s) => s.id === action.strokeId);
+      if (stroke) {
+        stroke.filterCutoff = action.newFilterCutoff;
+        stroke.droneVoice?.setFilterCutoff(action.newFilterCutoff);
+      }
+      this.undoStack.push(action);
+    } else if (action.type === 'lofi') {
+      const stroke = this.strokes.find((s) => s.id === action.strokeId);
+      if (stroke) {
+        stroke.lofi = action.newLofi;
+        stroke.droneVoice?.setLofi(action.newLofi);
       }
       this.undoStack.push(action);
     } else if (action.type === 'style') {
@@ -2111,6 +2362,10 @@ export class StrokeManager {
         volume: s.volume ?? 1.0,
         reverb: s.reverb ?? this.defaultReverb,
         fluctuation: s.fluctuation ?? this.defaultFluctuation,
+        distortion: s.distortion ?? 0.0,
+        filterCutoff: s.filterCutoff ?? 1.0,
+        lofi: s.lofi ?? 0.0,
+        isPoint: s.isPoint,
         muted: !!s.muted,
         path: JSON.parse(JSON.stringify(s.path)),
         waveParams: s.waveParams ? JSON.parse(JSON.stringify(s.waveParams)) : undefined,
@@ -2224,7 +2479,11 @@ export class StrokeManager {
       s.fluctuation,
       s.timingMode,
       s.harmonizer,
-      false
+      false,
+      s.isPoint ?? false,
+      s.distortion ?? 0.0,
+      s.filterCutoff ?? 1.0,
+      s.lofi ?? 0.0
     );
     if (s.muted) stroke.muted = true;
     if (clonedWave) stroke.waveParams = clonedWave;

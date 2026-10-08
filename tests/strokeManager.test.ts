@@ -1608,6 +1608,319 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
       expect(stroke.playhead.direction).toBe(1);
     });
   });
+
+  describe('Stationary Dot Speed Dynamics (Approach 1)', () => {
+    const dotPath: SplinePath = {
+      segments: [
+        {
+          p0: { x: 300, y: 300 },
+          p1: { x: 300.1, y: 300 },
+          p2: { x: 300.2, y: 300 },
+          p3: { x: 300.3, y: 300 },
+        },
+      ],
+      isClosed: false,
+    };
+
+    it('modulates rhythmic pulse triggers proportionally when speed multiplier changes on dotted dot', () => {
+      const origTrigger = PulseVoice.trigger;
+      PulseVoice.trigger = () => {};
+      try {
+        const sm = new StrokeManager();
+        sm.setBpm(120); // 120 BPM = 2 beats per second = 1 beat every 0.5s
+        const quantizer = new ScaleQuantizer();
+
+        // Dotted dot at 1.0x speed -> triggers every 0.5s
+        sm.addStroke(
+          dotPath,
+          'dotted',
+          'indigo',
+          100,
+          quantizer,
+          600,
+          1.0,
+          undefined,
+          undefined,
+          undefined,
+          1.0,
+          'speed',
+          undefined,
+          undefined,
+          'speed',
+          undefined,
+          false,
+          true
+        );
+
+        let triggers1 = 0;
+        sm.onTriggerSpark = () => { triggers1++; };
+
+        // Simulate 2 seconds at dt = 0.05s
+        for (let i = 0; i < 40; i++) {
+          sm.update(0.05, 800, 600, quantizer);
+        }
+        expect(triggers1).toBe(4); // 2s * 2 beats/s = 4 triggers
+
+        // Now create a dotted dot at 2.0x speed -> triggers twice as often (every 0.25s)
+        const sm2 = new StrokeManager();
+        sm2.setBpm(120);
+        sm2.addStroke(
+          dotPath,
+          'dotted',
+          'indigo',
+          100,
+          quantizer,
+          600,
+          1.0,
+          undefined,
+          undefined,
+          undefined,
+          2.0,
+          'speed',
+          undefined,
+          undefined,
+          'speed',
+          undefined,
+          false,
+          true
+        );
+
+        let triggers2 = 0;
+        sm2.onTriggerSpark = () => { triggers2++; };
+
+        for (let i = 0; i < 40; i++) {
+          sm2.update(0.05, 800, 600, quantizer);
+        }
+        expect(triggers2).toBe(8); // 2s * 4 beats/s = 8 triggers (2x speed!)
+      } finally {
+        PulseVoice.trigger = origTrigger;
+      }
+    });
+
+    it('modulates rapid roll trigger rate proportionally when speed changes on striped dot', () => {
+      const origRatchet = PulseVoice.triggerRatchet;
+      PulseVoice.triggerRatchet = () => {};
+      try {
+        const sm = new StrokeManager();
+        sm.setBpm(120); // base roll = 0.25s interval
+        const quantizer = new ScaleQuantizer();
+
+        const dot = sm.addStroke(
+          dotPath,
+          'striped',
+          'indigo',
+          100,
+          quantizer,
+          600,
+          1.0,
+          undefined,
+          undefined,
+          undefined,
+          1.0,
+          'speed',
+          undefined,
+          undefined,
+          'speed',
+          undefined,
+          false,
+          true
+        );
+
+        let triggers = 0;
+        sm.onTriggerSpark = () => { triggers++; };
+
+        // Simulate 1 second
+        for (let i = 0; i < 20; i++) {
+          sm.update(0.05, 800, 600, quantizer);
+        }
+        expect(triggers).toBe(4); // 1s / 0.25s = 4 rolls
+
+        // Update speed to 0.5x (half-time rolls)
+        sm.setStrokeSpeed(dot.id, 0.5, false);
+        triggers = 0;
+        for (let i = 0; i < 20; i++) {
+          sm.update(0.05, 800, 600, quantizer);
+        }
+        expect(triggers).toBe(2); // 1s / 0.5s = 2 rolls
+      } finally {
+        PulseVoice.triggerRatchet = origRatchet;
+      }
+    });
+
+    it('modulates LFO tremolo swell on stationary solid dots driven by speed', () => {
+      const sm = new StrokeManager();
+      sm.setBpm(120);
+      const quantizer = new ScaleQuantizer();
+
+      const solidDot = sm.addStroke(
+        dotPath,
+        'solid',
+        'indigo',
+        100,
+        quantizer,
+        600,
+        1.0,
+        undefined,
+        undefined,
+        undefined,
+        2.0, // 2x speed -> rapid LFO tremolo
+        'speed',
+        undefined,
+        undefined,
+        'speed',
+        undefined,
+        false,
+        true
+      );
+
+      const swells: number[] = [];
+      for (let i = 0; i < 20; i++) {
+        sm.update(0.05, 800, 600, quantizer);
+        swells.push(solidDot.playhead.currentSwell ?? 1.0);
+      }
+
+      // Verify the swell fluctuates across time rather than remaining static
+      const minSwell = Math.min(...swells);
+      const maxSwell = Math.max(...swells);
+      expect(maxSwell).toBeGreaterThan(minSwell);
+      expect(minSwell).toBeGreaterThan(0.4);
+      expect(maxSwell).toBeLessThanOrEqual(1.3);
+    });
+
+    it('maintains full volume headroom on stationary dots without loop seam crossfade attenuation', () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+
+      // Normal line in restart mode: near boundary (distance 0) it gets seam attenuated to 0.2
+      const line = sm.addStroke(
+        dummyPath,
+        'solid',
+        'indigo',
+        100,
+        quantizer,
+        600,
+        1.0,
+        undefined,
+        'restart'
+      );
+
+      // Stationary dot note: at distance 0 it MUST NOT get seam attenuated
+      const dot = sm.addStroke(
+        dotPath,
+        'solid',
+        'indigo',
+        100,
+        quantizer,
+        600,
+        1.0,
+        undefined,
+        'restart',
+        undefined,
+        1.0,
+        'speed',
+        undefined,
+        undefined,
+        'speed',
+        undefined,
+        false,
+        true
+      );
+
+      expect(dot.isPoint).toBe(true);
+      expect(line.isPoint).toBeFalsy();
+
+      let dotEffectiveVol = 0;
+      let lineEffectiveVol = 0;
+
+      // Mock drone voice to inspect effectiveVol passed to updateDual
+      dot.droneVoice = {
+        isPlaying: true,
+        updateDual: (...args: any[]) => {
+          dotEffectiveVol = args[8]; // 9th argument is effectiveVol
+        },
+      } as any;
+
+      line.droneVoice = {
+        isPlaying: true,
+        updateDual: (...args: any[]) => {
+          lineEffectiveVol = args[8];
+        },
+      } as any;
+
+      sm.update(0.016, 800, 600, quantizer);
+
+      // The dot maintains full volume (= 1.0) rather than being crushed to 0.2
+      expect(dotEffectiveVol).toBeCloseTo(1.0, 2);
+      expect(lineEffectiveVol).toBeLessThan(0.4); // line near seam is attenuated as expected
+    });
+  });
+
+  describe('Option 2: Per-Line Lo-Fi Crunch & Tone Duo Effects', () => {
+    it('manages per-line distortion, filterCutoff, and lofi settings with undo/redo', () => {
+      const sm = new StrokeManager();
+      const stroke = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+
+      expect(stroke.distortion).toBe(0.0);
+      expect(stroke.filterCutoff).toBe(1.0);
+      expect(stroke.lofi).toBe(0.0);
+
+      // 1. Modify distortion
+      sm.setStrokeDistortion(stroke.id, 0.45);
+      expect(stroke.distortion).toBe(0.45);
+
+      // 2. Modify tone filter cutoff
+      sm.setStrokeFilterCutoff(stroke.id, 0.6);
+      expect(stroke.filterCutoff).toBe(0.6);
+
+      // 3. Modify lo-fi crunch
+      sm.setStrokeLofi(stroke.id, 0.75);
+      expect(stroke.lofi).toBe(0.75);
+
+      // 4. Test Undo sequence
+      sm.undo(); // undo lofi
+      expect(stroke.lofi).toBe(0.0);
+      expect(stroke.filterCutoff).toBe(0.6);
+      expect(stroke.distortion).toBe(0.45);
+
+      sm.undo(); // undo filterCutoff
+      expect(stroke.filterCutoff).toBe(1.0);
+      expect(stroke.distortion).toBe(0.45);
+
+      sm.undo(); // undo distortion
+      expect(stroke.distortion).toBe(0.0);
+
+      // 5. Test Redo sequence
+      sm.redo(); // redo distortion
+      expect(stroke.distortion).toBe(0.45);
+
+      sm.redo(); // redo filterCutoff
+      expect(stroke.filterCutoff).toBe(0.6);
+
+      sm.redo(); // redo lofi
+      expect(stroke.lofi).toBe(0.75);
+    });
+
+    it('exports and imports per-line distortion, filterCutoff, and lofi settings accurately', () => {
+      const sm = new StrokeManager();
+      const s = sm.addStroke(dummyPath, 'solid', 'indigo', 100, undefined, undefined, 1.0, '2bars', 'restart', 30, 1.0, 'speed', 0.4, 0.0, 'speed', 'single', false, false, 0.5, 0.35, 0.8);
+
+      expect(s.distortion).toBe(0.5);
+      expect(s.filterCutoff).toBe(0.35);
+      expect(s.lofi).toBe(0.8);
+
+      const exported = sm.exportComposition('Lofi Track');
+      expect(exported.strokes[0].distortion).toBe(0.5);
+      expect(exported.strokes[0].filterCutoff).toBe(0.35);
+      expect(exported.strokes[0].lofi).toBe(0.8);
+
+      const sm2 = new StrokeManager();
+      sm2.importComposition(exported);
+      expect(sm2.activeStrokes.length).toBe(1);
+      expect(sm2.activeStrokes[0].distortion).toBe(0.5);
+      expect(sm2.activeStrokes[0].filterCutoff).toBe(0.35);
+      expect(sm2.activeStrokes[0].lofi).toBe(0.8);
+    });
+  });
 });
 
 

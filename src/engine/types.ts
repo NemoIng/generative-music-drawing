@@ -53,6 +53,10 @@ export interface DrawnStroke {
   harmonizer?: HarmonizerMode;
   morphRole?: 'outgoing' | 'incoming';
   morphGain?: number;
+  isPoint?: boolean;
+  distortion?: number; // 0.0 to 1.0 overdrive / saturation (default 0.0)
+  filterCutoff?: number; // 0.0 (warm/dark) to 1.0 (open/bright, default 1.0)
+  lofi?: number; // 0.0 (clean hi-fi) to 1.0 (lo-fi bitcrush & grit, default 0.0)
 }
 
 export interface SavedComposition {
@@ -90,6 +94,10 @@ export interface SavedComposition {
     volume?: number;
     reverb?: number;
     fluctuation?: number;
+    distortion?: number;
+    filterCutoff?: number;
+    lofi?: number;
+    isPoint?: boolean;
     muted?: boolean;
     path: SplinePath;
     waveParams?: WaveParams;

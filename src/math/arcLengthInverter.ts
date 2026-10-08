@@ -27,7 +27,8 @@ export function evaluateAtDistance(
   const L = lut.totalLength;
 
   if (L <= 1e-9 || path.segments.length === 0) {
-    const fallbackPoint = path.segments[0]?.p0 ?? { x: 0, y: 0 };
+    const p0 = path.segments[0]?.p0;
+    const fallbackPoint = p0 ? { x: p0.x, y: p0.y } : { x: 0, y: 0 };
     return {
       point: fallbackPoint,
       tangent: { x: 1, y: 0 },

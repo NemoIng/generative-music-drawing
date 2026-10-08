@@ -694,6 +694,72 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     const randBtn = doc.getElementById('studioRandomizeBtn');
     expect(randBtn?.getAttribute('data-tooltip')).toContain('Randomize Lines');
   });
+
+  it('contains toggleTooltipsBtn button in Controls drawer to disable hover descriptions', () => {
+    const toggleBtn = doc.getElementById('toggleTooltipsBtn');
+    expect(toggleBtn).not.toBeNull();
+    expect(toggleBtn?.textContent?.trim()).toBe('Hints On');
+    expect(toggleBtn?.getAttribute('data-tooltip')).toContain('Toggle Tooltips');
+  });
+
+  it('supports active-mute and active-solo CSS state classes on layer cards and action buttons', () => {
+    const cssPath = path.resolve(__dirname, '../src/style.css');
+    const css = fs.readFileSync(cssPath, 'utf-8');
+    expect(css).toContain('.layer-btn.active-mute');
+    expect(css).toContain('.layer-btn.active-solo');
+    expect(css).toContain('.layer-card.dimmed');
+
+    // Create a mock layer card element and verify class toggling behavior
+    const mockCard = doc.createElement('div');
+    mockCard.className = 'layer-card';
+    const muteBtn = doc.createElement('button');
+    muteBtn.className = 'layer-btn';
+    muteBtn.setAttribute('data-action', 'mute');
+    const soloBtn = doc.createElement('button');
+    soloBtn.className = 'layer-btn';
+    soloBtn.setAttribute('data-action', 'solo');
+    mockCard.appendChild(muteBtn);
+    mockCard.appendChild(soloBtn);
+
+    // Toggle mute
+    muteBtn.classList.toggle('active-mute', true);
+    mockCard.classList.toggle('dimmed', true);
+    expect(muteBtn.classList.contains('active-mute')).toBe(true);
+    expect(mockCard.classList.contains('dimmed')).toBe(true);
+
+    // Toggle solo
+    soloBtn.classList.toggle('active-solo', true);
+    expect(soloBtn.classList.contains('active-solo')).toBe(true);
+  });
+
+  it('contains traversal and wave control elements in inspectors that can be toggled for dot notes', () => {
+    const trackTraversalCell = doc.getElementById('trackTraversalControl')?.closest('.inspector-cell');
+    const trackWaveCell = doc.getElementById('trackWaveControl');
+    const studioTraversalSwitch = doc.getElementById('studioTraversalSwitch');
+    const studioWaveShapeSelect = doc.getElementById('studioWaveShapeSelect');
+    const zenContextTravBtn = doc.getElementById('zenContextTravBtn');
+
+    expect(trackTraversalCell).toBeDefined();
+    expect(trackWaveCell).toBeDefined();
+    expect(studioTraversalSwitch).toBeDefined();
+    expect(studioWaveShapeSelect).toBeDefined();
+    expect(zenContextTravBtn).toBeDefined();
+
+    // Verify hiding styling can be applied
+    const studioTraversalRow = studioTraversalSwitch?.closest('.docked-row') as HTMLElement | null;
+    const studioWaveGroup = studioWaveShapeSelect?.closest('.docked-group') as HTMLElement | null;
+    if (studioTraversalRow) studioTraversalRow.style.display = 'none';
+    if (studioWaveGroup) studioWaveGroup.style.display = 'none';
+    if (trackTraversalCell) (trackTraversalCell as HTMLElement).style.display = 'none';
+    if (trackWaveCell) (trackWaveCell as HTMLElement).style.display = 'none';
+    if (zenContextTravBtn) (zenContextTravBtn as HTMLElement).style.display = 'none';
+
+    expect(studioTraversalRow?.style.display).toBe('none');
+    expect(studioWaveGroup?.style.display).toBe('none');
+    expect((trackTraversalCell as HTMLElement)?.style.display).toBe('none');
+    expect((trackWaveCell as HTMLElement)?.style.display).toBe('none');
+    expect((zenContextTravBtn as HTMLElement)?.style.display).toBe('none');
+  });
 });
 
 

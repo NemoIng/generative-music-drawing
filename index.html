@@ -194,6 +194,37 @@
             </div>
           </div>
 
+          <!-- Stroke Shape -->
+          <div class="control-group">
+            <label class="top-row-label">Shape</label>
+            <div class="segmented-switch" id="shapeControl">
+              <button
+                type="button"
+                class="seg-btn active has-tooltip"
+                data-shape="curve"
+                data-tooltip="Flowing Spline Curve: Expressive organic waves and glides."
+              >
+                Curve
+              </button>
+              <button
+                type="button"
+                class="seg-btn has-tooltip"
+                data-shape="straight"
+                data-tooltip="Straight Note Bar: Horizontal sustained note or rhythm strip (or hold Shift)."
+              >
+                Bar
+              </button>
+              <button
+                type="button"
+                class="seg-btn has-tooltip"
+                data-shape="point"
+                data-tooltip="Single Note Dot: Place stationary note dot with instant pitch and timbre."
+              >
+                Dot
+              </button>
+            </div>
+          </div>
+
           <!-- Master Transport Controls -->
           <div class="control-group top-actions-group">
             <label class="top-row-label">Actions</label>
@@ -226,7 +257,10 @@
             <div class="drawer-header-title">
               <span>Controls & Global Settings</span>
             </div>
-            <button type="button" id="drawerCloseBtn" class="drawer-close-btn" aria-label="Close Controls" title="Close Controls">Close</button>
+            <div class="drawer-header-actions">
+              <button type="button" id="toggleTooltipsBtn" class="action-btn action-btn-xs has-tooltip" data-tooltip="Toggle Tooltips: Turn hover descriptions and popups ON or OFF (persisted across sessions).">Hints On</button>
+              <button type="button" id="drawerCloseBtn" class="drawer-close-btn" aria-label="Close Controls" title="Close Controls">Close</button>
+            </div>
           </div>
 
           <div class="advanced-drawer-inner">
@@ -340,47 +374,33 @@
               <span class="drawer-card-label">Drawing Score Defaults</span>
               <div class="drawer-two-col">
                 <div class="control-group draw-only-control">
-                  <label>Shape</label>
-                  <div class="segmented-switch" id="shapeControl">
-                    <button type="button" class="seg-btn active has-tooltip" data-shape="curve" data-tooltip="Flowing Spline Curve: Expressive organic waves and glides.">
-                      Curve
-                    </button>
-                    <button type="button" class="seg-btn has-tooltip" data-shape="straight" data-tooltip="Straight Note Bar: Horizontal sustained note or rhythm strip (or hold Shift).">
-                      Bar 
-                    </button>
-                  </div>
-                </div>
-
-                <div class="control-group draw-only-control">
                   <label>Smooth</label>
                   <button type="button" id="autoSmoothBtn" class="toggle-btn active has-tooltip" data-tooltip="Auto-Smooth: Automatically eliminates hand jitters and refines curves into silky, flowing musical lines upon release." style="width: 100%;">
                     Smooth On
                   </button>
                 </div>
-              </div>
 
-              <div class="drawer-two-col">
                 <div class="control-group draw-only-control">
                   <label>Pitch Grid</label>
                   <button type="button" id="snapPitchBtn" class="toggle-btn has-tooltip" data-tooltip="Magnetic Pitch Snapping: Magnetically locks your hand to scale note lines, eliminating hand-jitter wobble." style="width: 100%;">
                     Snap Off
                   </button>
                 </div>
+              </div>
 
-                <div class="control-group draw-only-control has-tooltip" data-tooltip="Default Line Timing: Default speed multiplier or timer duration for newly drawn lines.">
-                  <label for="generalSyncSelect">Default Timing</label>
-                  <div class="select-wrapper">
-                    <select id="generalSyncSelect" class="minimal-select">
-                      <option value="speed:0.25">¼x Speed</option>
-                      <option value="speed:0.5">½x Speed</option>
-                      <option value="speed:1.0" selected>1x Speed</option>
-                      <option value="speed:2.0">2x Speed</option>
-                      <option value="timer:15">15s Timer</option>
-                      <option value="timer:30">30s Timer</option>
-                      <option value="timer:60">60s Drone</option>
-                      <option value="timer:120">120s Drone</option>
-                    </select>
-                  </div>
+              <div class="control-group draw-only-control has-tooltip" data-tooltip="Default Line Timing: Default speed multiplier or timer duration for newly drawn lines.">
+                <label for="generalSyncSelect">Default Timing</label>
+                <div class="select-wrapper">
+                  <select id="generalSyncSelect" class="minimal-select">
+                    <option value="speed:0.25">¼x Speed</option>
+                    <option value="speed:0.5">½x Speed</option>
+                    <option value="speed:1.0" selected>1x Speed</option>
+                    <option value="speed:2.0">2x Speed</option>
+                    <option value="timer:15">15s Timer</option>
+                    <option value="timer:30">30s Timer</option>
+                    <option value="timer:60">60s Drone</option>
+                    <option value="timer:120">120s Drone</option>
+                  </select>
                 </div>
               </div>
 
@@ -569,6 +589,33 @@
                 <div class="track-slider-wrap">
                   <input type="range" id="trackFluctuationSlider" min="0" max="1" step="0.01" value="0.00" class="track-vol-slider" />
                   <span id="trackFluctuationVal" class="track-vol-val">0.00</span>
+                </div>
+              </div>
+
+              <!-- Individual Line Distortion Overdrive -->
+              <div class="inspector-cell has-tooltip" data-tooltip="Line Distortion: Warm saturation & harmonic overdrive drive (0% clean to 100% saturated bite).">
+                <label for="trackDistortionSlider">Dist</label>
+                <div class="track-slider-wrap">
+                  <input type="range" id="trackDistortionSlider" min="0" max="100" step="1" value="0" class="track-vol-slider" />
+                  <span id="trackDistortionVal" class="track-vol-val">0%</span>
+                </div>
+              </div>
+
+              <!-- Individual Line Tone Filter -->
+              <div class="inspector-cell has-tooltip" data-tooltip="Line Tone Filter: Warm analog lowpass cutoff (0% warm/dark to 100% open/bright).">
+                <label for="trackFilterSlider">Tone</label>
+                <div class="track-slider-wrap">
+                  <input type="range" id="trackFilterSlider" min="0" max="100" step="1" value="100" class="track-vol-slider" />
+                  <span id="trackFilterVal" class="track-vol-val">100%</span>
+                </div>
+              </div>
+
+              <!-- Individual Line Lo-Fi Crunch -->
+              <div class="inspector-cell has-tooltip" data-tooltip="Line Lo-Fi Crunch: Bit-depth reduction and digital sampler grit (0% clean hi-fi to 100% vintage crunchy bite).">
+                <label for="trackLofiSlider">Lo-Fi</label>
+                <div class="track-slider-wrap">
+                  <input type="range" id="trackLofiSlider" min="0" max="100" step="1" value="0" class="track-vol-slider" />
+                  <span id="trackLofiVal" class="track-vol-val">0%</span>
                 </div>
               </div>
 
@@ -925,6 +972,28 @@
                     <span class="docked-sublabel">Amp</span>
                     <input type="range" id="studioWaveAmpSlider" min="0" max="100" step="1" value="0" class="docked-range-slider" />
                     <span id="studioWaveAmpVal" class="docked-val-badge">0px</span>
+                  </div>
+                </div>
+
+                <!-- Per-Line Tone & Grit Effects Group (Drive, Tone Filter, Lo-Fi Crunch) -->
+                <div class="docked-group">
+                  <div class="docked-row">
+                    <label class="docked-label">Tone &amp; Grit</label>
+                  </div>
+                  <div class="docked-slider-row has-tooltip" data-tooltip="Line Distortion: Warm saturation &amp; harmonic overdrive (0% clean to 100% saturated bite).">
+                    <span class="docked-sublabel">Dist</span>
+                    <input type="range" id="studioDistortionSlider" min="0" max="100" step="1" value="0" class="docked-range-slider" />
+                    <span id="studioDistortionVal" class="docked-val-badge">0%</span>
+                  </div>
+                  <div class="docked-slider-row has-tooltip" data-tooltip="Line Tone Filter: Warm analog lowpass cutoff (0% warm/dark to 100% open/bright).">
+                    <span class="docked-sublabel">Tone</span>
+                    <input type="range" id="studioFilterSlider" min="0" max="100" step="1" value="100" class="docked-range-slider" />
+                    <span id="studioFilterVal" class="docked-val-badge">100%</span>
+                  </div>
+                  <div class="docked-slider-row has-tooltip" data-tooltip="Line Lo-Fi Crunch: Bit-depth reduction and digital sampler crunch (0% clean hi-fi to 100% vintage grit).">
+                    <span class="docked-sublabel">Lo-Fi</span>
+                    <input type="range" id="studioLofiSlider" min="0" max="100" step="1" value="0" class="docked-range-slider" />
+                    <span id="studioLofiVal" class="docked-val-badge">0%</span>
                   </div>
                 </div>
 
