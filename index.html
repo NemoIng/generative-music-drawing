@@ -943,7 +943,7 @@
             <div class="studio-master-card">
               <div class="studio-card-title">Acoustic Atmosphere & Master Controls</div>
               
-              <div class="control-group slider-group">
+              <div class="control-group slider-group has-tooltip" data-tooltip="Global Tempo (BPM): Master speed clock (10–180 BPM). Ambient compositions thrive at slow tempos (15–40 BPM).">
                 <div class="slider-header">
                   <label for="studioMasterBpmSlider">Tempo</label>
                   <span id="studioMasterBpmVal" class="value-badge">32 BPM</span>
@@ -951,7 +951,7 @@
                 <input type="range" id="studioMasterBpmSlider" min="10" max="180" step="1" value="32" class="minimal-slider" />
               </div>
 
-              <div class="control-group slider-group">
+              <div class="control-group slider-group has-tooltip" data-tooltip="Master Reverb Mix: Balances dry acoustic signal (0%) with vast ambient convolution space (up to 100%).">
                 <div class="slider-header">
                   <label for="studioMasterReverbSlider">Reverb Mix</label>
                   <span id="studioMasterReverbVal" class="value-badge">65%</span>
@@ -959,7 +959,7 @@
                 <input type="range" id="studioMasterReverbSlider" min="0" max="100" step="1" value="65" class="minimal-slider" />
               </div>
 
-              <div class="control-group">
+              <div class="control-group has-tooltip" data-tooltip="Acoustic Space Model: Convolution impulse responses — Cathedral (4.2s lush tail), Shimmer (ethereal harmonic sparkle), Ambient Hall (2.4s warm concert acoustic), Warm Plate (1.8s silky steel), or Intimate Chamber (0.9s tight space).">
                 <label for="studioReverbTypeSelect">Acoustic Space Model</label>
                 <div class="select-wrapper">
                   <select id="studioReverbTypeSelect" class="minimal-select">
@@ -972,7 +972,7 @@
                 </div>
               </div>
 
-              <div class="control-group slider-group">
+              <div class="control-group slider-group has-tooltip" data-tooltip="Stereo Field Dimension: Adjusts master stereo imaging from mono focus (0%) to natural stereo (100%) and hyper-wide panoramic immersion (200%).">
                 <div class="slider-header">
                   <label for="studioStereoWidthSlider">Stereo Width</label>
                   <span id="studioStereoWidthVal" class="value-badge">100% (Stereo)</span>
@@ -981,7 +981,7 @@
               </div>
 
               <div class="drawer-two-col">
-                <div class="control-group slider-group">
+                <div class="control-group slider-group has-tooltip" data-tooltip="Tape Warmth: Soft-clipping analog saturation and tape head resonance that softens digital transients and adds gentle harmonic color.">
                   <div class="slider-header">
                     <label for="studioTapeWarmthSlider">Tape Warmth</label>
                     <span id="studioTapeWarmthVal" class="value-badge">0%</span>
@@ -989,7 +989,7 @@
                   <input type="range" id="studioTapeWarmthSlider" min="0" max="100" step="1" value="0" class="minimal-slider" />
                 </div>
 
-                <div class="control-group slider-group">
+                <div class="control-group slider-group has-tooltip" data-tooltip="Sidechain Ducking: Rhythmic acoustic compression pump that dips the ambient reverberant tail during drum transients and line accents.">
                   <div class="slider-header">
                     <label for="studioDuckingSlider">Ducking (Pump)</label>
                     <span id="studioDuckingVal" class="value-badge">0%</span>
@@ -999,7 +999,7 @@
               </div>
 
               <div class="drawer-two-col">
-                <div class="control-group">
+                <div class="control-group has-tooltip" data-tooltip="Modal Scale: Master harmonic quantization framework. Dorian and Lydian create atmospheric modal landscapes; Pentatonics provide pure consonance.">
                   <label for="studioScaleSelect">Modal Scale</label>
                   <div class="select-wrapper">
                     <select id="studioScaleSelect" class="minimal-select">
@@ -1014,7 +1014,7 @@
                   </div>
                 </div>
 
-                <div class="control-group">
+                <div class="control-group has-tooltip" data-tooltip="Root Pitch: Fundamental keynote frequency anchoring the musical scale and tonic drone center.">
                   <label for="studioRootSelect">Root Pitch</label>
                   <div class="select-wrapper">
                     <select id="studioRootSelect" class="minimal-select">
@@ -1030,7 +1030,7 @@
                 </div>
               </div>
 
-              <div class="control-group">
+              <div class="control-group has-tooltip" data-tooltip="X-Axis Modulation: Determines how horizontal positioning along the canvas dynamically shapes each note (Stereo Pan, Brightness Filter, or Reverb Space Depth).">
                 <label for="studioXAxisSelect">X-Axis Modulation</label>
                 <div class="select-wrapper">
                   <select id="studioXAxisSelect" class="minimal-select">
@@ -1043,8 +1043,8 @@
               </div>
 
               <div class="studio-btn-row">
-                <button type="button" id="studioSyncBtn" class="action-btn action-btn-sm" style="flex:1;">Sync Lines (R)</button>
-                <button type="button" id="studioRandomizeBtn" class="action-btn action-btn-sm" style="flex:1;">Randomize (⇧R)</button>
+                <button type="button" id="studioSyncBtn" class="action-btn action-btn-sm has-tooltip" data-tooltip="Sync Lines (R): Resets all active playheads simultaneously to phase 0 for locked polyrhythmic alignment." style="flex:1;">Sync Lines (R)</button>
+                <button type="button" id="studioRandomizeBtn" class="action-btn action-btn-sm has-tooltip" data-tooltip="Randomize Lines (Shift+R): Scatters moving playheads to desynchronized positions across their paths for evolving polyphony." style="flex:1;">Randomize (⇧R)</button>
               </div>
             </div>
           </div>

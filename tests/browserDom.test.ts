@@ -661,6 +661,39 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     expect(ducking).not.toBeNull();
     expect(studioDucking).not.toBeNull();
   });
+
+  it('provides descriptive hover tooltips for all Master FX panel controls in Studio Deck', () => {
+    const masterPane = doc.getElementById('studioTabMaster');
+    expect(masterPane).not.toBeNull();
+
+    const tooltips = masterPane?.querySelectorAll('.has-tooltip');
+    expect(tooltips).toBeDefined();
+    expect(tooltips!.length).toBeGreaterThanOrEqual(10);
+
+    const bpmTooltip = doc.getElementById('studioMasterBpmSlider')?.closest('.has-tooltip');
+    expect(bpmTooltip?.getAttribute('data-tooltip')).toContain('Tempo');
+
+    const reverbTooltip = doc.getElementById('studioMasterReverbSlider')?.closest('.has-tooltip');
+    expect(reverbTooltip?.getAttribute('data-tooltip')).toContain('Reverb Mix');
+
+    const spaceTooltip = doc.getElementById('studioReverbTypeSelect')?.closest('.has-tooltip');
+    expect(spaceTooltip?.getAttribute('data-tooltip')).toContain('Acoustic Space Model');
+
+    const stereoTooltip = doc.getElementById('studioStereoWidthSlider')?.closest('.has-tooltip');
+    expect(stereoTooltip?.getAttribute('data-tooltip')).toContain('Stereo');
+
+    const tapeTooltip = doc.getElementById('studioTapeWarmthSlider')?.closest('.has-tooltip');
+    expect(tapeTooltip?.getAttribute('data-tooltip')).toContain('Tape Warmth');
+
+    const duckingTooltip = doc.getElementById('studioDuckingSlider')?.closest('.has-tooltip');
+    expect(duckingTooltip?.getAttribute('data-tooltip')).toContain('Sidechain Ducking');
+
+    const syncBtn = doc.getElementById('studioSyncBtn');
+    expect(syncBtn?.getAttribute('data-tooltip')).toContain('Sync Lines');
+
+    const randBtn = doc.getElementById('studioRandomizeBtn');
+    expect(randBtn?.getAttribute('data-tooltip')).toContain('Randomize Lines');
+  });
 });
 
 
