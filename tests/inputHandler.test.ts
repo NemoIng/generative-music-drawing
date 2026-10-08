@@ -493,6 +493,120 @@ describe('Unified InputHandler Interaction Model', () => {
       pulseSpy.mockRestore();
       handler.destroy();
     });
+
+    it('creates single stationary note dot when drawShape is point', async () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+      const completeSpy = vi.fn();
+
+      const handler = new InputHandler(mockCanvas, {
+        strokeManager: sm,
+        getQuantizer: () => quantizer,
+        getCurrentInstrument: () => 'amber',
+        getCurrentStyle: () => 'solid',
+        onStrokeComplete: completeSpy,
+      });
+
+      handler.setDrawShape('point');
+      expect(handler.drawShape).toBe('point');
+
+      const pointerDown = listeners['pointerdown'][0];
+      const pointerUp = windowListeners['pointerup'][0];
+
+      await pointerDown({ clientX: 300, clientY: 200, button: 0 } as any);
+      pointerUp({ clientX: 300, clientY: 200 } as any);
+
+      expect(completeSpy).toHaveBeenCalled();
+      const [path, isPoint] = completeSpy.mock.calls[0];
+      expect(isPoint).toBe(true);
+      expect(path.segments.length).toBe(1);
+      expect(path.segments[0].p0.x).toBe(300);
+      expect(path.segments[0].p0.y).toBe(200);
+
+      handler.destroy();
+    });
+  });
+
+  describe('Per-Stroke Distortion and Tone Filter', () => {
+    beforeEach(() => {
+      vi.spyOn(soundEngine, 'isReady', 'get').mockReturnValue(false);
+    });
+
+    it('sets and undoes stroke distortion and filterCutoff correctly', () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+      const stroke = sm.addStroke(dummyPath, 'solid', 'amber', 140, quantizer, 600, 1.0);
+
+      expect(stroke.distortion ?? 0.0).toBe(0.0);
+      expect(stroke.filterCutoff ?? 1.0).toBe(1.0);
+
+      // Set distortion
+      sm.setStrokeDistortion(stroke.id, 0.75);
+      expect(stroke.distortion).toBe(0.75);
+
+      // Undo distortion
+      sm.undo();
+      expect(stroke.distortion).toBe(0.0);
+
+      // Redo distortion
+      sm.redo();
+      expect(stroke.distortion).toBe(0.75);
+
+      // Set filter cutoff
+      sm.setStrokeFilterCutoff(stroke.id, 0.40);
+      expect(stroke.filterCutoff).toBe(0.40);
+
+      // Undo filter cutoff
+      sm.undo();
+      expect(stroke.filterCutoff).toBe(1.0);
+
+      // Redo filter cutoff
+      sm.redo();
+      expect(stroke.filterCutoff).toBe(0.40);
+    });
+
+    it('persists distortion, filterCutoff, and isPoint across export and import', () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+      const stroke = sm.addStroke(
+        dummyPath,
+        'solid',
+        'amber',
+        140,
+        quantizer,
+        600,
+        1.0,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        true,
+        true,
+        0.85,
+        0.35
+      );
+
+      expect(stroke.isPoint).toBe(true);
+      expect(stroke.distortion).toBe(0.85);
+      expect(stroke.filterCutoff).toBe(0.35);
+
+      const exported = sm.exportComposition();
+      expect(exported.strokes[0].isPoint).toBe(true);
+      expect(exported.strokes[0].distortion).toBe(0.85);
+      expect(exported.strokes[0].filterCutoff).toBe(0.35);
+
+      const sm2 = new StrokeManager();
+      sm2.importComposition(exported, quantizer, 600, 800);
+      const importedStroke = sm2.activeStrokes[0];
+      expect(importedStroke.isPoint).toBe(true);
+      expect(importedStroke.distortion).toBe(0.85);
+      expect(importedStroke.filterCutoff).toBe(0.35);
+    });
   });
 });
 

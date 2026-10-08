@@ -349,7 +349,10 @@
                       Curve
                     </button>
                     <button type="button" class="seg-btn has-tooltip" data-shape="straight" data-tooltip="Straight Note Bar: Horizontal sustained note or rhythm strip (or hold Shift).">
-                      Bar 
+                      Bar
+                    </button>
+                    <button type="button" class="seg-btn has-tooltip" data-shape="point" data-tooltip="Single Note Dot: Place stationary note dot with instant pitch and timbre.">
+                      Dot
                     </button>
                   </div>
                 </div>
@@ -572,6 +575,24 @@
                 <div class="track-slider-wrap">
                   <input type="range" id="trackFluctuationSlider" min="0" max="1" step="0.01" value="0.00" class="track-vol-slider" />
                   <span id="trackFluctuationVal" class="track-vol-val">0.00</span>
+                </div>
+              </div>
+
+              <!-- Individual Line Distortion Overdrive -->
+              <div class="inspector-cell has-tooltip" data-tooltip="Line Distortion: Warm saturation & harmonic overdrive drive (0% clean to 100% saturated bite).">
+                <label for="trackDistortionSlider">Dist</label>
+                <div class="track-slider-wrap">
+                  <input type="range" id="trackDistortionSlider" min="0" max="100" step="1" value="0" class="track-vol-slider" />
+                  <span id="trackDistortionVal" class="track-vol-val">0%</span>
+                </div>
+              </div>
+
+              <!-- Individual Line Tone Filter -->
+              <div class="inspector-cell has-tooltip" data-tooltip="Line Tone Filter: Warm analog lowpass cutoff (0% warm/dark to 100% open/bright).">
+                <label for="trackFilterSlider">Tone</label>
+                <div class="track-slider-wrap">
+                  <input type="range" id="trackFilterSlider" min="0" max="100" step="1" value="100" class="track-vol-slider" />
+                  <span id="trackFilterVal" class="track-vol-val">100%</span>
                 </div>
               </div>
 

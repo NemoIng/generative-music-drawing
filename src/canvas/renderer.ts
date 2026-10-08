@@ -333,7 +333,31 @@ export class CanvasRenderer {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    if (style === 'solid') {
+    if (stroke.isPoint && path.segments.length > 0) {
+      // Point / Dot Note: Render stationary dot slightly wider than a line
+      const pt = path.segments[0].p0;
+      const baseRadius = stroke.selected ? 9 : 7;
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, baseRadius, 0, Math.PI * 2);
+      ctx.fillStyle = effectiveColor;
+      ctx.fill();
+
+      // Outer delicate ring
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, baseRadius + 3, 0, Math.PI * 2);
+      ctx.lineWidth = 1.2;
+      ctx.strokeStyle = stroke.selected ? '#2563eb' : effectiveColor;
+      ctx.stroke();
+
+      if (stroke.selected) {
+        // Selection outer halo
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, baseRadius + 6, 0, Math.PI * 2);
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = 'rgba(37, 99, 235, 0.6)';
+        ctx.stroke();
+      }
+    } else if (style === 'solid') {
       ctx.lineWidth = stroke.selected ? 4.5 : 3.5;
       ctx.setLineDash([]);
       ctx.stroke();
@@ -417,12 +441,16 @@ export class CanvasRenderer {
         : 0;
       const travMode = (stroke.traversal === 'bounce' || (stroke.traversal as string) === 'pingpong') ? 'Bounce' : 'Loop';
 
-      let tagText = `${volPercent}% vol • ${speedLabel} • ${progressPct}% • ${travMode}`;
+      let tagText = stroke.isPoint
+        ? `${volPercent}% vol • Dot Note`
+        : `${volPercent}% vol • ${speedLabel} • ${progressPct}% • ${travMode}`;
       if (stroke.instrumentId === 'onyx') {
         const normY = this.height > 0 ? startPt.y / this.height : 0.5;
         const drumName = normY >= 0.72 ? 'Kick' : normY >= 0.48 ? 'Snare' : normY >= 0.25 ? 'Tom' : 'Hi-Hat';
         const drumLabel = stroke.style === 'striped' ? `${drumName} Roll` : drumName;
-        tagText = `${volPercent}% vol • ${drumLabel} • ${speedLabel} • ${progressPct}%`;
+        tagText = stroke.isPoint
+          ? `${volPercent}% vol • ${drumLabel} Dot`
+          : `${volPercent}% vol • ${drumLabel} • ${speedLabel} • ${progressPct}%`;
       } else if (stroke.waveParams && stroke.waveParams.amplitude > 0) {
         tagText = `${volPercent}% vol • Wave • ${speedLabel} • ${progressPct}%`;
       }
@@ -479,8 +507,8 @@ export class CanvasRenderer {
       ctx.globalAlpha = (0.4 + 0.6 * vol) * morphMultiplier;
     }
 
-    // 1. Motion Trail
-    if (ph.trail.length > 1) {
+    // 1. Motion Trail (for moving strokes only)
+    if (!stroke.isPoint && ph.trail.length > 1) {
       for (let i = 0; i < ph.trail.length - 1; i++) {
         const ptA = ph.trail[i];
         const ptB = ph.trail[i + 1];

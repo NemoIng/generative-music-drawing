@@ -28,6 +28,8 @@ export class DroneVoice {
 
   // Master voice nodes
   private masterGainNode: GainNode | null = null;
+  private distortionNode: WaveShaperNode | null = null;
+  private toneFilterNode: BiquadFilterNode | null = null;
   private pannerNode: StereoPannerNode | null = null;
   private reverbSendGain: GainNode | null = null;
   private harmonyVoices: Array<{ osc: OscillatorNode; gain: GainNode }> = [];
@@ -41,6 +43,8 @@ export class DroneVoice {
   private instrument: InstrumentDefinition = DEFAULT_INSTRUMENT;
   private volume: number = 1.0;
   private reverb: number = 0.4;
+  private distortion: number = 0.0;
+  private filterCutoff: number = 1.0;
   private currentMasterGain: number = 0.26;
 
   constructor(engine: SoundEngine = soundEngine) {
@@ -83,6 +87,14 @@ export class DroneVoice {
     return this.reverb;
   }
 
+  public get currentDistortion(): number {
+    return this.distortion;
+  }
+
+  public get currentFilterCutoff(): number {
+    return this.filterCutoff;
+  }
+
   public setVolume(volume: number, scheduledTime?: number): void {
     this.volume = Math.max(0, Math.min(1, volume));
     const targetGain = Math.max(0.0001, 0.26 * this.volume);
@@ -101,12 +113,51 @@ export class DroneVoice {
     }
   }
 
+  public setDistortion(amount: number): void {
+    this.distortion = Math.max(0, Math.min(1, amount));
+    if (this.distortionNode && this._isPlaying) {
+      this.distortionNode.curve = DroneVoice.createDistortionCurve(this.distortion);
+    }
+  }
+
+  public setFilterCutoff(amount: number, scheduledTime?: number): void {
+    this.filterCutoff = Math.max(0, Math.min(1, amount));
+    if (this.toneFilterNode && this._isPlaying) {
+      const now = scheduledTime !== undefined ? scheduledTime : this.engine.context.currentTime;
+      // 0.0 -> 350Hz (warm/dark), 1.0 -> 18000Hz (full open)
+      const targetFreq = 350 * Math.pow(18000 / 350, this.filterCutoff);
+      this.toneFilterNode.frequency.setTargetAtTime(targetFreq, now, 0.04);
+    }
+  }
+
+  public static createDistortionCurve(amount: number, samples = 512): Float32Array<ArrayBuffer> {
+    const buffer = new ArrayBuffer(samples * 4);
+    const curve = new Float32Array(buffer);
+    const half = samples / 2;
+    if (amount <= 0.001) {
+      for (let i = 0; i < samples; i++) {
+        curve[i] = (i - half) / half;
+      }
+      return curve;
+    }
+    // Clean, musical tanh overdrive saturation curve
+    const k = 1.0 + amount * 8.0;
+    const norm = Math.tanh(k);
+    for (let i = 0; i < samples; i++) {
+      const x = (i - half) / half;
+      curve[i] = Math.tanh(x * k) / norm;
+    }
+    return curve;
+  }
+
   public start(
     initialFreq: number,
     instrument?: InstrumentDefinition,
     volume: number = 1.0,
     reverb: number = 0.4,
-    startTime?: number
+    startTime?: number,
+    distortion: number = 0.0,
+    filterCutoff: number = 1.0
   ): void {
     if (this._isPlaying || !this.engine.isReady) return;
     const ctx = this.engine.context;
@@ -114,6 +165,8 @@ export class DroneVoice {
     this.currentFreq = initialFreq;
     this.volume = Math.max(0, Math.min(1, volume));
     this.reverb = Math.max(0, Math.min(1, reverb));
+    this.distortion = Math.max(0, Math.min(1, distortion));
+    this.filterCutoff = Math.max(0, Math.min(1, filterCutoff));
     if (instrument) this.instrument = instrument;
 
     const p = this.instrument.drone;
@@ -125,10 +178,24 @@ export class DroneVoice {
     this.masterGainNode.gain.setValueAtTime(0.001, now);
     this.masterGainNode.gain.exponentialRampToValueAtTime(initialGain, now + 0.15);
 
+    // Distortion WaveShaper
+    this.distortionNode = ctx.createWaveShaper();
+    this.distortionNode.curve = DroneVoice.createDistortionCurve(this.distortion);
+
+    // Tone Lowpass Filter
+    this.toneFilterNode = ctx.createBiquadFilter();
+    this.toneFilterNode.type = 'lowpass';
+    const initialCutoffHz = 350 * Math.pow(18000 / 350, this.filterCutoff);
+    this.toneFilterNode.frequency.setValueAtTime(initialCutoffHz, now);
+    this.toneFilterNode.Q.setValueAtTime(0.707, now);
+
     this.pannerNode = ctx.createStereoPanner();
     this.pannerNode.pan.setValueAtTime(0, now);
 
-    this.masterGainNode.connect(this.pannerNode);
+    // Routing: masterGain -> distortionNode -> toneFilterNode -> pannerNode -> output sends
+    this.masterGainNode.connect(this.distortionNode);
+    this.distortionNode.connect(this.toneFilterNode);
+    this.toneFilterNode.connect(this.pannerNode);
     const sends = this.engine.connectVoice(this.pannerNode, 0.35, this.reverb);
     this.reverbSendGain = sends.reverbSendGain ?? null;
 
@@ -504,6 +571,8 @@ export class DroneVoice {
     this.filterB = null;
     this.bankGainB = null;
     this.pannerNode = null;
+    this.distortionNode = null;
+    this.toneFilterNode = null;
     this.masterGainNode = null;
     this.reverbSendGain = null;
   }
@@ -530,7 +599,9 @@ export class PulseVoice {
     filterMultiplier: number = 1.0,
     volumeMultiplier: number = 1.0,
     engine: SoundEngine = soundEngine,
-    baseTime?: number
+    baseTime?: number,
+    distortion: number = 0.0,
+    toneCutoff: number = 1.0
   ): void {
     if (!engine.isReady || velocity <= 0.001) return;
     const ctx = engine.context;
@@ -548,8 +619,18 @@ export class PulseVoice {
     panner.pan.setValueAtTime(pan, now);
 
     const p = instrument.pulse;
-    const toneMultiplier = xModMode === 'panAndTone' ? 0.8 + 0.4 * normX : 1.0;
+    const toneMultX = xModMode === 'panAndTone' ? 0.8 + 0.4 * normX : 1.0;
+    const toneMultiplier = toneMultX * Math.max(0.2, toneCutoff);
     const effVel = Math.max(0.001, velocity * volumeMultiplier);
+
+    if (distortion > 0.01) {
+      const distNode = ctx.createWaveShaper();
+      distNode.curve = DroneVoice.createDistortionCurve(distortion);
+      gain.connect(distNode);
+      distNode.connect(panner);
+    } else {
+      gain.connect(panner);
+    }
 
     if (isStriped) {
       // Striped / Ratchet mode: Rhythmic percussive burst
@@ -566,7 +647,6 @@ export class PulseVoice {
 
       osc.connect(filter);
       filter.connect(gain);
-      gain.connect(panner);
       engine.connectVoice(panner, 0.25, Math.min(1, reverb * 0.7));
 
       osc.start(now);
@@ -588,7 +668,6 @@ export class PulseVoice {
 
       osc.connect(filter);
       filter.connect(gain);
-      gain.connect(panner);
       engine.connectVoice(panner, 0.35, reverb);
 
       osc.start(now);
@@ -610,7 +689,9 @@ export class PulseVoice {
     filterMultiplier: number = 1.0,
     volumeMultiplier: number = 1.0,
     engine: SoundEngine = soundEngine,
-    baseTime?: number
+    baseTime?: number,
+    distortion: number = 0.0,
+    toneCutoff: number = 1.0
   ): void {
     if (!engine.isReady || velocity <= 0.001) return;
     const count = 3;
@@ -631,7 +712,9 @@ export class PulseVoice {
         filterMultiplier,
         volumeMultiplier,
         engine,
-        baseTime
+        baseTime,
+        distortion,
+        toneCutoff
       );
     }
   }

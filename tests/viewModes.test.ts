@@ -295,13 +295,14 @@ describe('View Modes: Studio (Layers, Master FX, Scenes) and Zen Canvas', () => 
       expect(css).toMatch(/#shapeControl\s*\{[^}]*width:\s*100%/);
       expect(css).toMatch(/#shapeControl\s+\.seg-btn\s*\{[^}]*flex:\s*1/);
 
-      // Verify shapeControl exists in HTML with Curve and Bar options
+      // Verify shapeControl exists in HTML with Curve, Bar, and Dot options
       const shapeControl = doc.getElementById('shapeControl');
       expect(shapeControl).not.toBeNull();
       const buttons = shapeControl?.querySelectorAll('button');
-      expect(buttons?.length).toBe(2);
+      expect(buttons?.length).toBe(3);
       expect(buttons?.[0].textContent?.trim()).toBe('Curve');
       expect(buttons?.[1].textContent?.trim()).toBe('Bar');
+      expect(buttons?.[2].textContent?.trim()).toBe('Dot');
     });
 
     it('ensures Presets & System card has balanced 2x2 grid without empty cells', () => {

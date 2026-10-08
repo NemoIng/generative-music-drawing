@@ -78,6 +78,10 @@ const trackReverbSlider = document.getElementById('trackReverbSlider') as HTMLIn
 const trackReverbVal = document.getElementById('trackReverbVal') as HTMLSpanElement | null;
 const trackFluctuationSlider = document.getElementById('trackFluctuationSlider') as HTMLInputElement | null;
 const trackFluctuationVal = document.getElementById('trackFluctuationVal') as HTMLSpanElement | null;
+const trackDistortionSlider = document.getElementById('trackDistortionSlider') as HTMLInputElement | null;
+const trackDistortionVal = document.getElementById('trackDistortionVal') as HTMLSpanElement | null;
+const trackFilterSlider = document.getElementById('trackFilterSlider') as HTMLInputElement | null;
+const trackFilterVal = document.getElementById('trackFilterVal') as HTMLSpanElement | null;
 const waveShapeSelect = document.getElementById('waveShapeSelect') as HTMLSelectElement;
 const waveSineBtn = document.getElementById('waveSineBtn') as HTMLButtonElement;
 const waveAmpSlider = document.getElementById('waveAmpSlider') as HTMLInputElement;
@@ -360,7 +364,7 @@ const inputHandler = new InputHandler(canvasEl, {
   onPointerDown: () => {
     dismissWelcomePrompt();
   },
-  onStrokeComplete: (path: SplinePath) => {
+  onStrokeComplete: (path: SplinePath, isPoint?: boolean) => {
     dismissWelcomePrompt();
 
     strokeManager.addStroke(
@@ -369,7 +373,19 @@ const inputHandler = new InputHandler(canvasEl, {
       currentInstrumentId,
       140,
       quantizer,
-      renderer.height
+      renderer.height,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      true,
+      isPoint ?? false
     );
 
     strokeManager.activateAudioVoices();
@@ -2915,6 +2931,18 @@ function updateTrackActionsVisibility(): void {
         trackFluctuationVal.textContent = fluc.toFixed(2);
       }
 
+      const dist = typeof stroke.distortion === 'number' ? stroke.distortion : 0.0;
+      if (trackDistortionSlider && trackDistortionVal) {
+        trackDistortionSlider.value = Math.round(dist * 100).toString();
+        trackDistortionVal.textContent = `${Math.round(dist * 100)}%`;
+      }
+
+      const cutoff = typeof stroke.filterCutoff === 'number' ? stroke.filterCutoff : 1.0;
+      if (trackFilterSlider && trackFilterVal) {
+        trackFilterSlider.value = Math.round(cutoff * 100).toString();
+        trackFilterVal.textContent = `${Math.round(cutoff * 100)}%`;
+      }
+
       // Wave parameters sync
       if (stroke.waveParams) {
         waveSineBtn.classList.toggle('active', stroke.waveParams.amplitude > 0);
@@ -3195,6 +3223,38 @@ trackFluctuationSlider?.addEventListener('change', () => {
   if (strokeManager.selectedStrokeId && trackFluctuationSlider) {
     const fluc = parseFloat(trackFluctuationSlider.value);
     strokeManager.setStrokeFluctuation(strokeManager.selectedStrokeId, fluc, true);
+  }
+});
+
+// Distortion Slider Event Listeners
+trackDistortionSlider?.addEventListener('input', () => {
+  if (strokeManager.selectedStrokeId && trackDistortionSlider && trackDistortionVal) {
+    const dist = parseFloat(trackDistortionSlider.value) / 100;
+    trackDistortionVal.textContent = `${Math.round(dist * 100)}%`;
+    strokeManager.setStrokeDistortion(strokeManager.selectedStrokeId, dist, false);
+  }
+});
+
+trackDistortionSlider?.addEventListener('change', () => {
+  if (strokeManager.selectedStrokeId && trackDistortionSlider) {
+    const dist = parseFloat(trackDistortionSlider.value) / 100;
+    strokeManager.setStrokeDistortion(strokeManager.selectedStrokeId, dist, true);
+  }
+});
+
+// Tone Filter Slider Event Listeners
+trackFilterSlider?.addEventListener('input', () => {
+  if (strokeManager.selectedStrokeId && trackFilterSlider && trackFilterVal) {
+    const cutoff = parseFloat(trackFilterSlider.value) / 100;
+    trackFilterVal.textContent = `${Math.round(cutoff * 100)}%`;
+    strokeManager.setStrokeFilterCutoff(strokeManager.selectedStrokeId, cutoff, false);
+  }
+});
+
+trackFilterSlider?.addEventListener('change', () => {
+  if (strokeManager.selectedStrokeId && trackFilterSlider) {
+    const cutoff = parseFloat(trackFilterSlider.value) / 100;
+    strokeManager.setStrokeFilterCutoff(strokeManager.selectedStrokeId, cutoff, true);
   }
 });
 

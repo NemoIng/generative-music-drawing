@@ -10,7 +10,7 @@ import { StrokeStyle } from '../engine/types';
 
 export type InteractionMode = 'draw' | 'edit';
 export type AppMode = 'draw' | 'live';
-export type DrawShape = 'curve' | 'straight';
+export type DrawShape = 'curve' | 'straight' | 'point';
 
 export interface LiveTrailPoint {
   x: number;
@@ -23,7 +23,7 @@ export interface LiveTrailPoint {
 }
 
 export interface InputHandlerOptions {
-  onStrokeComplete: (path: SplinePath) => void;
+  onStrokeComplete: (path: SplinePath, isPoint?: boolean) => void;
   onDrawChange?: (points: Point2D[]) => void;
   onSelectStroke?: (strokeId: string | null) => void;
   onPointerDown?: () => void;
@@ -73,7 +73,7 @@ export class InputHandler {
   private dragAccumDx = 0;
   private dragAccumDy = 0;
 
-  private onStrokeComplete: (path: SplinePath) => void;
+  private onStrokeComplete: (path: SplinePath, isPoint?: boolean) => void;
   private onDrawChange?: (points: Point2D[]) => void;
   private onSelectStroke?: (strokeId: string | null) => void;
   public onLiveTrigger?: (x: number, y: number, color: string) => void;
@@ -569,6 +569,11 @@ export class InputHandler {
 
     // 2. If actively drawing a new stroke
     if (this.isDrawing) {
+      if (this.shape === 'point') {
+        // Point / Dot mode is stationary on canvas, don't accumulate drag line
+        return;
+      }
+
       // If a previous stroke was selected, deselect it as the user starts drawing
       if (this.strokeManager.selectedStrokeId) {
         this.strokeManager.selectStroke(null);
@@ -660,11 +665,26 @@ export class InputHandler {
       const last = this.currentPoints[this.currentPoints.length - 1];
       const dist = this.startPoint && last ? Math.hypot(last.x - this.startPoint.x, last.y - this.startPoint.y) : 0;
 
-      if (this.currentPoints.length >= 2 && dist >= 8) {
+      if (this.shape === 'point' && this.startPoint) {
+        // Point / Dot mode: place a single stationary note dot
+        const pt = this.startPoint;
+        const microSeg: SplinePath = {
+          segments: [
+            {
+              p0: { x: pt.x, y: pt.y },
+              p1: { x: pt.x + 0.1, y: pt.y },
+              p2: { x: pt.x + 0.2, y: pt.y },
+              p3: { x: pt.x + 0.3, y: pt.y },
+            },
+          ],
+          isClosed: false,
+        };
+        this.onStrokeComplete(microSeg, true);
+      } else if (this.currentPoints.length >= 2 && dist >= 8) {
         // Real stroke was drawn!
         const spline = fitSplineFromPoints(this.currentPoints, 45, this.autoSmooth);
         if (spline && spline.segments.length > 0) {
-          this.onStrokeComplete(spline);
+          this.onStrokeComplete(spline, false);
         }
       } else {
         // Tap on empty canvas without dragging: deselect any active stroke
