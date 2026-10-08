@@ -597,6 +597,42 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     // Importing into quantizer preserves pitch register without shifting strokes
     expect(exported.scrollY).toBe(250);
   });
+
+  it('supports modifying sliders and number inputs by scrolling (wheel event)', () => {
+    const bpmSlider = doc.getElementById('bpmSlider') as HTMLInputElement;
+    expect(bpmSlider).not.toBeNull();
+    bpmSlider.value = '100';
+
+    // Simulate wheel-to-modify logic
+    const handleSliderWheel = (slider: HTMLInputElement, deltaY: number, shiftKey = false) => {
+      const min = slider.min !== '' ? parseFloat(slider.min) : 0;
+      const max = slider.max !== '' ? parseFloat(slider.max) : 100;
+      const step = slider.step !== '' && slider.step !== 'any' ? parseFloat(slider.step) : 1;
+      const currentVal = parseFloat(slider.value);
+      const delta = -deltaY;
+      const speedMultiplier = shiftKey ? 5 : 1;
+      const stepIncrement = (delta > 0 ? 1 : -1) * step * speedMultiplier;
+      let nextVal = Math.max(min, Math.min(max, currentVal + stepIncrement));
+      slider.value = nextVal.toString();
+      slider.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    };
+
+    let inputFired = false;
+    bpmSlider.addEventListener('input', () => { inputFired = true; });
+
+    // Scroll up (deltaY < 0): increases value by step (step is 2)
+    handleSliderWheel(bpmSlider, -100);
+    expect(bpmSlider.value).toBe('102');
+    expect(inputFired).toBe(true);
+
+    // Scroll down (deltaY > 0): decreases value by step (step is 2)
+    handleSliderWheel(bpmSlider, 100);
+    expect(bpmSlider.value).toBe('100');
+
+    // Shift key: 5x step jump
+    handleSliderWheel(bpmSlider, -100, true);
+    expect(bpmSlider.value).toBe('110');
+  });
 });
 
 

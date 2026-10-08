@@ -2547,6 +2547,57 @@ document.addEventListener('mouseout', (e) => {
   }
 });
 
+// ==========================================================================
+// Scroll-to-Modify Sliders and Number Inputs
+// ==========================================================================
+// Allows users to hover over any range slider or numeric value input and scroll
+// the mouse wheel / trackpad to quickly nudge and scrub values up/down.
+document.addEventListener('wheel', (e: WheelEvent) => {
+  const target = e.target as HTMLElement | null;
+  if (!target) return;
+
+  const sliderOrNumber = target.closest('input[type="range"], input[type="number"]') as HTMLInputElement | null;
+  if (!sliderOrNumber || sliderOrNumber.disabled) return;
+
+  // Prevent default page or parent container scrolling while modifying the slider
+  e.preventDefault();
+  e.stopPropagation();
+
+  const min = sliderOrNumber.min !== '' ? parseFloat(sliderOrNumber.min) : 0;
+  const max = sliderOrNumber.max !== '' ? parseFloat(sliderOrNumber.max) : 100;
+  const step = sliderOrNumber.step !== '' && sliderOrNumber.step !== 'any' ? parseFloat(sliderOrNumber.step) : 1;
+  const currentVal = parseFloat(sliderOrNumber.value);
+  if (isNaN(currentVal)) return;
+
+  // Determine direction: scrolling up (deltaY < 0 or deltaX > 0) increases value;
+  // scrolling down (deltaY > 0 or deltaX < 0) decreases value.
+  const delta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? -e.deltaY : e.deltaX;
+  if (delta === 0) return;
+
+  // Determine number of decimal places to prevent floating point inaccuracy
+  const stepStr = step.toString();
+  const decimals = stepStr.includes('.') ? stepStr.split('.')[1].length : 0;
+
+  // Multiplier: Holding Shift gives 5x speed for faster scrubbing, Alt gives 1x fine tune
+  const speedMultiplier = e.shiftKey ? 5 : 1;
+  const stepIncrement = (delta > 0 ? 1 : -1) * step * speedMultiplier;
+
+  let nextVal = currentVal + stepIncrement;
+  nextVal = Math.max(min, Math.min(max, nextVal));
+  if (decimals > 0) {
+    nextVal = parseFloat(nextVal.toFixed(decimals));
+  } else {
+    nextVal = Math.round(nextVal);
+  }
+
+  if (nextVal !== currentVal) {
+    sliderOrNumber.value = nextVal.toString();
+    // Dispatch input and change events so all listeners update the audio, labels, and state
+    sliderOrNumber.dispatchEvent(new Event('input', { bubbles: true }));
+    sliderOrNumber.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+}, { passive: false });
+
 // Musical Scale and Root Listeners
 scaleSelect.addEventListener('change', () => {
   const scale = SCALES[scaleSelect.value];
