@@ -1531,9 +1531,9 @@ export class StrokeManager {
         : this.sceneMorphGain;
       const strokeVol = (stroke.volume ?? 1.0) * strokeMorphMult;
 
-      // Smooth crossfade near loop boundaries for restart mode
+      // Smooth crossfade near loop boundaries for restart mode (bypassed for stationary dots)
       let crossfadeMultiplier = 1.0;
-      if (stroke.style === 'solid' && strokeTraversal === 'restart' && !stroke.lut.isClosed) {
+      if (stroke.style === 'solid' && strokeTraversal === 'restart' && !stroke.lut.isClosed && !stroke.isPoint) {
         const seamMargin = Math.min(30, 0.08 * L);
         const distFromBoundary = Math.min(nextDist, L - nextDist);
         if (distFromBoundary < seamMargin) {
@@ -1564,8 +1564,9 @@ export class StrokeManager {
         }
         const dotPhi = ((dotHash % 1000) / 1000) * Math.PI * 2;
         const tremoloWave = 0.5 * (1 + Math.sin(2 * Math.PI * f_lfo * this.masterClockTime + dotPhi));
-        const tremoloVol = 0.55 + 0.45 * tremoloWave;
-        const tremoloFilter = 0.8 + 0.35 * tremoloWave;
+        // Tremolo centered around unity gain (0.85x to 1.15x, average 1.0x) so dots have full volume equal to lines
+        const tremoloVol = 0.85 + 0.3 * tremoloWave;
+        const tremoloFilter = 0.9 + 0.25 * tremoloWave;
 
         effBreathing = {
           volumeMultiplier: breathing.volumeMultiplier * tremoloVol,
@@ -1647,15 +1648,16 @@ export class StrokeManager {
           }
           if (stroke.instrumentId === 'onyx') {
             const normY = canvasHeight > 0 ? triggerY / canvasHeight : 0.5;
+            const drumGain = stroke.isPoint ? 1.05 * strokeVol : strokeVol;
             if (normY >= 0.72) {
-              DrumSynth.triggerKick(0.95 * strokeVol, hitScreenX, canvasWidth, this.xModMode, 0, strokeReverb, this.engine, audioTime);
+              DrumSynth.triggerKick(0.95 * drumGain, hitScreenX, canvasWidth, this.xModMode, 0, strokeReverb, this.engine, audioTime);
             } else if (normY >= 0.48) {
-              DrumSynth.triggerSnare(0.9 * strokeVol, hitScreenX, canvasWidth, this.xModMode, 0, strokeReverb, this.engine, audioTime);
+              DrumSynth.triggerSnare(0.9 * drumGain, hitScreenX, canvasWidth, this.xModMode, 0, strokeReverb, this.engine, audioTime);
             } else if (normY >= 0.25) {
               const tomFreq = 100 + (1 - (normY - 0.25) / 0.23) * 120;
-              DrumSynth.triggerTom(tomFreq, 0.85 * strokeVol, hitScreenX, canvasWidth, this.xModMode, 0, strokeReverb, this.engine, audioTime);
+              DrumSynth.triggerTom(tomFreq, 0.85 * drumGain, hitScreenX, canvasWidth, this.xModMode, 0, strokeReverb, this.engine, audioTime);
             } else {
-              DrumSynth.triggerHiHat(true, 0.85 * strokeVol, hitScreenX, canvasWidth, this.xModMode, 0, strokeReverb, this.engine, audioTime);
+              DrumSynth.triggerHiHat(true, 0.85 * drumGain, hitScreenX, canvasWidth, this.xModMode, 0, strokeReverb, this.engine, audioTime);
             }
           } else {
             // Apply subtle organic microtonal detune (+/- 35 cents) for vintage acoustic tone flutter
@@ -1667,7 +1669,7 @@ export class StrokeManager {
             const chord = getHarmonizerFrequencies(stroke.harmonizer, finalFreq, pitch.scaleDegree, strokeQuantizer);
             chord.frequencies.forEach((f, idx) => {
               const strumDelay = idx * 0.016; // 16ms acoustic strum spread
-              const noteVol = 0.85 * strokeVol * (chord.gains[idx] ?? 0.8);
+              const noteVol = (stroke.isPoint ? 1.0 : 0.85) * strokeVol * (chord.gains[idx] ?? 0.8);
               PulseVoice.trigger(
                 f,
                 false,
@@ -1723,17 +1725,18 @@ export class StrokeManager {
           }
           if (stroke.instrumentId === 'onyx') {
             const normY = canvasHeight > 0 ? triggerY / canvasHeight : 0.5;
+            const drumGain = stroke.isPoint ? 1.05 * strokeVol : strokeVol;
             if (normY >= 0.72) {
-              DrumSynth.triggerRoll('kick', 0.95 * strokeVol, hitScreenX, canvasWidth, this.xModMode, 120, strokeReverb, this.engine, audioTime);
+              DrumSynth.triggerRoll('kick', 0.95 * drumGain, hitScreenX, canvasWidth, this.xModMode, 120, strokeReverb, this.engine, audioTime);
             } else if (normY >= 0.58) {
-              DrumSynth.triggerRoll('snare', 0.9 * strokeVol, hitScreenX, canvasWidth, this.xModMode, 120, strokeReverb, this.engine, audioTime);
+              DrumSynth.triggerRoll('snare', 0.9 * drumGain, hitScreenX, canvasWidth, this.xModMode, 120, strokeReverb, this.engine, audioTime);
             } else if (normY >= 0.48) {
-              DrumSynth.triggerRoll('clap', 0.85 * strokeVol, hitScreenX, canvasWidth, this.xModMode, 120, strokeReverb, this.engine, audioTime);
+              DrumSynth.triggerRoll('clap', 0.85 * drumGain, hitScreenX, canvasWidth, this.xModMode, 120, strokeReverb, this.engine, audioTime);
             } else if (normY >= 0.25) {
               const tomFreq = 100 + (1 - (normY - 0.25) / 0.23) * 120;
-              DrumSynth.triggerRoll('tom', 0.85 * strokeVol, hitScreenX, canvasWidth, this.xModMode, tomFreq, strokeReverb, this.engine, audioTime);
+              DrumSynth.triggerRoll('tom', 0.85 * drumGain, hitScreenX, canvasWidth, this.xModMode, tomFreq, strokeReverb, this.engine, audioTime);
             } else {
-              DrumSynth.triggerRoll('hihat', 0.85 * strokeVol, hitScreenX, canvasWidth, this.xModMode, 120, strokeReverb, this.engine, audioTime);
+              DrumSynth.triggerRoll('hihat', 0.85 * drumGain, hitScreenX, canvasWidth, this.xModMode, 120, strokeReverb, this.engine, audioTime);
             }
           } else {
             const microCents = strokeFluctuation > 0
@@ -1743,7 +1746,7 @@ export class StrokeManager {
 
             const chord = getHarmonizerFrequencies(stroke.harmonizer, finalFreq, pitch.scaleDegree, strokeQuantizer);
             chord.frequencies.forEach((f, idx) => {
-              const noteVol = 0.8 * strokeVol * (chord.gains[idx] ?? 0.8);
+              const noteVol = (stroke.isPoint ? 1.0 : 0.8) * strokeVol * (chord.gains[idx] ?? 0.8);
               PulseVoice.triggerRatchet(
                 f,
                 noteVol,

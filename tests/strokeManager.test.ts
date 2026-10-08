@@ -1786,6 +1786,73 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
       expect(minSwell).toBeGreaterThan(0.4);
       expect(maxSwell).toBeLessThanOrEqual(1.3);
     });
+
+    it('maintains full volume headroom on stationary dots without loop seam crossfade attenuation', () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+
+      // Normal line in restart mode: near boundary (distance 0) it gets seam attenuated to 0.2
+      const line = sm.addStroke(
+        dummyPath,
+        'solid',
+        'indigo',
+        100,
+        quantizer,
+        600,
+        1.0,
+        undefined,
+        'restart'
+      );
+
+      // Stationary dot note: at distance 0 it MUST NOT get seam attenuated
+      const dot = sm.addStroke(
+        dotPath,
+        'solid',
+        'indigo',
+        100,
+        quantizer,
+        600,
+        1.0,
+        undefined,
+        'restart',
+        undefined,
+        1.0,
+        'speed',
+        undefined,
+        undefined,
+        'speed',
+        undefined,
+        false,
+        true
+      );
+
+      expect(dot.isPoint).toBe(true);
+      expect(line.isPoint).toBeFalsy();
+
+      let dotEffectiveVol = 0;
+      let lineEffectiveVol = 0;
+
+      // Mock drone voice to inspect effectiveVol passed to updateDual
+      dot.droneVoice = {
+        isPlaying: true,
+        updateDual: (...args: any[]) => {
+          dotEffectiveVol = args[8]; // 9th argument is effectiveVol
+        },
+      } as any;
+
+      line.droneVoice = {
+        isPlaying: true,
+        updateDual: (...args: any[]) => {
+          lineEffectiveVol = args[8];
+        },
+      } as any;
+
+      sm.update(0.016, 800, 600, quantizer);
+
+      // The dot maintains full volume (= 1.0) rather than being crushed to 0.2
+      expect(dotEffectiveVol).toBeCloseTo(1.0, 2);
+      expect(lineEffectiveVol).toBeLessThan(0.4); // line near seam is attenuated as expected
+    });
   });
 });
 

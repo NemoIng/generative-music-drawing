@@ -1449,6 +1449,11 @@ function updateStudioDockedInspector(): void {
     }
   }
 
+  const studioTraversalRow = studioTraversalSwitch?.closest('.docked-row') as HTMLElement | null;
+  const studioWaveGroup = studioWaveShapeSelect?.closest('.docked-group') as HTMLElement | null;
+  if (studioTraversalRow) studioTraversalRow.style.display = stroke.isPoint ? 'none' : '';
+  if (studioWaveGroup) studioWaveGroup.style.display = stroke.isPoint ? 'none' : '';
+
   const isBounce = stroke.traversal === 'bounce' || (stroke.traversal as string) === 'pingpong';
   studioTraversalSwitch?.querySelectorAll<HTMLButtonElement>('.seg-btn').forEach((b) => {
     b.classList.toggle('active', (b.getAttribute('data-track-traversal') === 'bounce') === isBounce);
@@ -1733,10 +1738,11 @@ function updateZenContextPill(stroke?: DrawnStroke): void {
   const idx = strokeManager.activeStrokes.indexOf(stroke);
 
   if (zenContextDot) zenContextDot.style.background = color;
-  if (zenContextName) zenContextName.textContent = `#${idx + 1} ${inst.name}`;
+  if (zenContextName) zenContextName.textContent = stroke.isPoint ? `Dot #${idx + 1} ${inst.name}` : `#${idx + 1} ${inst.name}`;
   if (zenContextVolSlider) zenContextVolSlider.value = Math.round((stroke.volume ?? 1.0) * 100).toString();
   if (zenContextMuteBtn) zenContextMuteBtn.classList.toggle('active-mute', !!stroke.muted);
   if (zenContextSoloBtn) zenContextSoloBtn.classList.toggle('active-solo', !!stroke.soloed);
+  if (zenContextTravBtn) zenContextTravBtn.style.display = stroke.isPoint ? 'none' : '';
 }
 
 // Scene Arranger Implementation
@@ -2906,7 +2912,7 @@ function updateTrackActionsVisibility(): void {
       }
 
       const inst = getInstrument(stroke.instrumentId);
-      trackLabel.textContent = `${inst.name}`;
+      trackLabel.textContent = stroke.isPoint ? `Dot: ${inst.name}` : `${inst.name}`;
       const badgeColor = getInstrumentColor(inst, renderer.isDarkMode);
       trackBadgeDot.style.background = badgeColor;
       trackBadgeDot.style.boxShadow = `0 0 8px ${badgeColor}80`;
@@ -2939,7 +2945,12 @@ function updateTrackActionsVisibility(): void {
         trackFilterVal.textContent = `${Math.round(cutoff * 100)}%`;
       }
 
-      // Wave parameters sync
+      // Wave parameters sync (hidden for stationary dot notes)
+      const trackWaveControl = document.getElementById('trackWaveControl');
+      if (trackWaveControl) {
+        trackWaveControl.style.display = stroke.isPoint ? 'none' : '';
+      }
+
       if (stroke.waveParams) {
         waveSineBtn.classList.toggle('active', stroke.waveParams.amplitude > 0);
         waveShapeSelect.value = stroke.waveParams.shapeType ?? 'sine';
@@ -2998,7 +3009,12 @@ function updateTrackActionsVisibility(): void {
         trackSyncSelect.value = stroke.loopQuantize ?? '2bars';
       }
 
-      // Traversal buttons sync (Restart vs Bounce)
+      // Traversal buttons sync (Restart vs Bounce) (hidden for stationary dot notes)
+      const trackTraversalCell = document.getElementById('trackTraversalControl')?.closest('.inspector-cell') as HTMLElement | null;
+      if (trackTraversalCell) {
+        trackTraversalCell.style.display = stroke.isPoint ? 'none' : '';
+      }
+
       const currentTrav = (stroke.traversal === 'bounce' || (stroke.traversal as string) === 'pingpong') ? 'bounce' : 'restart';
       trackTraversalButtons.forEach((b) => {
         const tMode = b.getAttribute('data-track-traversal');
@@ -3025,7 +3041,9 @@ function updateTrackActionsVisibility(): void {
         ? `Timer ${formatDurationSec(strokeDur)}`
         : `${strokeSpeed.toFixed(2)}x Speed`;
       const travName = currentTrav === 'bounce' ? 'Bounce ⇄' : 'Restart ↻';
-      statLoopSync.textContent = `${timingLabel} • ${travName}`;
+      statLoopSync.textContent = stroke.isPoint
+        ? `${timingLabel} • Dot Note`
+        : `${timingLabel} • ${travName}`;
 
       muteBtn.classList.toggle('active-mute', !!stroke.muted);
       muteBtn.textContent = stroke.muted ? 'Unmute' : 'Mute';
@@ -3908,6 +3926,7 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     if (targetStrokeId) {
       const stroke = strokeManager.activeStrokes.find((s) => s.id === targetStrokeId);
       if (stroke) {
+        if (stroke.isPoint) return;
         const currentTrav = (stroke.traversal === 'bounce' || (stroke.traversal as string) === 'pingpong') ? 'bounce' : 'restart';
         const nextTrav: TraversalMode = currentTrav === 'bounce' ? 'restart' : 'bounce';
         strokeManager.setStrokeTraversal(stroke.id, nextTrav);

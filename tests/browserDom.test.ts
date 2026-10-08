@@ -731,6 +731,35 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     soloBtn.classList.toggle('active-solo', true);
     expect(soloBtn.classList.contains('active-solo')).toBe(true);
   });
+
+  it('contains traversal and wave control elements in inspectors that can be toggled for dot notes', () => {
+    const trackTraversalCell = doc.getElementById('trackTraversalControl')?.closest('.inspector-cell');
+    const trackWaveCell = doc.getElementById('trackWaveControl');
+    const studioTraversalSwitch = doc.getElementById('studioTraversalSwitch');
+    const studioWaveShapeSelect = doc.getElementById('studioWaveShapeSelect');
+    const zenContextTravBtn = doc.getElementById('zenContextTravBtn');
+
+    expect(trackTraversalCell).toBeDefined();
+    expect(trackWaveCell).toBeDefined();
+    expect(studioTraversalSwitch).toBeDefined();
+    expect(studioWaveShapeSelect).toBeDefined();
+    expect(zenContextTravBtn).toBeDefined();
+
+    // Verify hiding styling can be applied
+    const studioTraversalRow = studioTraversalSwitch?.closest('.docked-row') as HTMLElement | null;
+    const studioWaveGroup = studioWaveShapeSelect?.closest('.docked-group') as HTMLElement | null;
+    if (studioTraversalRow) studioTraversalRow.style.display = 'none';
+    if (studioWaveGroup) studioWaveGroup.style.display = 'none';
+    if (trackTraversalCell) (trackTraversalCell as HTMLElement).style.display = 'none';
+    if (trackWaveCell) (trackWaveCell as HTMLElement).style.display = 'none';
+    if (zenContextTravBtn) (zenContextTravBtn as HTMLElement).style.display = 'none';
+
+    expect(studioTraversalRow?.style.display).toBe('none');
+    expect(studioWaveGroup?.style.display).toBe('none');
+    expect((trackTraversalCell as HTMLElement)?.style.display).toBe('none');
+    expect((trackWaveCell as HTMLElement)?.style.display).toBe('none');
+    expect((zenContextTravBtn as HTMLElement)?.style.display).toBe('none');
+  });
 });
 
 
