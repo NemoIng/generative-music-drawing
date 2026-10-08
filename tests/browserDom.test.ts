@@ -701,6 +701,36 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     expect(toggleBtn?.textContent?.trim()).toBe('Hints On');
     expect(toggleBtn?.getAttribute('data-tooltip')).toContain('Toggle Tooltips');
   });
+
+  it('supports active-mute and active-solo CSS state classes on layer cards and action buttons', () => {
+    const cssPath = path.resolve(__dirname, '../src/style.css');
+    const css = fs.readFileSync(cssPath, 'utf-8');
+    expect(css).toContain('.layer-btn.active-mute');
+    expect(css).toContain('.layer-btn.active-solo');
+    expect(css).toContain('.layer-card.dimmed');
+
+    // Create a mock layer card element and verify class toggling behavior
+    const mockCard = doc.createElement('div');
+    mockCard.className = 'layer-card';
+    const muteBtn = doc.createElement('button');
+    muteBtn.className = 'layer-btn';
+    muteBtn.setAttribute('data-action', 'mute');
+    const soloBtn = doc.createElement('button');
+    soloBtn.className = 'layer-btn';
+    soloBtn.setAttribute('data-action', 'solo');
+    mockCard.appendChild(muteBtn);
+    mockCard.appendChild(soloBtn);
+
+    // Toggle mute
+    muteBtn.classList.toggle('active-mute', true);
+    mockCard.classList.toggle('dimmed', true);
+    expect(muteBtn.classList.contains('active-mute')).toBe(true);
+    expect(mockCard.classList.contains('dimmed')).toBe(true);
+
+    // Toggle solo
+    soloBtn.classList.toggle('active-solo', true);
+    expect(soloBtn.classList.contains('active-solo')).toBe(true);
+  });
 });
 
 

@@ -1678,17 +1678,13 @@ function initZenMode(): void {
   zenContextMuteBtn?.addEventListener('click', () => {
     if (!strokeManager.selectedStrokeId) return;
     strokeManager.toggleMute(strokeManager.selectedStrokeId);
-    setCompositionDirty(true);
-    updateTrackActionsVisibility();
-    renderStudioMixer();
+    syncCompositionState();
   });
 
   zenContextSoloBtn?.addEventListener('click', () => {
     if (!strokeManager.selectedStrokeId) return;
     strokeManager.toggleSolo(strokeManager.selectedStrokeId);
-    setCompositionDirty(true);
-    updateTrackActionsVisibility();
-    renderStudioMixer();
+    syncCompositionState();
   });
 
   zenContextTravBtn?.addEventListener('click', () => {
@@ -3937,10 +3933,10 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
   // 8. Mute / Solo shortcuts: M = Mute, S = Solo
   if (e.key.toLowerCase() === 'm' && strokeManager.selectedStrokeId) {
     strokeManager.toggleMute(strokeManager.selectedStrokeId);
-    updateTrackActionsVisibility();
+    syncCompositionState();
   } else if (e.key.toLowerCase() === 's' && strokeManager.selectedStrokeId) {
     strokeManager.toggleSolo(strokeManager.selectedStrokeId);
-    updateTrackActionsVisibility();
+    syncCompositionState();
   }
 
   // 9. Number Keys 1 - 7: Quick select instruments
