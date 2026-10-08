@@ -99,20 +99,35 @@ describe('Coordinate-to-Pitch Scale Quantizer (Non-linear 100 Hz to 8000 Hz)', (
       root: ROOT_NOTES.D2,
     });
 
-    const guidelines = quantizer.getGuidelines(canvasHeight);
+    const guidelines = quantizer.getAllGuidelines(canvasHeight);
     expect(guidelines.length).toBeGreaterThan(30);
 
     // All guidelines must fall within [100 Hz, 8000 Hz]
+    const worldH = quantizer.getWorldHeight(canvasHeight);
     for (const g of guidelines) {
       expect(g.frequency).toBeGreaterThanOrEqual(100);
       expect(g.frequency).toBeLessThanOrEqual(8000);
       expect(g.y).toBeGreaterThanOrEqual(0);
-      expect(g.y).toBeLessThanOrEqual(canvasHeight);
+      expect(g.y).toBeLessThanOrEqual(worldH);
     }
 
     // Must include roots (e.g. D3, D4, D5)
     const roots = guidelines.filter((g) => g.isRoot);
     expect(roots.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('supports smooth scrolling across the full virtual world', () => {
+    const quantizer = new ScaleQuantizer();
+    quantizer.setScrollEnabled(true);
+    expect(quantizer.getMaxScrollY(canvasHeight)).toBeGreaterThan(0);
+
+    quantizer.resetScrollToDefault(canvasHeight);
+    expect(quantizer.scrollY).toBeGreaterThan(0);
+    expect(quantizer.scrollY).toBeLessThanOrEqual(quantizer.getMaxScrollY(canvasHeight));
+
+    const before = quantizer.scrollY;
+    quantizer.scrollBy(100, canvasHeight);
+    expect(quantizer.scrollY).toBe(before + 100);
   });
 
   it('provides frequency spectrum info with exact 100 Hz and 8000 Hz boundaries', () => {
@@ -121,10 +136,13 @@ describe('Coordinate-to-Pitch Scale Quantizer (Non-linear 100 Hz to 8000 Hz)', (
       root: ROOT_NOTES.D2,
     });
 
-    const info = quantizer.getFrequencyRangeInfo(canvasHeight, 0);
-    expect(info.minFreq).toBe(100);
-    expect(info.maxFreq).toBe(8000);
-    expect(info.bottomFreq).toBeCloseTo(100, 1);
-    expect(info.topFreq).toBeCloseTo(8000, 1);
+    const maxScroll = quantizer.getMaxScrollY(canvasHeight);
+    const bottomInfo = quantizer.getFrequencyRangeInfo(canvasHeight, maxScroll);
+    expect(bottomInfo.minFreq).toBe(100);
+    expect(bottomInfo.maxFreq).toBe(8000);
+    expect(bottomInfo.bottomFreq).toBeCloseTo(100, 1);
+
+    const topInfo = quantizer.getFrequencyRangeInfo(canvasHeight, 0);
+    expect(topInfo.topFreq).toBeCloseTo(8000, 1);
   });
 });

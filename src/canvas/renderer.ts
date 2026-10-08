@@ -91,12 +91,21 @@ export class CanvasRenderer {
     this.ctx.save();
 
     // Responsive blank background margins for scale names (left) and Hz (right)
+    // 135px rightMargin ensures frequency labels sit to the left of the pitch navigator rail (width 54px + 12px margin + padding)
     const leftMargin = Math.min(84, Math.max(56, w * 0.04));
-    const rightMargin = Math.min(80, Math.max(56, w * 0.04));
+    const rightMargin = Math.min(150, Math.max(130, w * 0.09));
 
-    for (const g of guidelines) {
-      const y = typeof g.screenY === 'number' ? g.screenY : g.y;
-      if (y < -30 || y > h + 30) continue;
+    // Filter visible guidelines and calculate vertical distances to avoid text overlapping
+    const visible = guidelines
+      .map((g) => ({ g, y: typeof g.screenY === 'number' ? g.screenY : g.y }))
+      .filter(({ y }) => y >= -30 && y <= h + 30)
+      .sort((a, b) => a.y - b.y);
+
+    for (let i = 0; i < visible.length; i++) {
+      const { g, y } = visible[i];
+      const prevY = i > 0 ? visible[i - 1].y : -999;
+      const nextY = i < visible.length - 1 ? visible[i + 1].y : 999;
+      const nearestDist = Math.min(Math.abs(y - prevY), Math.abs(nextY - y));
 
       this.ctx.beginPath();
       this.ctx.moveTo(leftMargin, y);
@@ -123,6 +132,10 @@ export class CanvasRenderer {
         this.ctx.setLineDash([3, 5]);
       }
       this.ctx.stroke();
+
+      // Only draw text labels if the line has enough vertical headroom (>= 15px) or is a primary harmonic landmark
+      const hasRoom = nearestDist >= 15 || g.isRoot || isChordTone || isFifth;
+      if (!hasRoom) continue;
 
       // Note Name on margins
       this.ctx.setLineDash([]);
@@ -157,7 +170,7 @@ export class CanvasRenderer {
       this.ctx.fillStyle = isChordTone
         ? (this.isDarkMode ? '#fbbf24' : '#b45309')
         : (this.isDarkMode ? '#71717a' : '#a8a29e');
-      this.ctx.fillText(`${Math.round(g.frequency)}Hz`, w - rightMargin + 14, y);
+      this.ctx.fillText(`${Math.round(g.frequency)}Hz`, w - rightMargin + 10, y);
     }
 
     this.ctx.restore();
