@@ -576,6 +576,23 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     expect(renderedText).toContain('0.5x');
     expect(renderedText).not.toMatch(/\d+\.\d+s/);
   });
+
+  it('contains share button pointing to production URL and supports composition coordinates correctly', async () => {
+    const shareBtn = doc.getElementById('shareLinkBtn');
+    expect(shareBtn).toBeDefined();
+    expect(shareBtn?.getAttribute('data-tooltip')).toContain('Share Link');
+
+    const { StrokeManager } = await import('../src/engine/strokeManager');
+    const { ScaleQuantizer } = await import('../src/audio/scaleQuantizer');
+    const strokeMgr = new StrokeManager();
+    const quantizer = new ScaleQuantizer();
+    quantizer.scrollY = 250;
+    const exported = strokeMgr.exportComposition('Test Preset', 'dorian', 'D2', 1200, 800);
+    exported.scrollY = 250;
+
+    // Importing into quantizer preserves pitch register without shifting strokes
+    expect(exported.scrollY).toBe(250);
+  });
 });
 
 

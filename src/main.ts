@@ -687,23 +687,15 @@ async function loadComposition(comp: SavedComposition): Promise<void> {
   if (typeof comp.scrollY === 'number') {
     quantizer.scrollY = quantizer.clampScrollY(comp.scrollY, renderer.height);
   } else {
-    // If older file didn't store scrollY, strokes are in [0, H] screen space.
-    // Offset melodic strokes to defaultScrollY so they align with default middle register.
-    const defaultScroll = quantizer.resetScrollToDefault(renderer.height);
-    for (const s of comp.strokes) {
-      if (s.instrumentId !== 'onyx') {
-        for (const seg of s.path.segments) {
-          seg.p0.y += defaultScroll;
-          seg.p1.y += defaultScroll;
-          seg.p2.y += defaultScroll;
-          seg.p3.y += defaultScroll;
-        }
-      }
-    }
+    // If older file didn't store scrollY, reset scroll to default
+    quantizer.resetScrollToDefault(renderer.height);
   }
   updatePitchNavigator();
 
   strokeManager.importComposition(comp, quantizer, renderer.height, renderer.width);
+  if (soundEngine.isReady) {
+    strokeManager.activateAudioVoices();
+  }
   currentLoadedPresetName = comp.name || 'Custom Preset';
   setCompositionDirty(false);
   updateStats();
@@ -3199,8 +3191,9 @@ shortcutsBtn?.addEventListener('click', openShortcutsModal);
 closeShortcutsModalBtn?.addEventListener('click', closeShortcutsModal);
 shortcutsModal?.querySelector('.modal-backdrop')?.addEventListener('click', closeShortcutsModal);
 
-// Shareable Composition Link (#score=...)
-function createShareableLink(): string {
+const PROD_BASE_URL = 'https://generative-music-drawing.vercel.app';
+
+function buildCurrentCompositionExport(): SavedComposition {
   const comp = strokeManager.exportComposition(
     currentLoadedPresetName || 'Shared Score',
     scaleSelect ? scaleSelect.value : 'dorian',
@@ -3209,22 +3202,64 @@ function createShareableLink(): string {
     renderer.height
   );
   comp.spaceReverb = soundEngine.reverbMix;
+  comp.octaveSpan = parseInt(octavesSlider.value, 10);
+  comp.scrollY = quantizer.scrollY;
+  if (xAxisSelect) {
+    comp.xAxisModulationMode = xAxisSelect.value as XAxisModulationMode;
+  }
+  if (breathingSelect) {
+    comp.breathingMode = breathingSelect.value as BreathingMode;
+  }
+  if (defaultHarmonizerSelect) {
+    comp.defaultHarmonizer = defaultHarmonizerSelect.value as HarmonizerMode;
+  }
+  if (generalSyncSelect) {
+    comp.defaultTiming = generalSyncSelect.value;
+  }
+  return comp;
+}
+
+// Shareable Composition Link - Stores to persistent DB on deployed app and returns clean URL
+async function createShareableLink(): Promise<string> {
+  const comp = buildCurrentCompositionExport();
+
+  // Try storing to API backend first
+  try {
+    const apiUrl = window.location.hostname.includes('vercel.app')
+      ? '/api/track'
+      : `${PROD_BASE_URL}/api/track`;
+
+    const resp = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(comp),
+    });
+
+    if (resp.ok) {
+      const result = await resp.json();
+      if (result && result.id) {
+        return `${PROD_BASE_URL}/?track=${encodeURIComponent(result.id)}`;
+      }
+    }
+  } catch (err) {
+    console.warn('API share save failed, using encoded fallback:', err);
+  }
+
+  // Fallback: direct deployed URL with clean score hash
   const jsonStr = JSON.stringify(comp);
   const encoded = encodeURIComponent(btoa(unescape(encodeURIComponent(jsonStr))));
-  const url = new URL(window.location.href);
-  url.hash = `score=${encoded}`;
-  return url.toString();
+  return `${PROD_BASE_URL}/#score=${encoded}`;
 }
 
 shareLinkBtn?.addEventListener('click', async () => {
   try {
-    const shareUrl = createShareableLink();
+    showToast('Generating shareable link...');
+    const shareUrl = await createShareableLink();
     if (navigator.clipboard && navigator.clipboard.writeText) {
       await navigator.clipboard.writeText(shareUrl);
       showToast('Score link copied to clipboard!');
     } else {
-      window.location.hash = shareUrl.split('#')[1];
-      showToast('URL updated with score!');
+      prompt('Copy your score link:', shareUrl);
     }
   } catch (err) {
     showToast('Could not copy link to clipboard');
@@ -4028,22 +4063,50 @@ inputHandler.onLiveTrigger = (x: number, y: number, color: string) => {
   renderer.spawnSparks(x, y, color, 8, 1.2);
 };
 
-// URL Hash Composition Loader (#score=...)
-async function checkUrlHashScore(): Promise<boolean> {
-  const hash = window.location.hash;
-  if (!hash.startsWith('#score=')) return false;
-  try {
-    const encoded = hash.replace('#score=', '');
-    const jsonStr = decodeURIComponent(escape(atob(decodeURIComponent(encoded))));
-    const parsedComp = JSON.parse(jsonStr) as SavedComposition;
-    if (parsedComp && Array.isArray(parsedComp.strokes)) {
-      await loadComposition(parsedComp);
-      showToast(`Loaded score "${parsedComp.name || 'Shared Score'}"`);
-      return true;
+// URL Composition Loader (?track=... or #score=...)
+async function checkSharedCompositionUrl(): Promise<boolean> {
+  // 1. Check for ?track=<id> query parameter (Database-backed track)
+  const urlParams = new URLSearchParams(window.location.search);
+  const trackId = urlParams.get('track');
+  if (trackId) {
+    try {
+      showToast('Loading shared track...');
+      const apiUrl = window.location.hostname.includes('vercel.app')
+        ? `/api/track?id=${encodeURIComponent(trackId)}`
+        : `${PROD_BASE_URL}/api/track?id=${encodeURIComponent(trackId)}`;
+
+      const resp = await fetch(apiUrl);
+      if (resp.ok) {
+        const json = await resp.json();
+        const scoreData = (json && json.data) ? json.data : json;
+        if (scoreData && Array.isArray(scoreData.strokes)) {
+          await loadComposition(scoreData);
+          showToast(`Loaded score "${scoreData.name || 'Shared Score'}"`);
+          return true;
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to load track from DB:', err);
     }
-  } catch (e) {
-    console.error('Failed to unpack URL score:', e);
   }
+
+  // 2. Fallback to #score=<encoded> hash if present
+  const hash = window.location.hash;
+  if (hash.startsWith('#score=')) {
+    try {
+      const encoded = hash.replace('#score=', '');
+      const jsonStr = decodeURIComponent(escape(atob(decodeURIComponent(encoded))));
+      const parsedComp = JSON.parse(jsonStr) as SavedComposition;
+      if (parsedComp && Array.isArray(parsedComp.strokes)) {
+        await loadComposition(parsedComp);
+        showToast(`Loaded score "${parsedComp.name || 'Shared Score'}"`);
+        return true;
+      }
+    } catch (e) {
+      console.error('Failed to unpack URL score:', e);
+    }
+  }
+
   return false;
 }
 
@@ -4056,7 +4119,7 @@ targetScrollY = quantizer.scrollY;
 updatePitchNavigator();
 
 (async () => {
-  const loadedFromUrl = await checkUrlHashScore();
+  const loadedFromUrl = await checkSharedCompositionUrl();
   if (!loadedFromUrl) {
     loadTemplate('cathedralSolitude', false);
   }
