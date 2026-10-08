@@ -543,7 +543,9 @@ export class CanvasRenderer {
         ctx.lineWidth = 1.6;
         ctx.stroke();
       } else {
-        const pulsePhase = (nowMs % 1400) / 1400;
+        const speedMult = Math.max(0.1, stroke.speedMultiplier ?? 1.0);
+        const pulsePeriod = stroke.isPoint ? Math.max(80, 1000 / speedMult) : 1400;
+        const pulsePhase = (nowMs % pulsePeriod) / pulsePeriod;
         const pulseRadius = 6 + pulsePhase * 14;
         const pulseAlpha = (1 - pulsePhase) * 0.45;
 

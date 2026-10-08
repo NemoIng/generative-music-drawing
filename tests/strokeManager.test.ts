@@ -1608,6 +1608,185 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
       expect(stroke.playhead.direction).toBe(1);
     });
   });
+
+  describe('Stationary Dot Speed Dynamics (Approach 1)', () => {
+    const dotPath: SplinePath = {
+      segments: [
+        {
+          p0: { x: 300, y: 300 },
+          p1: { x: 300.1, y: 300 },
+          p2: { x: 300.2, y: 300 },
+          p3: { x: 300.3, y: 300 },
+        },
+      ],
+      isClosed: false,
+    };
+
+    it('modulates rhythmic pulse triggers proportionally when speed multiplier changes on dotted dot', () => {
+      const origTrigger = PulseVoice.trigger;
+      PulseVoice.trigger = () => {};
+      try {
+        const sm = new StrokeManager();
+        sm.setBpm(120); // 120 BPM = 2 beats per second = 1 beat every 0.5s
+        const quantizer = new ScaleQuantizer();
+
+        // Dotted dot at 1.0x speed -> triggers every 0.5s
+        sm.addStroke(
+          dotPath,
+          'dotted',
+          'indigo',
+          100,
+          quantizer,
+          600,
+          1.0,
+          undefined,
+          undefined,
+          undefined,
+          1.0,
+          'speed',
+          undefined,
+          undefined,
+          'speed',
+          undefined,
+          false,
+          true
+        );
+
+        let triggers1 = 0;
+        sm.onTriggerSpark = () => { triggers1++; };
+
+        // Simulate 2 seconds at dt = 0.05s
+        for (let i = 0; i < 40; i++) {
+          sm.update(0.05, 800, 600, quantizer);
+        }
+        expect(triggers1).toBe(4); // 2s * 2 beats/s = 4 triggers
+
+        // Now create a dotted dot at 2.0x speed -> triggers twice as often (every 0.25s)
+        const sm2 = new StrokeManager();
+        sm2.setBpm(120);
+        sm2.addStroke(
+          dotPath,
+          'dotted',
+          'indigo',
+          100,
+          quantizer,
+          600,
+          1.0,
+          undefined,
+          undefined,
+          undefined,
+          2.0,
+          'speed',
+          undefined,
+          undefined,
+          'speed',
+          undefined,
+          false,
+          true
+        );
+
+        let triggers2 = 0;
+        sm2.onTriggerSpark = () => { triggers2++; };
+
+        for (let i = 0; i < 40; i++) {
+          sm2.update(0.05, 800, 600, quantizer);
+        }
+        expect(triggers2).toBe(8); // 2s * 4 beats/s = 8 triggers (2x speed!)
+      } finally {
+        PulseVoice.trigger = origTrigger;
+      }
+    });
+
+    it('modulates rapid roll trigger rate proportionally when speed changes on striped dot', () => {
+      const origRatchet = PulseVoice.triggerRatchet;
+      PulseVoice.triggerRatchet = () => {};
+      try {
+        const sm = new StrokeManager();
+        sm.setBpm(120); // base roll = 0.25s interval
+        const quantizer = new ScaleQuantizer();
+
+        const dot = sm.addStroke(
+          dotPath,
+          'striped',
+          'indigo',
+          100,
+          quantizer,
+          600,
+          1.0,
+          undefined,
+          undefined,
+          undefined,
+          1.0,
+          'speed',
+          undefined,
+          undefined,
+          'speed',
+          undefined,
+          false,
+          true
+        );
+
+        let triggers = 0;
+        sm.onTriggerSpark = () => { triggers++; };
+
+        // Simulate 1 second
+        for (let i = 0; i < 20; i++) {
+          sm.update(0.05, 800, 600, quantizer);
+        }
+        expect(triggers).toBe(4); // 1s / 0.25s = 4 rolls
+
+        // Update speed to 0.5x (half-time rolls)
+        sm.setStrokeSpeed(dot.id, 0.5, false);
+        triggers = 0;
+        for (let i = 0; i < 20; i++) {
+          sm.update(0.05, 800, 600, quantizer);
+        }
+        expect(triggers).toBe(2); // 1s / 0.5s = 2 rolls
+      } finally {
+        PulseVoice.triggerRatchet = origRatchet;
+      }
+    });
+
+    it('modulates LFO tremolo swell on stationary solid dots driven by speed', () => {
+      const sm = new StrokeManager();
+      sm.setBpm(120);
+      const quantizer = new ScaleQuantizer();
+
+      const solidDot = sm.addStroke(
+        dotPath,
+        'solid',
+        'indigo',
+        100,
+        quantizer,
+        600,
+        1.0,
+        undefined,
+        undefined,
+        undefined,
+        2.0, // 2x speed -> rapid LFO tremolo
+        'speed',
+        undefined,
+        undefined,
+        'speed',
+        undefined,
+        false,
+        true
+      );
+
+      const swells: number[] = [];
+      for (let i = 0; i < 20; i++) {
+        sm.update(0.05, 800, 600, quantizer);
+        swells.push(solidDot.playhead.currentSwell ?? 1.0);
+      }
+
+      // Verify the swell fluctuates across time rather than remaining static
+      const minSwell = Math.min(...swells);
+      const maxSwell = Math.max(...swells);
+      expect(maxSwell).toBeGreaterThan(minSwell);
+      expect(minSwell).toBeGreaterThan(0.4);
+      expect(maxSwell).toBeLessThanOrEqual(1.3);
+    });
+  });
 });
 
 

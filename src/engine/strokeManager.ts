@@ -1550,13 +1550,37 @@ export class StrokeManager {
         ? calculateBreathing(this.breathingMode, this.masterClockTime, stroke.id)
         : { filterMultiplier: 1.0, volumeMultiplier: 1.0, detuneCents: 0.0 };
 
+      // Approach 1: If stroke is a stationary solid dot, speed drives rhythmic LFO tremolo & filter breathing
+      let effBreathing = breathing;
+      if (stroke.isPoint && stroke.style === 'solid') {
+        const effectiveMult = Math.max(0.05, strokeSpeedMult);
+        const f_lfo = strokeTimingMode === 'timer'
+          ? (4 / strokeDuration)
+          : (this.bpm / 60) * effectiveMult;
+
+        let dotHash = 0;
+        for (let i = 0; i < stroke.id.length; i++) {
+          dotHash = (dotHash * 31 + stroke.id.charCodeAt(i)) & 0x7fffffff;
+        }
+        const dotPhi = ((dotHash % 1000) / 1000) * Math.PI * 2;
+        const tremoloWave = 0.5 * (1 + Math.sin(2 * Math.PI * f_lfo * this.masterClockTime + dotPhi));
+        const tremoloVol = 0.55 + 0.45 * tremoloWave;
+        const tremoloFilter = 0.8 + 0.35 * tremoloWave;
+
+        effBreathing = {
+          volumeMultiplier: breathing.volumeMultiplier * tremoloVol,
+          filterMultiplier: breathing.filterMultiplier * tremoloFilter,
+          detuneCents: breathing.detuneCents,
+        };
+      }
+
       // Determine active quantizer: incoming strokes use their scene's quantizer during crossfade
       const strokeQuantizer = (stroke.morphRole === 'incoming' && this.morphIncomingQuantizer)
         ? this.morphIncomingQuantizer
         : quantizer;
 
       // Update playhead swell for visual halo breathing
-      ph.currentSwell = breathing.volumeMultiplier;
+      ph.currentSwell = effBreathing.volumeMultiplier;
 
       if (stroke.style === 'solid') {
         const pitch = strokeQuantizer.quantizeContinuous(solidEffectiveY, canvasHeight);
@@ -1580,7 +1604,7 @@ export class StrokeManager {
               effectiveVol,
               chord.frequencies,
               chord.gains,
-              breathing,
+              effBreathing,
               audioTime
             );
           }
@@ -1594,8 +1618,11 @@ export class StrokeManager {
         let hitY = evalResult.point.y;
 
         if (stroke.isPoint) {
-          // Stationary Point / Dot note: rhythmically triggered on measure beats (e.g. 2 beats per second at BPM)
-          const beatDuration = 60 / this.bpm;
+          // Stationary Point / Dot note: rhythmically triggered on measure beats scaled by speed
+          const effectiveMult = Math.max(0.05, strokeSpeedMult);
+          const beatDuration = strokeTimingMode === 'timer'
+            ? Math.max(0.05, strokeDuration / 8)
+            : (60 / this.bpm) / effectiveMult;
           const prevBeat = Math.floor((this.masterClockTime - dt) / beatDuration);
           const currBeat = Math.floor(this.masterClockTime / beatDuration);
           isTriggerHit = prevBeat !== currBeat && audible;
@@ -1651,8 +1678,8 @@ export class StrokeManager {
                 this.xModMode,
                 strumDelay,
                 strokeReverb,
-                breathing.filterMultiplier,
-                breathing.volumeMultiplier,
+                effBreathing.filterMultiplier,
+                effBreathing.volumeMultiplier,
                 this.engine,
                 audioTime,
                 stroke.distortion ?? 0.0,
@@ -1667,8 +1694,11 @@ export class StrokeManager {
         let hitY = evalResult.point.y;
 
         if (stroke.isPoint) {
-          // Stationary Point / Dot note: rhythmically triggered on quarter-beat / rolls
-          const rollDuration = (60 / this.bpm) * 0.5;
+          // Stationary Point / Dot note: rhythmically triggered on quarter-beat / rolls scaled by speed
+          const effectiveMult = Math.max(0.05, strokeSpeedMult);
+          const rollDuration = strokeTimingMode === 'timer'
+            ? Math.max(0.025, strokeDuration / 16)
+            : ((60 / this.bpm) * 0.5) / effectiveMult;
           const prevBeat = Math.floor((this.masterClockTime - dt) / rollDuration);
           const currBeat = Math.floor(this.masterClockTime / rollDuration);
           isTriggerHit = prevBeat !== currBeat && audible;
@@ -1722,8 +1752,8 @@ export class StrokeManager {
                 canvasWidth,
                 this.xModMode,
                 strokeReverb,
-                breathing.filterMultiplier,
-                breathing.volumeMultiplier,
+                effBreathing.filterMultiplier,
+                effBreathing.volumeMultiplier,
                 this.engine,
                 audioTime,
                 stroke.distortion ?? 0.0,
