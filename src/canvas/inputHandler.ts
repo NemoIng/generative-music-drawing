@@ -74,6 +74,7 @@ export class InputHandler {
   private onStrokeComplete: (path: SplinePath) => void;
   private onDrawChange?: (points: Point2D[]) => void;
   private onSelectStroke?: (strokeId: string | null) => void;
+  public onLiveTrigger?: (x: number, y: number, color: string) => void;
 
   constructor(canvas: HTMLCanvasElement, options: InputHandlerOptions) {
     this.canvas = canvas;
@@ -457,6 +458,7 @@ export class InputHandler {
             DrumSynth.triggerTom(tomFreq, LIVE_VOLUME * 0.9, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
           } else DrumSynth.triggerHiHat(true, LIVE_VOLUME * 0.9, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
           this.lastLivePoint = { x: screenX, y: screenY };
+          this.onLiveTrigger?.(screenX, screenY, instrument.color);
         }
       } else {
         const pitch = isScaleSnapped
@@ -469,11 +471,13 @@ export class InputHandler {
           if (dist >= 35) {
             PulseVoice.trigger(pitch.frequency, false, LIVE_VOLUME, instrument, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
             this.lastLivePoint = { x: screenX, y: screenY };
+            this.onLiveTrigger?.(screenX, screenY, instrument.color);
           }
         } else if (style === 'striped') {
           if (dist >= 35) {
             PulseVoice.triggerRatchet(pitch.frequency, LIVE_VOLUME * 0.95, instrument, screenX, rect.width, xAxisMod, LIVE_REVERB);
             this.lastLivePoint = { x: screenX, y: screenY };
+            this.onLiveTrigger?.(screenX, screenY, instrument.color);
           }
         } else {
           // Solid legato update

@@ -36,13 +36,11 @@
               <select id="templateSelect" class="minimal-select">
                 <option value="">Load Preset...</option>
                 <optgroup label="Ambient Starting Points">
-                  <option value="cathedralSolitude" selected>Cathedral of Solitude (32 BPM)</option>
+                  <option value="cathedralSolitude" selected>Cathedral of Solitude (30 BPM)</option>
                   <option value="deepCosmicDrone">Deep Cosmic Drone (24 BPM)</option>
-                  <option value="warmTapeDrift">Warm Tape Drift (40 BPM)</option>
-                  <option value="zenMeadow">Zen Meadow (48 BPM)</option>
-                  <option value="ambientDawn">Ambient Dawn (88 BPM)</option>
-                  <option value="zenMeditation">Zen Meditation (54 BPM)</option>
-                  <option value="minimalGroove">Minimal Groove (112 BPM)</option>
+                  <option value="warmTapeDrift">Warm Tape Drift (36 BPM)</option>
+                  <option value="zenGarden">Zen Garden (42 BPM)</option>
+                  <option value="midnightPulse">Midnight Pulse (52 BPM)</option>
                 </optgroup>
                 <optgroup label="My Saved Presets" id="savedTemplatesGroup" style="display:none"></optgroup>
               </select>
@@ -473,97 +471,6 @@
               </div>
               <input type="file" id="loadFileInput" accept=".json" style="display: none;" />
             </div>
-
-            <!-- 6. Keyboard Shortcuts Card -->
-            <div class="drawer-card">
-              <span class="drawer-card-label">Keyboard Shortcuts</span>
-              <div class="drawer-shortcuts-list">
-                <div class="shortcut-row">
-                  <span class="shortcut-desc">Quick Save Preset</span>
-                  <kbd class="shortcut-key">⌘S / Ctrl+S</kbd>
-                </div>
-                <div class="shortcut-row">
-                  <span class="shortcut-desc">Toggle Layers Mixer</span>
-                  <kbd class="shortcut-key">M / Layers</kbd>
-                </div>
-                <div class="shortcut-row">
-                  <span class="shortcut-desc">Play / Pause</span>
-                  <kbd class="shortcut-key">Space / P</kbd>
-                </div>
-                <div class="shortcut-row">
-                  <span class="shortcut-desc">Sync Playheads</span>
-                  <kbd class="shortcut-key">R</kbd>
-                </div>
-                <div class="shortcut-row">
-                  <span class="shortcut-desc">Randomize Playheads</span>
-                  <kbd class="shortcut-key">Shift + R</kbd>
-                </div>
-                <div class="shortcut-row">
-                  <span class="shortcut-desc">Switch Mode (Draw / Live)</span>
-                  <kbd class="shortcut-key">L</kbd>
-                </div>
-                <div class="shortcut-row">
-                  <span class="shortcut-desc">Undo / Redo</span>
-                  <kbd class="shortcut-key">⌘Z / ⌘⇧Z</kbd>
-                </div>
-                <div class="shortcut-row">
-                  <span class="shortcut-desc">Draw Straight Note</span>
-                  <kbd class="shortcut-key">Shift (Hold)</kbd>
-                </div>
-                <div class="shortcut-row">
-                  <span class="shortcut-desc">Select Inks 1–7</span>
-                  <kbd class="shortcut-key">1 – 7</kbd>
-                </div>
-                <div class="shortcut-row">
-                  <span class="shortcut-desc">Duplicate Selected Line</span>
-                  <kbd class="shortcut-key">⌘D</kbd>
-                </div>
-                <div class="shortcut-row">
-                  <span class="shortcut-desc">Copy / Paste Line</span>
-                  <kbd class="shortcut-key">⌘C / ⌘V</kbd>
-                </div>
-                <div class="shortcut-row">
-                  <span class="shortcut-desc">Mute / Solo Line</span>
-                  <kbd class="shortcut-key">M / S</kbd>
-                </div>
-                <div class="shortcut-row">
-                  <span class="shortcut-desc">Line Volume Up / Down</span>
-                  <kbd class="shortcut-key">↑ / ↓</kbd>
-                </div>
-                <div class="shortcut-row">
-                  <span class="shortcut-desc">Line Speed / Timer (±0.1x / ±5s)</span>
-                  <kbd class="shortcut-key">← / →</kbd>
-                </div>
-                <div class="shortcut-row">
-                  <span class="shortcut-desc">Delete Line</span>
-                  <kbd class="shortcut-key">Backspace</kbd>
-                </div>
-                <div class="shortcut-row">
-                  <span class="shortcut-desc">Scroll Pitch Register</span>
-                  <kbd class="shortcut-key">PgUp / PgDn</kbd>
-                </div>
-                <div class="shortcut-row">
-                  <span class="shortcut-desc">Center Pitch View</span>
-                  <kbd class="shortcut-key">Home</kbd>
-                </div>
-                <div class="shortcut-row">
-                  <span class="shortcut-desc">Toggle Traversal (Straight / Bounce)</span>
-                  <kbd class="shortcut-key">T</kbd>
-                </div>
-                <div class="shortcut-row">
-                  <span class="shortcut-desc">Toggle Fullscreen</span>
-                  <kbd class="shortcut-key">F</kbd>
-                </div>
-                <div class="shortcut-row">
-                  <span class="shortcut-desc">Cycle Views (Studio / Zen / Scenes)</span>
-                  <kbd class="shortcut-key">V</kbd>
-                </div>
-                <div class="shortcut-row">
-                  <span class="shortcut-desc">Deselect / Close</span>
-                  <kbd class="shortcut-key">Esc</kbd>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </header>
@@ -858,6 +765,12 @@
             <span id="contextHelp" class="context-help">Hover over any setting for details</span>
           </div>
           <div class="bottom-bar-actions">
+            <button type="button" id="shareLinkBtn" class="action-btn action-btn-sm has-tooltip" data-tooltip="Share Link: Copy shareable URL with this exact musical score.">
+              Share
+            </button>
+            <button type="button" id="shortcutsBtn" class="action-btn action-btn-sm has-tooltip" data-tooltip="Keyboard Shortcuts (?): Complete cheat sheet of hotkeys and gestures.">
+              ?
+            </button>
             <button type="button" id="clearBtn" class="action-btn action-btn-sm text-danger has-tooltip" data-tooltip="Clear Canvas: Remove all curves.">
               Clear
             </button>
@@ -1105,6 +1018,63 @@
         <!-- Dynamically populated Scene Cards -->
       </div>
     </section>
+
+      <!-- Keyboard Shortcuts Cheat Sheet Modal -->
+      <div id="shortcutsModal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-card shortcuts-modal-card">
+          <div class="modal-head">
+            <h2>Keyboard Shortcuts &amp; Gestures</h2>
+            <button id="closeShortcutsModalBtn" class="close-btn" aria-label="Close shortcuts modal">Close</button>
+          </div>
+          <div class="modal-content shortcuts-modal-content">
+            <div class="shortcuts-grid">
+              <div class="shortcut-group">
+                <h3>Playback &amp; Navigation</h3>
+                <div class="shortcut-row"><kbd>Space</kbd> or <kbd>P</kbd> <span>Play / Pause sound</span></div>
+                <div class="shortcut-row"><kbd>R</kbd> <span>Sync all playheads to line starts</span></div>
+                <div class="shortcut-row"><kbd>Shift + R</kbd> <span>Randomize playheads (polyrhythms)</span></div>
+                <div class="shortcut-row"><kbd>+</kbd> / <kbd>-</kbd> <span>Hold to Fast-Forward / Rewind (4x)</span></div>
+                <div class="shortcut-row"><kbd>V</kbd> <span>Cycle View: Studio &rarr; Zen &rarr; Scenes</span></div>
+                <div class="shortcut-row"><kbd>L</kbd> <span>Toggle Draw vs Live Play Wand</span></div>
+                <div class="shortcut-row"><kbd>F</kbd> <span>Toggle Fullscreen Canvas</span></div>
+              </div>
+
+              <div class="shortcut-group">
+                <h3>Selection &amp; Sound Editing</h3>
+                <div class="shortcut-row"><kbd>Click Line</kbd> <span>Select line for editing</span></div>
+                <div class="shortcut-row"><kbd>1</kbd> &ndash; <kbd>7</kbd> <span>Select Sound Ink (or revoice line)</span></div>
+                <div class="shortcut-row"><kbd>T</kbd> <span>Toggle Traversal: Loop &circlearrowright; / Bounce &rlarr;</span></div>
+                <div class="shortcut-row"><kbd>M</kbd> / <kbd>S</kbd> <span>Mute / Solo selected line</span></div>
+                <div class="shortcut-row"><kbd>&larr;</kbd> / <kbd>&rarr;</kbd> <span>Speed &plusmn;0.1x / Duration &plusmn;5s</span></div>
+                <div class="shortcut-row"><kbd>&uarr;</kbd> / <kbd>&darr;</kbd> or <kbd>[</kbd> <kbd>]</kbd> <span>Line Volume &plusmn;5%</span></div>
+                <div class="shortcut-row"><kbd>Backspace</kbd> / <kbd>Del</kbd> <span>Delete selected line</span></div>
+              </div>
+
+              <div class="shortcut-group">
+                <h3>Clipboard &amp; History</h3>
+                <div class="shortcut-row"><kbd>⌘ Z</kbd> / <kbd>Ctrl Z</kbd> <span>Undo</span></div>
+                <div class="shortcut-row"><kbd>⌘ Shift Z</kbd> / <kbd>Ctrl Y</kbd> <span>Redo</span></div>
+                <div class="shortcut-row"><kbd>⌘ C</kbd> / <kbd>⌘ V</kbd> <span>Copy &amp; Paste line</span></div>
+                <div class="shortcut-row"><kbd>⌘ D</kbd> <span>Duplicate selected line</span></div>
+                <div class="shortcut-row"><kbd>⌘ S</kbd> <span>Save composition preset</span></div>
+                <div class="shortcut-row"><kbd>Esc</kbd> <span>Deselect line / Close drawer or modal</span></div>
+                <div class="shortcut-row"><kbd>?</kbd> <span>Open this shortcuts cheat sheet</span></div>
+              </div>
+
+              <div class="shortcut-group">
+                <h3>Pitch Field &amp; Drawing</h3>
+                <div class="shortcut-row"><kbd>Scroll Wheel</kbd> <span>Scroll frequency field vertically</span></div>
+                <div class="shortcut-row"><kbd>PageUp</kbd> / <kbd>PageDn</kbd> <span>Shift octave register up / down</span></div>
+                <div class="shortcut-row"><kbd>Home</kbd> <span>Reset pitch register to middle octave</span></div>
+                <div class="shortcut-row"><kbd>Drag horizontal</kbd> <span>Left-to-Right stereo pan &amp; tone</span></div>
+                <div class="shortcut-row"><kbd>Bottom zone</kbd> <span>808 Drum kick (black/onyx ink)</span></div>
+                <div class="shortcut-row"><kbd>Top zone</kbd> <span>808 Drum hi-hats (black/onyx ink)</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <!-- Math & Algorithm Modal -->
       <div id="infoModal" class="modal hidden">

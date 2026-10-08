@@ -108,6 +108,9 @@ export class StrokeManager {
   private isPaused = false;
   private bpm = 100;
   private traversalMode: TraversalMode = 'restart';
+
+  /** Optional callback fired when a stroke playhead hits a note, drum trigger, or bounces */
+  public onTriggerSpark?: (x: number, y: number, color: string, count?: number, instrumentId?: string) => void;
   private xModMode: XAxisModulationMode = 'panAndTone';
   private quantizeMode: LoopQuantizeMode = '2bars';
   private defaultHarmonizer: HarmonizerMode = 'single';
@@ -1273,6 +1276,20 @@ export class StrokeManager {
           : this.sceneMorphGain;
         stroke.droneVoice = new DroneVoice(this.engine);
         stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, (stroke.volume ?? 1.0) * morphMultiplier, stroke.reverb ?? this.defaultReverb);
+        if (stroke.playhead.lastEval) {
+          const cWidth = this.lastCanvasWidth > 0 ? this.lastCanvasWidth : 1200;
+          stroke.droneVoice.updateDual(
+            stroke.playhead.lastPitch.freqA ?? stroke.playhead.lastPitch.freq1 ?? stroke.playhead.lastPitch.frequency,
+            stroke.playhead.lastPitch.freqB ?? stroke.playhead.lastPitch.freq2 ?? stroke.playhead.lastPitch.frequency,
+            stroke.playhead.lastPitch.gainA ?? 1.0,
+            stroke.playhead.lastPitch.gainB ?? 0.0,
+            stroke.playhead.lastEval.curvature,
+            stroke.playhead.lastEval.point.x,
+            cWidth,
+            this.xModMode,
+            (stroke.volume ?? 1.0) * morphMultiplier
+          );
+        }
       }
     }
   }
@@ -1372,6 +1389,9 @@ export class StrokeManager {
       // 2. Motion Trail (reset immediately on loop boundary wrap/bounce to avoid cross-screen streaks)
       if (didWrapOrBounce) {
         ph.trail = [visualPt];
+        if (strokeTraversal === 'bounce' && this.onTriggerSpark) {
+          this.onTriggerSpark(visualPt.x, visualPt.y, stroke.color, 8, stroke.instrumentId);
+        }
       } else {
         ph.trail.unshift(visualPt);
         if (ph.trail.length > 14) {
@@ -1471,6 +1491,9 @@ export class StrokeManager {
         ph.lastPitch = pitch;
 
         if (isTriggerHit) {
+          if (this.onTriggerSpark) {
+            this.onTriggerSpark(evalResult.point.x, evalResult.point.y, stroke.color, 6, stroke.instrumentId);
+          }
           if (stroke.instrumentId === 'onyx') {
             const normY = canvasHeight > 0 ? triggerY / canvasHeight : 0.5;
             if (normY >= 0.72) {
@@ -1527,6 +1550,9 @@ export class StrokeManager {
         ph.lastPitch = pitch;
 
         if (isTriggerHit) {
+          if (this.onTriggerSpark) {
+            this.onTriggerSpark(evalResult.point.x, evalResult.point.y, stroke.color, 4, stroke.instrumentId);
+          }
           if (stroke.instrumentId === 'onyx') {
             const normY = canvasHeight > 0 ? triggerY / canvasHeight : 0.5;
             if (normY >= 0.72) {
@@ -1838,7 +1864,7 @@ export class StrokeManager {
    * Randomizes the playhead positions (moving dots) of all drawn lines across their lengths,
    * creating generative polyrhythmic textures and desynchronized phase patterns.
    */
-  public randomizeAllPlayheads(): void {
+  public randomizeAllPlayheads(quantizer?: ScaleQuantizer, canvasHeight?: number): void {
     for (const stroke of this.strokes) {
       const L = stroke.lut.totalLength;
       if (L > 1) {
@@ -1860,16 +1886,191 @@ export class StrokeManager {
         });
         stroke.playhead.lastEval = evalResult;
 
+        if (quantizer && canvasHeight && canvasHeight > 0) {
+          const strokeQuantizer = (stroke.morphRole === 'incoming' && this.morphIncomingQuantizer)
+            ? this.morphIncomingQuantizer
+            : quantizer;
+          const maxY = strokeQuantizer.isScrollEnabled ? strokeQuantizer.getWorldHeight(canvasHeight) : canvasHeight;
+          const strokeY = Math.max(0, Math.min(maxY, evalResult.point.y));
+          if (stroke.style === 'solid') {
+            stroke.playhead.lastPitch = strokeQuantizer.quantizeContinuous(strokeY, canvasHeight);
+          } else {
+            stroke.playhead.lastPitch = strokeQuantizer.quantizeDiscrete(strokeY, canvasHeight);
+          }
+        }
+
+        const strokeMorphMult = stroke.morphRole === 'outgoing'
+          ? this.morphOutgoingGain
+          : stroke.morphRole === 'incoming'
+          ? this.morphIncomingGain
+          : this.sceneMorphGain;
+
         if (stroke.style === 'solid' && !stroke.droneVoice && this.engine.isReady && stroke.playhead.lastPitch && this.isStrokeAudible(stroke) && !this.isPaused) {
           const inst = getInstrument(stroke.instrumentId);
-          const strokeMorphMult = stroke.morphRole === 'outgoing'
-            ? this.morphOutgoingGain
-            : stroke.morphRole === 'incoming'
-            ? this.morphIncomingGain
-            : this.sceneMorphGain;
           stroke.droneVoice = new DroneVoice(this.engine);
           stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, (stroke.volume ?? 1.0) * strokeMorphMult, stroke.reverb ?? this.defaultReverb);
         }
+
+        if (stroke.droneVoice && stroke.playhead.lastPitch) {
+          const cWidth = this.lastCanvasWidth > 0 ? this.lastCanvasWidth : 1200;
+          stroke.droneVoice.updateDual(
+            stroke.playhead.lastPitch.freqA ?? stroke.playhead.lastPitch.freq1 ?? stroke.playhead.lastPitch.frequency,
+            stroke.playhead.lastPitch.freqB ?? stroke.playhead.lastPitch.freq2 ?? stroke.playhead.lastPitch.frequency,
+            stroke.playhead.lastPitch.gainA ?? 1.0,
+            stroke.playhead.lastPitch.gainB ?? 0.0,
+            evalResult.curvature,
+            evalResult.point.x,
+            cWidth,
+            this.xModMode,
+            (stroke.volume ?? 1.0) * strokeMorphMult
+          );
+        }
+      }
+    }
+  }
+
+  /**
+   * Fast forwards (+multiplier) or rewinds (-multiplier) target stroke(s) playhead distance,
+   * updating geometric position, motion trail, continuous pitch, and synthesizer audio voice.
+   */
+  public scrubStroke(
+    targetStrokeId: string | null,
+    rateMultiplier: number,
+    dt: number,
+    canvasWidth: number,
+    canvasHeight: number,
+    quantizer: ScaleQuantizer
+  ): void {
+    if (dt <= 0 || rateMultiplier === 0) return;
+
+    const targets = targetStrokeId
+      ? this.strokes.filter((s) => s.id === targetStrokeId && s.active)
+      : this.strokes.filter((s) => s.active);
+
+    if (targets.length === 0) return;
+
+    for (const stroke of targets) {
+      const L = stroke.lut.totalLength;
+      if (L <= 1) continue;
+
+      const ph = stroke.playhead;
+      const strokeTraversal: TraversalMode = (stroke.traversal === 'bounce' || (stroke.traversal as string) === 'pingpong') ? 'bounce' : 'restart';
+      const strokeTimingMode: TimingMode = stroke.timingMode ?? (stroke.speedMode === 'timer' ? 'timer' : 'speed');
+      const strokeDuration = Math.max(1, stroke.duration ?? 30);
+      const strokeSpeedMult = stroke.speedMultiplier ?? 1.0;
+
+      let strokeSpeed: number;
+      if (strokeTimingMode === 'timer') {
+        strokeSpeed = L / strokeDuration;
+      } else {
+        const normRatio = canvasWidth > 0 ? canvasWidth / 1200 : 1;
+        const baseSpeed = (this.bpm / 60) * StrokeManager.BEAT_DISTANCE * normRatio;
+        strokeSpeed = baseSpeed * strokeSpeedMult;
+      }
+
+      // Compute scrub displacement:
+      const scrubDist = ph.direction * strokeSpeed * rateMultiplier * dt;
+      let nextDist = ph.currentDistance + scrubDist;
+
+      let didWrapOrBounce = false;
+      if (stroke.lut.isClosed) {
+        if (nextDist >= L || nextDist < 0) didWrapOrBounce = true;
+        nextDist = ((nextDist % L) + L) % L;
+      } else if (strokeTraversal === 'bounce') {
+        if (nextDist >= L) {
+          nextDist = Math.max(0, L - (nextDist - L));
+          ph.direction = -1;
+          didWrapOrBounce = true;
+        } else if (nextDist <= 0) {
+          nextDist = Math.min(L, -nextDist);
+          ph.direction = 1;
+          didWrapOrBounce = true;
+        }
+      } else {
+        // 'restart'
+        if (nextDist >= L) {
+          nextDist = nextDist % L;
+          didWrapOrBounce = true;
+        } else if (nextDist < 0) {
+          nextDist = ((nextDist % L) + L) % L;
+          didWrapOrBounce = true;
+        }
+      }
+
+      ph.currentDistance = nextDist;
+
+      // Evaluate position with Newton-Raphson refinement
+      const evalResult = evaluateAtDistance(stroke.path, stroke.lut, nextDist, {
+        useNewtonRaphson: true,
+        newtonIterations: 2,
+      });
+      ph.lastEval = evalResult;
+
+      // Update motion trail
+      if (didWrapOrBounce) {
+        ph.trail = [evalResult.point];
+      } else {
+        ph.trail.unshift(evalResult.point);
+        if (ph.trail.length > 14) {
+          ph.trail.pop();
+        }
+      }
+
+      // Audio & Pitch update
+      const strokeQuantizer = (stroke.morphRole === 'incoming' && this.morphIncomingQuantizer)
+        ? this.morphIncomingQuantizer
+        : quantizer;
+      const maxY = strokeQuantizer?.isScrollEnabled ? strokeQuantizer.getWorldHeight(canvasHeight) : canvasHeight;
+      const strokeFluctuation = stroke.fluctuation ?? this.defaultFluctuation;
+      const wander = (stroke.style === 'solid' && strokeFluctuation > 0)
+        ? getStrokeWander(stroke.id, this.masterClockTime, nextDist) * strokeFluctuation * 18
+        : 0;
+      const solidEffectiveY = Math.max(0, Math.min(maxY, evalResult.point.y + wander));
+
+      const instrument = getInstrument(stroke.instrumentId);
+      const audible = !this.isPaused && this.isStrokeAudible(stroke);
+      const strokeMorphMult = stroke.morphRole === 'outgoing'
+        ? this.morphOutgoingGain
+        : stroke.morphRole === 'incoming'
+        ? this.morphIncomingGain
+        : this.sceneMorphGain;
+      const strokeVol = (stroke.volume ?? 1.0) * strokeMorphMult;
+      const strokeReverb = stroke.reverb ?? this.defaultReverb;
+      const isTonal = stroke.instrumentId !== 'onyx';
+      const breathing = isTonal
+        ? calculateBreathing(this.breathingMode, this.masterClockTime, stroke.id)
+        : { filterMultiplier: 1.0, volumeMultiplier: 1.0, detuneCents: 0.0 };
+
+      if (stroke.style === 'solid') {
+        const pitch = strokeQuantizer.quantizeContinuous(solidEffectiveY, canvasHeight);
+        ph.lastPitch = pitch;
+
+        if (audible) {
+          const chord = getHarmonizerFrequencies(stroke.harmonizer, pitch.frequency, pitch.scaleDegree, strokeQuantizer);
+          if ((!stroke.droneVoice || !stroke.droneVoice.isPlaying) && this.engine.isReady) {
+            stroke.droneVoice = new DroneVoice(this.engine);
+            stroke.droneVoice.start(pitch.frequency, instrument, strokeVol, strokeReverb);
+          } else if (stroke.droneVoice) {
+            stroke.droneVoice.updateDual(
+              pitch.freqA ?? pitch.freq1 ?? pitch.frequency,
+              pitch.freqB ?? pitch.freq2 ?? pitch.frequency,
+              pitch.gainA ?? 1.0,
+              pitch.gainB ?? 0.0,
+              evalResult.curvature,
+              evalResult.point.x,
+              canvasWidth,
+              this.xModMode,
+              strokeVol,
+              chord.frequencies,
+              chord.gains,
+              breathing
+            );
+          }
+        }
+      } else if (stroke.style === 'dotted') {
+        const triggerY = Math.max(0, Math.min(maxY, evalResult.point.y));
+        const pitch = strokeQuantizer.quantizeDiscrete(triggerY, canvasHeight);
+        ph.lastPitch = pitch;
       }
     }
   }
@@ -1978,7 +2179,7 @@ export class StrokeManager {
     for (const s of data.strokes) {
       this.createStrokeFromSaved(s, scaleX, quantizer, canvasHeight);
     }
-    this.resyncAllPlayheads();
+    this.randomizeAllPlayheads(quantizer, canvasHeight);
   }
 
   /**

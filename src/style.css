@@ -2466,6 +2466,9 @@ body.dark-mode .dirty-badge {
 .mixer-track-list {
   flex: 1;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
   padding: 8px;
   display: flex;
   flex-direction: column;
@@ -2807,6 +2810,9 @@ body.dark-mode .studio-tab-btn.active {
   max-height: none;
   overflow-y: auto;
   overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
   padding-right: 2px;
 }
 
@@ -3441,6 +3447,9 @@ body.dark-mode .studio-tab-btn.active {
   gap: 12px;
   padding: 12px 16px;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
   flex: 1;
 }
 
@@ -3754,4 +3763,97 @@ body.dark-mode .studio-tab-btn.active {
 
 .seq-mini-indicator.is-morphing .seq-mini-bar-fill {
   background: linear-gradient(90deg, #f59e0b, #6366f1);
+}
+
+/* Shortcuts Cheat Sheet Modal Styling */
+.shortcuts-modal-card {
+  max-width: 680px;
+  width: 92%;
+}
+
+.shortcuts-modal-content {
+  padding: 18px 24px 26px;
+}
+
+.shortcuts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px 24px;
+}
+
+.shortcut-group h3 {
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin: 0 0 10px 0;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.shortcut-row kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 7px;
+  min-width: 22px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  white-space: nowrap;
+}
+
+.shortcut-row span {
+  text-align: right;
+  flex: 1;
+}
+
+/* Toast Notification */
+.app-toast {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: rgba(24, 24, 27, 0.94);
+  color: #ffffff;
+  padding: 8px 18px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.25);
+  z-index: 1000;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.dark-mode .app-toast {
+  background: rgba(255, 255, 255, 0.92);
+  color: #18181b;
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+.app-toast.is-visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }

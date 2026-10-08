@@ -5,10 +5,24 @@ import { getHitJitter } from '../engine/strokeManager';
 import { evaluateAtDistance } from '../math/arcLengthInverter';
 import { LiveTrailPoint } from './inputHandler';
 
+export interface SparkParticle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  color: string;
+  alpha: number;
+  radius: number;
+  life: number;
+  maxLife: number;
+}
+
 export class CanvasRenderer {
   private ctx: CanvasRenderingContext2D;
   private canvas: HTMLCanvasElement;
   private dpr = 1;
+  private particles: SparkParticle[] = [];
+  private maxParticles = 140;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -393,25 +407,24 @@ export class CanvasRenderer {
         ctx.stroke();
       }
 
-      // Floating pill badge above start point with Volume, Texture, Loop Duration & Progress
+      // Floating pill badge above start point with Volume, Texture, Speed Multiplier & Progress
       const volPercent = Math.round(vol * 100);
-      const totalSec = (stroke.timingMode === 'timer' || stroke.speedMode === 'timer')
-        ? (stroke.duration ?? 30)
-        : (stroke.lut.totalLength / Math.max(1, stroke.playhead.velocity || 100));
+      const speedMult = stroke.speedMultiplier ?? 1.0;
+      const speedText = Number.isInteger(speedMult * 10) ? speedMult.toFixed(1) : speedMult.toFixed(2);
+      const speedLabel = `${speedText}x`;
       const progressPct = stroke.lut.totalLength > 0
         ? Math.min(100, Math.max(0, Math.round((stroke.playhead.currentDistance / stroke.lut.totalLength) * 100)))
         : 0;
-      const syncLabel = `${totalSec.toFixed(1)}s`;
       const travMode = (stroke.traversal === 'bounce' || (stroke.traversal as string) === 'pingpong') ? 'Bounce' : 'Loop';
 
-      let tagText = `${volPercent}% vol • ${syncLabel} • ${progressPct}% • ${travMode}`;
+      let tagText = `${volPercent}% vol • ${speedLabel} • ${progressPct}% • ${travMode}`;
       if (stroke.instrumentId === 'onyx') {
         const normY = this.height > 0 ? startPt.y / this.height : 0.5;
         const drumName = normY >= 0.72 ? 'Kick' : normY >= 0.48 ? 'Snare' : normY >= 0.25 ? 'Tom' : 'Hi-Hat';
         const drumLabel = stroke.style === 'striped' ? `${drumName} Roll` : drumName;
-        tagText = `${volPercent}% vol • ${drumLabel} • ${syncLabel} • ${progressPct}%`;
+        tagText = `${volPercent}% vol • ${drumLabel} • ${speedLabel} • ${progressPct}%`;
       } else if (stroke.waveParams && stroke.waveParams.amplitude > 0) {
-        tagText = `${volPercent}% vol • Wave • ${syncLabel} • ${progressPct}%`;
+        tagText = `${volPercent}% vol • Wave • ${speedLabel} • ${progressPct}%`;
       }
 
       ctx.font = '600 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
@@ -743,6 +756,114 @@ export class CanvasRenderer {
         ctx.fillText(badgeText, badgeX + padding, badgeY - 3);
       }
     }
+
+    ctx.restore();
+  }
+
+  /**
+   * Spawns radiant acoustic sparks at a given canvas coordinate (e.g. note strikes, drum beats, boundary bounces).
+   */
+  public spawnSparks(x: number, y: number, color: string, count: number = 7, speedMultiplier: number = 1.0): void {
+    const effectiveColor = this.isDarkMode && (color === '#18181b' || color === 'black') ? '#f4f4f5' : color;
+    for (let i = 0; i < count; i++) {
+      if (this.particles.length >= this.maxParticles) {
+        this.particles.shift(); // Evict oldest
+      }
+      const angle = Math.random() * Math.PI * 2;
+      const speed = (1.2 + Math.random() * 2.8) * speedMultiplier;
+      const life = 0.28 + Math.random() * 0.25; // seconds
+      this.particles.push({
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        color: effectiveColor,
+        alpha: 0.9,
+        radius: 1.2 + Math.random() * 2.0,
+        life,
+        maxLife: life,
+      });
+    }
+  }
+
+  /**
+   * Updates physics and draws all active spark particles.
+   */
+  public updateAndDrawParticles(dtSec: number): void {
+    if (this.particles.length === 0) return;
+    const ctx = this.ctx;
+    ctx.save();
+
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i];
+      p.life -= dtSec;
+      if (p.life <= 0) {
+        this.particles.splice(i, 1);
+        continue;
+      }
+
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vx *= 0.94; // slight drag
+      p.vy *= 0.94;
+
+      const progress = p.life / p.maxLife; // 1 down to 0
+      const currentAlpha = p.alpha * progress;
+
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.radius * progress, 0, Math.PI * 2);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = Math.max(0, Math.min(1, currentAlpha));
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Renders ambient audio-reactive spectrum along the bottom margin of the canvas.
+   */
+  public drawAudioReactiveSpectrum(freqData: Uint8Array | null, masterEnergy: number): void {
+    if (!freqData || freqData.length === 0 || masterEnergy <= 0.01) return;
+    const ctx = this.ctx;
+    const w = this.width;
+    const h = this.height;
+
+    ctx.save();
+
+    // 1. Subtle ambient vignette pulse based on master energy
+    if (masterEnergy > 0.05) {
+      const glowAlpha = Math.min(0.12, (masterEnergy - 0.05) * 0.18);
+      const grad = ctx.createRadialGradient(w * 0.5, h * 0.5, h * 0.2, w * 0.5, h * 0.5, w * 0.75);
+      grad.addColorStop(0, 'transparent');
+      grad.addColorStop(1, this.isDarkMode ? `rgba(59, 130, 246, ${glowAlpha})` : `rgba(37, 99, 235, ${glowAlpha * 0.7})`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    // 2. Minimalist glowing waveform/spectrum floor along the bottom canvas
+    const bins = Math.min(freqData.length, 32);
+    const barWidth = w / bins;
+    const maxHeight = Math.min(36, h * 0.08);
+
+    ctx.beginPath();
+    ctx.moveTo(0, h);
+
+    for (let i = 0; i < bins; i++) {
+      const val = freqData[i] / 255;
+      const barH = val * maxHeight;
+      const x = i * barWidth + barWidth * 0.5;
+      const y = h - barH;
+      if (i === 0) {
+        ctx.lineTo(0, y);
+      }
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(w, h);
+    ctx.closePath();
+
+    ctx.fillStyle = this.isDarkMode ? 'rgba(96, 165, 250, 0.06)' : 'rgba(37, 99, 235, 0.04)';
+    ctx.fill();
 
     ctx.restore();
   }

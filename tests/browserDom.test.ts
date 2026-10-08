@@ -458,19 +458,19 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     expect(guideBtn.textContent?.trim()).toBe('Guide');
   });
 
-  it('provides dedicated Keyboard Shortcuts card inside Controls drawer', () => {
-    const drawer = doc.getElementById('advancedDrawer');
-    expect(drawer).toBeDefined();
+  it('provides dedicated Keyboard Shortcuts modal accessible via ? key', () => {
+    const modal = doc.getElementById('shortcutsModal');
+    expect(modal).toBeDefined();
 
-    const shortcutsList = drawer?.querySelector('.drawer-shortcuts-list');
+    const shortcutsList = modal?.querySelector('.shortcuts-grid');
     expect(shortcutsList).toBeDefined();
 
     const shortcutRows = shortcutsList?.querySelectorAll('.shortcut-row');
     expect(shortcutRows && shortcutRows.length).toBeGreaterThanOrEqual(10);
 
-    // Verify key shortcuts are listed (Space / P, R, Shift + R, L, Esc, etc.)
+    // Verify key shortcuts are listed (Space, R, Shift + R, L, Esc, etc.)
     const keysText = Array.from(shortcutRows || []).map((r) => r.textContent || '');
-    expect(keysText.some((t) => t.includes('Space / P'))).toBe(true);
+    expect(keysText.some((t) => t.includes('Space') && t.includes('Play'))).toBe(true);
     expect(keysText.some((t) => t.includes('Shift + R'))).toBe(true);
     expect(keysText.some((t) => t.includes('L'))).toBe(true);
     expect(keysText.some((t) => t.includes('Esc'))).toBe(true);
@@ -508,5 +508,74 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     expect(labelRow).toBeDefined();
     expect(labelRow?.contains(dirtyIndicator)).toBe(true);
   });
+
+  it('contains Fast-Forward / Rewind shortcut in the keyboard shortcuts list', () => {
+    const kbdTexts = Array.from(doc.querySelectorAll('#shortcutsModal kbd')).map((el) => el.textContent?.trim());
+    expect(kbdTexts).toContain('+');
+    expect(kbdTexts).toContain('-');
+  });
+
+  it('contains Studio Deck tab switcher with Layers Mixer and Master FX views', () => {
+    const tabMixerBtn = doc.getElementById('studioTabBtnMixer');
+    const tabMasterBtn = doc.getElementById('studioTabBtnMaster');
+    const tabMixer = doc.getElementById('studioTabMixer');
+    const tabMaster = doc.getElementById('studioTabMaster');
+
+    expect(tabMixerBtn).toBeDefined();
+    expect(tabMasterBtn).toBeDefined();
+    expect(tabMixer).toBeDefined();
+    expect(tabMaster).toBeDefined();
+  });
+
+  it('draws speed multiplier (0.x) on canvas selection pill badge instead of seconds', async () => {
+    (global as any).window = dom.window;
+    const { CanvasRenderer } = await import('../src/canvas/renderer');
+    const { StrokeManager } = await import('../src/engine/strokeManager');
+    const { ScaleQuantizer } = await import('../src/audio/scaleQuantizer');
+
+    const sm = new StrokeManager();
+    const quantizer = new ScaleQuantizer();
+    const stroke = sm.addStroke({
+      segments: [{
+        p0: { x: 10, y: 10 },
+        p1: { x: 30, y: 10 },
+        p2: { x: 70, y: 10 },
+        p3: { x: 100, y: 10 },
+      }],
+      isClosed: false,
+    }, 'solid', 'indigo', 120, quantizer, 600);
+    stroke.selected = true;
+    stroke.speedMultiplier = 0.5;
+
+    let renderedText = '';
+    const mockCtx = {
+      save: () => {},
+      restore: () => {},
+      beginPath: () => {},
+      moveTo: () => {},
+      bezierCurveTo: () => {},
+      arc: () => {},
+      fill: () => {},
+      stroke: () => {},
+      setLineDash: () => {},
+      setTransform: () => {},
+      roundRect: () => {},
+      measureText: () => ({ width: 80 }),
+      fillText: (text: string) => {
+        renderedText = text;
+      },
+    };
+
+    const canvas = doc.createElement('canvas');
+    canvas.getBoundingClientRect = () => ({ width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600, x: 0, y: 0, toJSON: () => {} });
+    canvas.getContext = () => mockCtx as any;
+
+    const renderer = new CanvasRenderer(canvas);
+    renderer.drawStroke(stroke);
+
+    expect(renderedText).toContain('0.5x');
+    expect(renderedText).not.toMatch(/\d+\.\d+s/);
+  });
 });
+
 

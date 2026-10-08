@@ -41,6 +41,9 @@ export class SoundEngine {
     }
   }
 
+  private analyserNode: AnalyserNode | null = null;
+  private analyserDataArray: Uint8Array | null = null;
+
   public setupAudioGraph(ctx: BaseAudioContext): void {
     // Master Output & Limiter
     this.masterGain = ctx.createGain();
@@ -74,6 +77,17 @@ export class SoundEngine {
     this.wetReverbGain = ctx.createGain();
     this.wetReverbGain.gain.setValueAtTime(this._reverbMix, 0);
 
+    // Master FFT Analyser (for live audio-reactive visuals)
+    try {
+      this.analyserNode = ctx.createAnalyser();
+      this.analyserNode.fftSize = 64; // 32 frequency bins for high performance
+      this.analyserNode.smoothingTimeConstant = 0.8;
+      this.analyserDataArray = new Uint8Array(this.analyserNode.frequencyBinCount);
+    } catch {
+      this.analyserNode = null;
+      this.analyserDataArray = null;
+    }
+
     // Routing
     this.delayNode.connect(this.wetDelayGain);
     this.reverbNode.connect(this.wetReverbGain);
@@ -82,7 +96,12 @@ export class SoundEngine {
     this.wetDelayGain.connect(limiter);
     this.wetReverbGain.connect(limiter);
 
-    limiter.connect(this.masterGain);
+    if (this.analyserNode) {
+      limiter.connect(this.analyserNode);
+      this.analyserNode.connect(this.masterGain);
+    } else {
+      limiter.connect(this.masterGain);
+    }
     this.masterGain.connect(ctx.destination);
   }
 
@@ -109,6 +128,22 @@ export class SoundEngine {
 
   public get masterOutputNode(): GainNode | null {
     return this.masterGain;
+  }
+
+  public getFrequencyData(): Uint8Array | null {
+    if (!this.analyserNode || !this.analyserDataArray) return null;
+    this.analyserNode.getByteFrequencyData(this.analyserDataArray as unknown as Uint8Array<ArrayBuffer>);
+    return this.analyserDataArray;
+  }
+
+  public getMasterEnergy(): number {
+    const data = this.getFrequencyData();
+    if (!data || data.length === 0) return 0;
+    let sum = 0;
+    for (let i = 0; i < data.length; i++) {
+      sum += data[i];
+    }
+    return sum / (data.length * 255);
   }
 
   public get isReady(): boolean {

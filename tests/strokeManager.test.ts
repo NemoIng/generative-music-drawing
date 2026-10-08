@@ -1550,6 +1550,64 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
       expect(sm.activeStrokes[0].morphGain).toBeUndefined();
     });
   });
+
+  describe('Real-time Scrubbing (Fast-Forward and Rewind)', () => {
+    it('fast-forwards a selected stroke along its trajectory', () => {
+      const sm = new StrokeManager();
+      const stroke = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+      const quantizer = new ScaleQuantizer();
+      stroke.playhead.currentDistance = 20;
+
+      // Scrub forward with positive rate
+      sm.scrubStroke(stroke.id, 4.0, 0.1, 800, 600, quantizer);
+
+      expect(stroke.playhead.currentDistance).toBeGreaterThan(20);
+      expect(stroke.playhead.lastEval).toBeDefined();
+    });
+
+    it('rewinds a selected stroke backwards along its curve', () => {
+      const sm = new StrokeManager();
+      const stroke = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+      const quantizer = new ScaleQuantizer();
+      stroke.playhead.currentDistance = 50;
+
+      // Scrub backward with negative rate
+      sm.scrubStroke(stroke.id, -4.0, 0.1, 800, 600, quantizer);
+
+      expect(stroke.playhead.currentDistance).toBeLessThan(50);
+      expect(stroke.playhead.lastEval).toBeDefined();
+    });
+
+    it('scrubs all active strokes when targetStrokeId is null', () => {
+      const sm = new StrokeManager();
+      const s1 = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+      const s2 = sm.addStroke(dummyPath, 'solid', 'amber', 100);
+      const quantizer = new ScaleQuantizer();
+      s1.playhead.currentDistance = 30;
+      s2.playhead.currentDistance = 30;
+
+      sm.scrubStroke(null, 4.0, 0.1, 800, 600, quantizer);
+
+      expect(s1.playhead.currentDistance).toBeGreaterThan(30);
+      expect(s2.playhead.currentDistance).toBeGreaterThan(30);
+    });
+
+    it('handles bouncing traversal when rewinding past start', () => {
+      const sm = new StrokeManager();
+      sm.setTraversalMode('bounce');
+      const stroke = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+      stroke.traversal = 'bounce';
+      stroke.playhead.currentDistance = 5;
+      stroke.playhead.direction = 1;
+      const quantizer = new ScaleQuantizer();
+
+      // Negative scrub causing underflow below 0
+      sm.scrubStroke(stroke.id, -4.0, 0.2, 800, 600, quantizer);
+
+      expect(stroke.playhead.currentDistance).toBeGreaterThanOrEqual(0);
+      expect(stroke.playhead.direction).toBe(1);
+    });
+  });
 });
 
 

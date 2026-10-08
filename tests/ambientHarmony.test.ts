@@ -217,24 +217,29 @@ describe('Ambient Music Workflow: Ultra-Slow Tempos, Traversal Modes, & Harmonic
     const cosmic = TEMPLATES.deepCosmicDrone;
     expect(cosmic).toBeDefined();
     expect(cosmic.bpm).toBe(24);
-    expect(cosmic.spaceReverb).toBe(0.75);
+    expect(cosmic.spaceReverb).toBe(0.80);
     expect(cosmic.breathingMode).toBe('deep');
 
     const cathedral = TEMPLATES.cathedralSolitude;
     expect(cathedral).toBeDefined();
-    expect(cathedral.bpm).toBe(32);
+    expect(cathedral.bpm).toBe(30);
     expect(cathedral.spaceReverb).toBe(0.85);
     expect(cathedral.breathingMode).toBe('deep');
 
     const tapeDrift = TEMPLATES.warmTapeDrift;
     expect(tapeDrift).toBeDefined();
-    expect(tapeDrift.bpm).toBe(40);
+    expect(tapeDrift.bpm).toBe(36);
     expect(tapeDrift.breathingMode).toBe('drift');
 
-    const meadow = TEMPLATES.zenMeadow;
-    expect(meadow).toBeDefined();
-    expect(meadow.bpm).toBe(48);
-    expect(meadow.breathingMode).toBe('gentle');
+    const garden = TEMPLATES.zenGarden;
+    expect(garden).toBeDefined();
+    expect(garden.bpm).toBe(42);
+    expect(garden.breathingMode).toBe('gentle');
+
+    const midnight = TEMPLATES.midnightPulse;
+    expect(midnight).toBeDefined();
+    expect(midnight.bpm).toBe(52);
+    expect(midnight.breathingMode).toBe('drift');
 
     // Check buildTemplateStrokes returns traversal, duration, and reverb
     const cosmicStrokes = buildTemplateStrokes('deepCosmicDrone', width, height, quantizer);
@@ -242,9 +247,9 @@ describe('Ambient Music Workflow: Ultra-Slow Tempos, Traversal Modes, & Harmonic
     expect(cosmicStrokes[0].traversal).toBe('bounce');
     expect(cosmicStrokes[0].timingMode).toBe('timer');
     expect(cosmicStrokes[0].reverb).toBe(0.35);
-    expect(cosmicStrokes[2].traversal).toBe('restart');
-    expect(cosmicStrokes[2].duration).toBe(38);
-    expect(cosmicStrokes[2].reverb).toBe(0.55);
+    expect(cosmicStrokes[3].traversal).toBe('restart');
+    expect(cosmicStrokes[3].duration).toBe(55);
+    expect(cosmicStrokes[3].reverb).toBe(0.60);
   });
 
   it('supports stroke harmonizer mode with undo/redo and preserves on export/import', () => {
