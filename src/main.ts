@@ -122,7 +122,15 @@ const shortcutsBtn = document.getElementById('shortcutsBtn') as HTMLButtonElemen
 const shortcutsModal = document.getElementById('shortcutsModal') as HTMLDivElement | null;
 const closeShortcutsModalBtn = document.getElementById('closeShortcutsModalBtn') as HTMLButtonElement | null;
 const shareLinkBtn = document.getElementById('shareLinkBtn') as HTMLButtonElement | null;
-const audioUnlockPrompt = document.getElementById('audioUnlockPrompt') as HTMLDivElement;
+const audioUnlockPrompt = document.getElementById('audioUnlockPrompt') as HTMLDivElement | null;
+
+export function dismissWelcomePrompt(): void {
+  if (audioUnlockPrompt) {
+    audioUnlockPrompt.classList.add('hidden');
+    audioUnlockPrompt.style.display = 'none';
+    audioUnlockPrompt.style.pointerEvents = 'none';
+  }
+}
 const statStrokes = document.getElementById('statStrokes') as HTMLSpanElement;
 const statMode = document.getElementById('statMode') as HTMLSpanElement;
 const statTempo = document.getElementById('statTempo') as HTMLSpanElement;
@@ -332,8 +340,11 @@ const inputHandler = new InputHandler(canvasEl, {
   getCurrentInstrument: () => currentInstrumentId,
   getCurrentStyle: () => currentStyle,
   getXAxisModulation: () => (xAxisSelect ? xAxisSelect.value : 'panAndTone'),
+  onPointerDown: () => {
+    dismissWelcomePrompt();
+  },
   onStrokeComplete: (path: SplinePath) => {
-    audioUnlockPrompt.classList.add('hidden');
+    dismissWelcomePrompt();
 
     strokeManager.addStroke(
       path,
@@ -619,7 +630,7 @@ async function loadComposition(comp: SavedComposition): Promise<void> {
     statAudio.textContent = 'Audio: Active';
     statAudio.classList.add('chip-ready');
   }
-  audioUnlockPrompt.classList.add('hidden');
+  dismissWelcomePrompt();
 
   if (comp.scaleId && SCALES[comp.scaleId]) {
     quantizer.updateConfig({ scale: SCALES[comp.scaleId] });
@@ -2182,7 +2193,7 @@ startLiveRecBtn?.addEventListener('click', async () => {
     strokeManager.activateAudioVoices();
     statAudio.textContent = 'Audio: Active';
     statAudio.classList.add('chip-ready');
-    audioUnlockPrompt.classList.add('hidden');
+    dismissWelcomePrompt();
   }
 
   closeRecordModal();
@@ -2298,7 +2309,7 @@ async function loadTemplate(tId: string, initAudio = true): Promise<void> {
     await soundEngine.init();
     statAudio.textContent = 'Audio: Active';
     statAudio.classList.add('chip-ready');
-    audioUnlockPrompt.classList.add('hidden');
+    dismissWelcomePrompt();
   }
 
   // Update scale, root, and tempo to template recommendations
@@ -3767,17 +3778,21 @@ window.addEventListener('blur', () => {
   }
 });
 
-// Audio Unlock on First Pointer Down
+// Audio Unlock & Welcome Banner Dismissal on First Interaction
 window.addEventListener('pointerdown', async () => {
+  dismissWelcomePrompt();
   if (!soundEngine.isReady) {
     await soundEngine.init();
     LiveRecorder.preloadWorklet(soundEngine.context);
     strokeManager.activateAudioVoices();
     statAudio.textContent = 'Audio: Active';
     statAudio.classList.add('chip-ready');
-    audioUnlockPrompt.classList.add('hidden');
   }
   setTimeout(updateTrackActionsVisibility, 50);
+}, { once: false });
+
+window.addEventListener('click', () => {
+  dismissWelcomePrompt();
 }, { once: false });
 
 window.addEventListener('pointerup', () => {

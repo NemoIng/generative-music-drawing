@@ -26,6 +26,7 @@ export interface InputHandlerOptions {
   onStrokeComplete: (path: SplinePath) => void;
   onDrawChange?: (points: Point2D[]) => void;
   onSelectStroke?: (strokeId: string | null) => void;
+  onPointerDown?: () => void;
   strokeManager: StrokeManager;
   getQuantizer: () => ScaleQuantizer;
   getCurrentInstrument?: () => string;
@@ -40,6 +41,7 @@ export class InputHandler {
   private getCurrentInstrument?: () => string;
   private getCurrentStyle?: () => StrokeStyle;
   private getXAxisModulation?: () => string;
+  private onPointerDownCallback?: () => void;
   private shape: DrawShape = 'curve';
   private snapPitch = false;
   private autoSmooth = true;
@@ -86,6 +88,7 @@ export class InputHandler {
     this.onStrokeComplete = options.onStrokeComplete;
     this.onDrawChange = options.onDrawChange;
     this.onSelectStroke = options.onSelectStroke;
+    this.onPointerDownCallback = options.onPointerDown;
 
     this.initEvents();
   }
@@ -286,6 +289,8 @@ export class InputHandler {
   private handlePointerDown = (e: PointerEvent): void => {
     // Only respond to primary (left) mouse clicks / touches
     if (e.button !== undefined && e.button !== 0) return;
+
+    this.onPointerDownCallback?.();
 
     if (!soundEngine.isReady) {
       soundEngine.init().then(() => {

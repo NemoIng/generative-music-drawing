@@ -1231,6 +1231,8 @@ body.dark-mode .inspector-wave-cell select.track-mini-select:hover {
 .welcome-banner.hidden {
   opacity: 0;
   visibility: hidden;
+  display: none !important;
+  pointer-events: none !important;
 }
 
 .live-rec-banner.hidden {
