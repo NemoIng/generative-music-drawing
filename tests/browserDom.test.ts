@@ -515,16 +515,20 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     expect(kbdTexts).toContain('-');
   });
 
-  it('contains Studio Deck tab switcher with Layers Mixer and Master FX views', () => {
+  it('contains Studio Deck tab switcher with Layers Mixer, Master FX, and Scenes views', () => {
     const tabMixerBtn = doc.getElementById('studioTabBtnMixer');
     const tabMasterBtn = doc.getElementById('studioTabBtnMaster');
+    const tabScenesBtn = doc.getElementById('studioTabBtnScenes');
     const tabMixer = doc.getElementById('studioTabMixer');
     const tabMaster = doc.getElementById('studioTabMaster');
+    const tabScenes = doc.getElementById('studioTabScenes');
 
     expect(tabMixerBtn).toBeDefined();
     expect(tabMasterBtn).toBeDefined();
+    expect(tabScenesBtn).toBeDefined();
     expect(tabMixer).toBeDefined();
     expect(tabMaster).toBeDefined();
+    expect(tabScenes).toBeDefined();
   });
 
   it('draws speed multiplier (0.x) on canvas selection pill badge instead of seconds', async () => {

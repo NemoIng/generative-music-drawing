@@ -235,13 +235,14 @@ const bottomBarEl = document.querySelector('.bottom-bar') as HTMLElement | null;
 const studioDeckEl = document.getElementById('studioDeck') as HTMLElement | null;
 const zenPillDockEl = document.getElementById('zenPillDock') as HTMLElement | null;
 const zenContextPillEl = document.getElementById('zenContextPill') as HTMLElement | null;
-const sceneArrangerDeckEl = document.getElementById('sceneArrangerDeck') as HTMLElement | null;
 
 // Studio Deck Elements
 const studioTabBtnMixer = document.getElementById('studioTabBtnMixer') as HTMLButtonElement | null;
 const studioTabBtnMaster = document.getElementById('studioTabBtnMaster') as HTMLButtonElement | null;
+const studioTabBtnScenes = document.getElementById('studioTabBtnScenes') as HTMLButtonElement | null;
 const studioTabMixer = document.getElementById('studioTabMixer') as HTMLElement | null;
 const studioTabMaster = document.getElementById('studioTabMaster') as HTMLElement | null;
+const studioTabScenes = document.getElementById('studioTabScenes') as HTMLElement | null;
 const studioMixerList = document.getElementById('studioMixerList') as HTMLElement | null;
 const studioLayerCount = document.getElementById('studioLayerCount') as HTMLSpanElement | null;
 const studioMuteAllBtn = document.getElementById('studioMuteAllBtn') as HTMLButtonElement | null;
@@ -1106,28 +1107,25 @@ const sceneManager = new SceneManager();
 
 const viewModeManager = new ViewModeManager({
   onViewChange: (mode: ViewMode) => {
-    if (mode === 'scenes') {
-      if (seqMiniIndicator) seqMiniIndicator.style.display = 'none';
-      renderSceneCards();
-      updateTrackActionsVisibility();
-    } else {
-      if (mode === 'studio') {
-        renderStudioMixer();
-      } else if (mode === 'zen') {
-        armZenAutoDim();
+    if (mode === 'studio') {
+      renderStudioMixer();
+      if (studioTabBtnScenes?.classList.contains('active')) {
+        renderSceneCards();
       }
-      updateTrackActionsVisibility();
-      if (sceneManager.isSequencing()) {
-        const prog = sceneManager.getSequenceProgress();
-        updateSeqMiniIndicator({
-          sceneChanged: false,
-          currentScene: sceneManager.getCurrentScene(),
-          nextScene: sceneManager.getNextScene(),
-          progressRatio: prog.ratio,
-          isMorphing: false,
-          morphRatio: 0,
-        });
-      }
+    } else if (mode === 'zen') {
+      armZenAutoDim();
+    }
+    updateTrackActionsVisibility();
+    if (sceneManager.isSequencing()) {
+      const prog = sceneManager.getSequenceProgress();
+      updateSeqMiniIndicator({
+        sceneChanged: false,
+        currentScene: sceneManager.getCurrentScene(),
+        nextScene: sceneManager.getNextScene(),
+        progressRatio: prog.ratio,
+        isMorphing: false,
+        morphRatio: 0,
+      });
     }
   },
   onResizeRequired: () => {
@@ -1139,7 +1137,6 @@ viewModeManager.initDOM({
   app: appContainerEl,
   studioDeck: studioDeckEl,
   zenDock: zenPillDockEl,
-  sceneDeck: sceneArrangerDeckEl,
   topBar: topBarEl,
   bottomBar: bottomBarEl,
   pitchNav: pitchNavigator,
@@ -1156,19 +1153,21 @@ document.querySelectorAll<HTMLElement>('[data-view-mode]').forEach((btn) => {
   });
 });
 
-// Studio Deck Tab Switching (Layers Mixer vs Master FX)
-function switchStudioDeckTab(tab: 'mixer' | 'master'): void {
+// Studio Deck Tab Switching (Layers Mixer vs Master FX vs Scenes)
+function switchStudioDeckTab(tab: 'mixer' | 'master' | 'scenes'): void {
+  studioTabBtnMixer?.classList.toggle('active', tab === 'mixer');
+  studioTabBtnMaster?.classList.toggle('active', tab === 'master');
+  studioTabBtnScenes?.classList.toggle('active', tab === 'scenes');
+
+  if (studioTabMixer) studioTabMixer.style.display = tab === 'mixer' ? 'flex' : 'none';
+  if (studioTabMaster) studioTabMaster.style.display = tab === 'master' ? 'flex' : 'none';
+  if (studioTabScenes) studioTabScenes.style.display = tab === 'scenes' ? 'flex' : 'none';
+
   if (tab === 'mixer') {
-    studioTabBtnMixer?.classList.add('active');
-    studioTabBtnMaster?.classList.remove('active');
-    if (studioTabMixer) studioTabMixer.style.display = 'flex';
-    if (studioTabMaster) studioTabMaster.style.display = 'none';
     renderStudioMixer();
-  } else {
-    studioTabBtnMaster?.classList.add('active');
-    studioTabBtnMixer?.classList.remove('active');
-    if (studioTabMaster) studioTabMaster.style.display = 'flex';
-    if (studioTabMixer) studioTabMixer.style.display = 'none';
+  } else if (tab === 'scenes') {
+    renderSceneCards();
+  } else if (tab === 'master') {
     // Synchronize master FX controls
     if (studioMasterBpmSlider && studioMasterBpmVal) {
       studioMasterBpmSlider.value = strokeManager.currentBpm.toString();
@@ -1187,6 +1186,7 @@ function switchStudioDeckTab(tab: 'mixer' | 'master'): void {
 
 studioTabBtnMixer?.addEventListener('click', () => switchStudioDeckTab('mixer'));
 studioTabBtnMaster?.addEventListener('click', () => switchStudioDeckTab('master'));
+studioTabBtnScenes?.addEventListener('click', () => switchStudioDeckTab('scenes'));
 
 // Studio Master FX Controls
 studioMasterBpmSlider?.addEventListener('input', () => {
@@ -2035,13 +2035,15 @@ seqMiniIndicator?.addEventListener('click', (e) => {
     sceneManager.seekCurrentScene(ratio);
     return;
   }
-  viewModeManager.setMode('scenes');
+  viewModeManager.setMode('studio');
+  switchStudioDeckTab('scenes');
 });
 
 function updateSeqMiniIndicator(seq: SceneSequenceTickResult): void {
   if (!seqMiniIndicator) return;
   const currentView = typeof viewModeManager !== 'undefined' ? viewModeManager.getMode() : 'studio';
-  if (currentView === 'scenes' || !sceneManager.isSequencing()) {
+  const isScenesTabActive = currentView === 'studio' && studioTabBtnScenes?.classList.contains('active');
+  if (isScenesTabActive || !sceneManager.isSequencing()) {
     seqMiniIndicator.style.display = 'none';
     return;
   }

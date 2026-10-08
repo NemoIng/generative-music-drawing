@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ViewModeManager } from '../src/ui/viewModes';
 
-describe('View Modes: Option A (Studio Deck), Option B (Zen Canvas), Option C (Scene Arranger)', () => {
+describe('View Modes: Studio (Layers, Master FX, Scenes) and Zen Canvas', () => {
   let dom: JSDOM;
   let doc: Document;
 
@@ -16,25 +16,27 @@ describe('View Modes: Option A (Studio Deck), Option B (Zen Canvas), Option C (S
   });
 
   describe('HTML DOM Structure & Presence', () => {
-    it('contains view switcher segmented control with Studio, Zen, and Scenes options', () => {
+    it('contains view switcher segmented control with Studio and Zen options', () => {
       const viewControl = doc.getElementById('viewModeControl');
       expect(viewControl).toBeDefined();
       const buttons = viewControl?.querySelectorAll<HTMLButtonElement>('[data-view-mode]');
-      expect(buttons?.length).toBe(3);
+      expect(buttons?.length).toBe(2);
 
       const modes = Array.from(buttons || []).map((b) => b.getAttribute('data-view-mode'));
-      expect(modes).toEqual(['studio', 'zen', 'scenes']);
+      expect(modes).toEqual(['studio', 'zen']);
     });
 
-    it('contains Option A: Studio Deck with Mixer and Master FX tabs, persistent cards list, and docked inspector', () => {
+    it('contains Studio Deck with Layers, Master FX, and Scenes tabs, persistent cards list, and docked inspector', () => {
       const studioDeck = doc.getElementById('studioDeck');
       expect(studioDeck).toBeDefined();
       expect(studioDeck?.classList.contains('studio-deck')).toBe(true);
 
       const tabMixer = doc.getElementById('studioTabBtnMixer');
       const tabMaster = doc.getElementById('studioTabBtnMaster');
+      const tabScenes = doc.getElementById('studioTabBtnScenes');
       expect(tabMixer).toBeDefined();
       expect(tabMaster).toBeDefined();
+      expect(tabScenes).toBeDefined();
 
       const mixerList = doc.getElementById('studioMixerList');
       expect(mixerList).toBeDefined();
@@ -71,15 +73,19 @@ describe('View Modes: Option A (Studio Deck), Option B (Zen Canvas), Option C (S
       expect(zenStyle).toBeDefined();
       expect(zenView).toBeDefined();
 
+      const zenButtons = zenView?.querySelectorAll<HTMLButtonElement>('[data-view-mode]');
+      expect(zenButtons?.length).toBe(2);
+      const zenModes = Array.from(zenButtons || []).map((b) => b.getAttribute('data-view-mode'));
+      expect(zenModes).toEqual(['studio', 'zen']);
+
       const zenContextPill = doc.getElementById('zenContextPill');
       expect(zenContextPill).toBeDefined();
       expect(zenContextPill?.classList.contains('zen-context-pill')).toBe(true);
     });
 
-    it('contains Option C: Scene Arranger Deck with timeline controls and scene card container', () => {
-      const sceneArranger = doc.getElementById('sceneArrangerDeck');
-      expect(sceneArranger).toBeDefined();
-      expect(sceneArranger?.classList.contains('scene-arranger-deck')).toBe(true);
+    it('contains Scene Arranger integrated inside Studio Deck with timeline controls and scene card container', () => {
+      const tabScenes = doc.getElementById('studioTabScenes');
+      expect(tabScenes).toBeDefined();
 
       const playSeqBtn = doc.getElementById('scenePlaySeqBtn');
       const morphSlider = doc.getElementById('sceneMorphSlider');
@@ -125,11 +131,10 @@ describe('View Modes: Option A (Studio Deck), Option B (Zen Canvas), Option C (S
       expect(vmm.getMode()).toBe('studio');
     });
 
-    it('applies DOM visibility and classes correctly for Option A: Studio Deck', () => {
+    it('applies DOM visibility and classes correctly for Studio Mode', () => {
       const app = doc.getElementById('app') as HTMLElement;
       const studioDeck = doc.getElementById('studioDeck') as HTMLElement;
       const zenDock = doc.getElementById('zenPillDock') as HTMLElement;
-      const sceneDeck = doc.getElementById('sceneArrangerDeck') as HTMLElement;
       const topBar = doc.querySelector('.top-bar') as HTMLElement;
       const bottomBar = doc.querySelector('.bottom-bar') as HTMLElement;
 
@@ -144,7 +149,6 @@ describe('View Modes: Option A (Studio Deck), Option B (Zen Canvas), Option C (S
         app,
         studioDeck,
         zenDock,
-        sceneDeck,
         topBar,
         bottomBar,
       });
@@ -153,22 +157,19 @@ describe('View Modes: Option A (Studio Deck), Option B (Zen Canvas), Option C (S
 
       expect(app.classList.contains('view-studio')).toBe(true);
       expect(app.classList.contains('view-zen')).toBe(false);
-      expect(app.classList.contains('view-scenes')).toBe(false);
 
       expect(studioDeck.style.display).toBe('flex');
       expect(zenDock.style.display).toBe('none');
-      expect(sceneDeck.style.display).toBe('none');
       expect(topBar.style.display).toBe('flex');
       expect(bottomBar.style.display).toBe('flex');
       expect(resizeFn).toHaveBeenCalled();
       expect(changeFn).toHaveBeenCalledWith('studio');
     });
 
-    it('applies DOM visibility and classes correctly for Option B: Zen Canvas', () => {
+    it('applies DOM visibility and classes correctly for Zen Mode', () => {
       const app = doc.getElementById('app') as HTMLElement;
       const studioDeck = doc.getElementById('studioDeck') as HTMLElement;
       const zenDock = doc.getElementById('zenPillDock') as HTMLElement;
-      const sceneDeck = doc.getElementById('sceneArrangerDeck') as HTMLElement;
       const topBar = doc.querySelector('.top-bar') as HTMLElement;
       const bottomBar = doc.querySelector('.bottom-bar') as HTMLElement;
 
@@ -183,7 +184,6 @@ describe('View Modes: Option A (Studio Deck), Option B (Zen Canvas), Option C (S
         app,
         studioDeck,
         zenDock,
-        sceneDeck,
         topBar,
         bottomBar,
       });
@@ -192,56 +192,16 @@ describe('View Modes: Option A (Studio Deck), Option B (Zen Canvas), Option C (S
 
       expect(app.classList.contains('view-zen')).toBe(true);
       expect(app.classList.contains('view-studio')).toBe(false);
-      expect(app.classList.contains('view-scenes')).toBe(false);
 
       // In Zen mode: pure full-bleed canvas, all browser clutter hidden
       expect(studioDeck.style.display).toBe('none');
       expect(zenDock.style.display).toBe('flex');
-      expect(sceneDeck.style.display).toBe('none');
       expect(topBar.style.display).toBe('none');
       expect(bottomBar.style.display).toBe('none');
       expect(changeFn).toHaveBeenCalledWith('zen');
     });
 
-    it('applies DOM visibility and classes correctly for Option C: Scene Arranger', () => {
-      const app = doc.getElementById('app') as HTMLElement;
-      const studioDeck = doc.getElementById('studioDeck') as HTMLElement;
-      const zenDock = doc.getElementById('zenPillDock') as HTMLElement;
-      const sceneDeck = doc.getElementById('sceneArrangerDeck') as HTMLElement;
-      const topBar = doc.querySelector('.top-bar') as HTMLElement;
-      const bottomBar = doc.querySelector('.bottom-bar') as HTMLElement;
-
-      const resizeFn = vi.fn();
-      const changeFn = vi.fn();
-      const vmm = new ViewModeManager({
-        onResizeRequired: resizeFn,
-        onViewChange: changeFn,
-      });
-
-      vmm.initDOM({
-        app,
-        studioDeck,
-        zenDock,
-        sceneDeck,
-        topBar,
-        bottomBar,
-      });
-
-      vmm.setMode('scenes');
-
-      expect(app.classList.contains('view-scenes')).toBe(true);
-      expect(app.classList.contains('view-studio')).toBe(false);
-      expect(app.classList.contains('view-zen')).toBe(false);
-
-      expect(sceneDeck.style.display).toBe('flex');
-      expect(studioDeck.style.display).toBe('none');
-      expect(zenDock.style.display).toBe('none');
-      expect(topBar.style.display).toBe('flex');
-      expect(bottomBar.style.display).toBe('none');
-      expect(changeFn).toHaveBeenCalledWith('scenes');
-    });
-
-    it('cycles seamlessly through all three modes with cycleNextMode()', () => {
+    it('cycles seamlessly between Studio and Zen modes with cycleNextMode()', () => {
       const vmm = new ViewModeManager({
         onResizeRequired: () => {},
         onViewChange: () => {},
@@ -252,14 +212,11 @@ describe('View Modes: Option A (Studio Deck), Option B (Zen Canvas), Option C (S
       expect(vmm.cycleNextMode()).toBe('zen');
       expect(vmm.getMode()).toBe('zen');
 
-      expect(vmm.cycleNextMode()).toBe('scenes');
-      expect(vmm.getMode()).toBe('scenes');
-
       expect(vmm.cycleNextMode()).toBe('studio');
       expect(vmm.getMode()).toBe('studio');
     });
 
-    it('toggles effortlessly between Studio Deck and Zen Canvas with toggleStudioZen()', () => {
+    it('toggles effortlessly between Studio and Zen with toggleStudioZen()', () => {
       const vmm = new ViewModeManager({
         onResizeRequired: () => {},
         onViewChange: () => {},

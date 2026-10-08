@@ -3328,86 +3328,83 @@ body.dark-mode .studio-tab-btn.active {
 }
 
 
-/* 3. OPTION C: Scene Arranger (view-scenes) */
-#app.view-scenes .workspace-layout {
+/* Studio Tab 3: Scenes Panel Layout inside Studio Deck */
+.studio-scenes-panel {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
   flex: 1;
   min-height: 0;
 }
 
-#app.view-scenes .canvas-container {
-  flex: 1;
-  min-width: 0;
-}
-
-#app.view-scenes #studioDeck {
-  display: none !important;
-}
-
-#app.view-scenes #zenPillDock {
-  display: none !important;
-}
-
-#app.view-scenes #zenContextPill {
-  display: none !important;
-}
-
-#app.view-scenes .bottom-bar {
-  display: none !important;
-}
-
-#app.view-scenes #sceneArrangerDeck {
-  display: flex !important;
-}
-
-/* Scene Arranger Deck Styling */
-.scene-arranger-deck {
-  width: 100%;
-  height: 185px;
-  min-height: 165px;
-  max-height: 220px;
-  background: var(--bg-surface);
-  border-top: 1px solid var(--border-subtle);
-  display: flex;
-  flex-direction: column;
-  z-index: 50;
-  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.04);
-  flex-shrink: 0;
-}
-
-.scene-arranger-header {
+.studio-scenes-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--bg-subtle);
+  padding: 4px 2px 2px;
   flex-shrink: 0;
 }
 
-.scene-arranger-title-group {
+.studio-scenes-title {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  flex-direction: column;
 }
 
-.scene-arranger-title {
+.studio-scenes-title span:first-child {
   font-weight: 700;
-  font-size: 0.82rem;
+  font-size: 0.76rem;
   color: var(--text-primary);
   letter-spacing: -0.01em;
 }
 
-.scene-arranger-hint {
-  font-size: 0.68rem;
+.studio-scenes-hint {
+  font-size: 0.64rem;
   color: var(--text-muted);
 }
 
-.scene-arranger-controls {
+.studio-scenes-params {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  flex-shrink: 0;
+}
+
+.studio-scenes-param-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  width: 100%;
+}
+
+.studio-scenes-actions-row {
+  display: flex;
+  gap: 4px;
+  width: 100%;
+}
+
+.studio-scene-cards-list {
+  display: flex;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 6px !important;
+  padding: 4px 2px !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  flex: 1;
+  min-height: 0;
+}
+
+.studio-scene-cards-list .scene-card {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  width: 100%;
+  padding: 8px 10px;
 }
 
 .scene-morph-wrap {
@@ -3420,22 +3417,28 @@ body.dark-mode .studio-tab-btn.active {
   padding: 2px 8px;
   font-size: 0.72rem;
   font-weight: 600;
+  flex: 1;
+}
+
+.scene-morph-wrap input[type="range"] {
+  flex: 1;
+  min-width: 40px;
 }
 
 .scene-blend-wrap {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   padding: 2px 6px;
-  font-size: 0.72rem;
+  font-size: 0.70rem;
   font-weight: 600;
 }
 
 .scene-blend-label {
-  font-size: 0.68rem;
+  font-size: 0.65rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;

@@ -140,15 +140,15 @@
             </div>
           </div>
 
-          <!-- View Architecture Switcher (Studio Deck / Zen Canvas / Scene Arranger) -->
-          <div class="control-group view-switcher-group has-tooltip" data-tooltip="Interface View (Studio Deck, Zen Canvas, Scene Arranger • Press V to cycle views)">
+          <!-- View Architecture Switcher (Studio Deck / Zen Canvas) -->
+          <div class="control-group view-switcher-group has-tooltip" data-tooltip="Interface View (Studio vs Zen • Press V to toggle)">
             <label class="top-row-label">View</label>
             <div class="segmented-switch" id="viewModeControl">
               <button
                 type="button"
                 class="seg-btn active"
                 data-view-mode="studio"
-                title="Studio Deck: Persistent mixer and rack on right"
+                title="Studio: Full workspace with Layers, Master FX, and Scenes"
               >
                 Studio
               </button>
@@ -156,17 +156,9 @@
                 type="button"
                 class="seg-btn"
                 data-view-mode="zen"
-                title="Zen Canvas: Full-bleed distraction-free canvas"
+                title="Zen: Full-bleed distraction-free canvas"
               >
                 Zen
-              </button>
-              <button
-                type="button"
-                class="seg-btn"
-                data-view-mode="scenes"
-                title="Scene Arranger: Multi-scene progression timeline"
-              >
-                Scenes
               </button>
             </div>
           </div>
@@ -709,9 +701,8 @@
 
             <!-- View switchers in Zen dock -->
             <div class="segmented-switch mini-switch" id="zenViewModeControl">
-              <button type="button" class="seg-btn" data-view-mode="studio" title="Studio Deck (1)">Studio</button>
-              <button type="button" class="seg-btn active" data-view-mode="zen" title="Zen Canvas (2)">Zen</button>
-              <button type="button" class="seg-btn" data-view-mode="scenes" title="Scene Arranger (3)">Scenes</button>
+              <button type="button" class="seg-btn" data-view-mode="studio" title="Studio (1)">Studio</button>
+              <button type="button" class="seg-btn active" data-view-mode="zen" title="Zen (2)">Zen</button>
             </div>
 
             <button type="button" id="zenUndoBtn" class="zen-dock-btn has-tooltip" data-tooltip="Undo (⌘Z)">Undo</button>
@@ -797,6 +788,7 @@
           <div class="studio-deck-tabs">
             <button type="button" class="studio-tab-btn active" id="studioTabBtnMixer" data-studio-tab="mixer">Layers</button>
             <button type="button" class="studio-tab-btn" id="studioTabBtnMaster" data-studio-tab="master">Master FX</button>
+            <button type="button" class="studio-tab-btn" id="studioTabBtnScenes" data-studio-tab="scenes">Scenes</button>
           </div>
         </div>
 
@@ -976,48 +968,58 @@
               </div>
             </div>
           </div>
+
+          <!-- Studio Tab 3: Scenes Arranger & Timeline Progression -->
+          <div id="studioTabScenes" class="studio-tab-pane" style="display: none;">
+            <div class="studio-scenes-panel">
+              <div class="studio-scenes-header">
+                <div class="studio-scenes-title">
+                  <span>Scene Arranger</span>
+                  <span class="studio-scenes-hint">Ambient movements &amp; morphs</span>
+                </div>
+                <button type="button" id="scenePlaySeqBtn" class="action-btn action-btn-xs">
+                  <span id="sceneSeqPlayText">Play Sequence</span>
+                </button>
+              </div>
+
+              <div class="studio-scenes-params">
+                <div class="studio-scenes-param-row">
+                  <div class="scene-morph-wrap has-tooltip" data-tooltip="Morph Duration: Crossfade seconds between scene movements (2s - 25s)">
+                    <label for="sceneMorphSlider">Morph</label>
+                    <input type="range" id="sceneMorphSlider" min="2" max="25" step="1" value="6" class="minimal-slider" />
+                    <span id="sceneMorphVal" class="value-badge">6s</span>
+                  </div>
+                  <div class="scene-blend-wrap has-tooltip" data-tooltip="Transition Blend Style: Lush Overlap (equal-power energy), Reverb Wash, or Linear">
+                    <label class="scene-blend-label">Blend</label>
+                    <div class="segmented-switch mini-switch" id="sceneMorphBlendSwitch">
+                      <button type="button" class="seg-btn active" data-blend="equalPower" title="Lush Overlap">Lush</button>
+                      <button type="button" class="seg-btn" data-blend="reverbWash" title="Reverb Wash">Wash</button>
+                      <button type="button" class="seg-btn" data-blend="linear" title="Linear">Lin</button>
+                    </div>
+                    <select id="sceneMorphCurveSelect" class="hidden" title="Morph Blend Mode">
+                      <option value="equalPower" selected>Lush Overlap</option>
+                      <option value="reverbWash">Reverb Wash</option>
+                      <option value="linear">Linear Blend</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="studio-scenes-actions-row">
+                  <button type="button" id="sceneAddBtn" class="action-btn action-btn-xs" style="flex: 1.2;">+ New Scene</button>
+                  <button type="button" id="sceneDupBtn" class="action-btn action-btn-xs" style="flex: 1;">Duplicate</button>
+                  <button type="button" id="sceneDelBtn" class="action-btn action-btn-xs text-danger" style="flex: 0.9;">Delete</button>
+                </div>
+              </div>
+
+              <!-- Scene Cards List inside Studio Deck -->
+              <div id="sceneCardsList" class="scene-cards-list studio-scene-cards-list">
+                <!-- Dynamically populated Scene Cards -->
+              </div>
+            </div>
+          </div>
         </div>
       </aside>
     </div>
-
-    <!-- Option C: Scene Arranger Deck (Persistent Bottom Timeline) -->
-    <section id="sceneArrangerDeck" class="scene-arranger-deck" style="display: none;">
-      <div class="scene-arranger-header">
-        <div class="scene-arranger-title-group">
-          <span class="scene-arranger-title">Scene Arranger</span>
-          <span class="scene-arranger-hint">Compose evolving ambient movements & crossfade morphs</span>
-        </div>
-        <div class="scene-arranger-controls">
-          <button type="button" id="scenePlaySeqBtn" class="action-btn action-btn-sm">
-            <span id="sceneSeqPlayText">Play Sequence</span>
-          </button>
-          <div class="scene-morph-wrap has-tooltip" data-tooltip="Morph Duration: Crossfade seconds between scene movements (2s - 25s)">
-            <label for="sceneMorphSlider">Morph</label>
-            <input type="range" id="sceneMorphSlider" min="2" max="25" step="1" value="6" class="minimal-slider" />
-            <span id="sceneMorphVal" class="value-badge">6s</span>
-          </div>
-          <div class="scene-blend-wrap has-tooltip" data-tooltip="Transition Blend Style: Lush Overlap (equal-power constant energy), Reverb Wash (ambient swell), or Linear (straight fade)">
-            <label class="scene-blend-label">Blend</label>
-            <div class="segmented-switch mini-switch" id="sceneMorphBlendSwitch">
-              <button type="button" class="seg-btn active" data-blend="equalPower" title="Lush Overlap: Equal-power acoustic energy preservation (no volume drop)">Lush</button>
-              <button type="button" class="seg-btn" data-blend="reverbWash" title="Reverb Wash: Lush crossfade with an organic ambient reverb wash swell">Wash</button>
-              <button type="button" class="seg-btn" data-blend="linear" title="Linear Blend: Straight linear crossfade">Linear</button>
-            </div>
-            <select id="sceneMorphCurveSelect" class="hidden" title="Morph Blend Mode">
-              <option value="equalPower" selected>Lush Overlap</option>
-              <option value="reverbWash">Reverb Wash</option>
-              <option value="linear">Linear Blend</option>
-            </select>
-          </div>
-          <button type="button" id="sceneAddBtn" class="action-btn action-btn-sm">+ New Scene</button>
-          <button type="button" id="sceneDupBtn" class="action-btn action-btn-sm">Duplicate</button>
-          <button type="button" id="sceneDelBtn" class="action-btn action-btn-sm text-danger">Delete</button>
-        </div>
-      </div>
-      <div id="sceneCardsList" class="scene-cards-list">
-        <!-- Dynamically populated Scene Cards -->
-      </div>
-    </section>
 
       <!-- Keyboard Shortcuts Cheat Sheet Modal -->
       <div id="shortcutsModal" class="modal hidden">
@@ -1035,7 +1037,7 @@
                 <div class="shortcut-row"><kbd>R</kbd> <span>Sync all playheads to line starts</span></div>
                 <div class="shortcut-row"><kbd>Shift + R</kbd> <span>Randomize playheads (polyrhythms)</span></div>
                 <div class="shortcut-row"><kbd>+</kbd> / <kbd>-</kbd> <span>Hold to Fast-Forward / Rewind (4x)</span></div>
-                <div class="shortcut-row"><kbd>V</kbd> <span>Cycle View: Studio &rarr; Zen &rarr; Scenes</span></div>
+                <div class="shortcut-row"><kbd>V</kbd> <span>Toggle View: Studio &rlarr; Zen</span></div>
                 <div class="shortcut-row"><kbd>L</kbd> <span>Toggle Draw vs Live Play Wand</span></div>
                 <div class="shortcut-row"><kbd>F</kbd> <span>Toggle Fullscreen Canvas</span></div>
               </div>
