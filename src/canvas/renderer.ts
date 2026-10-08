@@ -442,7 +442,9 @@ export class CanvasRenderer {
       const travMode = (stroke.traversal === 'bounce' || (stroke.traversal as string) === 'pingpong') ? 'Bounce' : 'Loop';
 
       let tagText = stroke.isPoint
-        ? `${volPercent}% vol • Dot Note`
+        ? (stroke.playhead.lastPitch
+            ? `${volPercent}% vol • Dot (${stroke.playhead.lastPitch.noteName} · ${Math.round(stroke.playhead.lastPitch.frequency)}Hz)`
+            : `${volPercent}% vol • Dot Note`)
         : `${volPercent}% vol • ${speedLabel} • ${progressPct}% • ${travMode}`;
       if (stroke.instrumentId === 'onyx') {
         const normY = this.height > 0 ? startPt.y / this.height : 0.5;

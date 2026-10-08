@@ -607,6 +607,127 @@ describe('Unified InputHandler Interaction Model', () => {
       expect(importedStroke.distortion).toBe(0.85);
       expect(importedStroke.filterCutoff).toBe(0.35);
     });
+
+    it('dynamically updates stationary dot note frequency and playhead position when translated/moved', () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+      const dotPath: SplinePath = {
+        segments: [
+          {
+            p0: { x: 400, y: 500 },
+            p1: { x: 400.1, y: 500 },
+            p2: { x: 400.2, y: 500 },
+            p3: { x: 400.3, y: 500 },
+          },
+        ],
+        isClosed: false,
+      };
+
+      // Create a solid dot stroke at y = 500
+      const dot = sm.addStroke(
+        dotPath,
+        'solid',
+        'indigo',
+        100,
+        quantizer,
+        600,
+        1.0,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        true,
+        true
+      );
+
+      expect(dot.isPoint).toBe(true);
+
+      // Run update at initial position
+      sm.update(0.016, 800, 600, quantizer);
+      expect(dot.playhead.lastEval).toBeDefined();
+      expect(dot.playhead.lastEval?.point.x).toBe(400);
+      expect(dot.playhead.lastEval?.point.y).toBe(500);
+      const initialFreq = dot.playhead.lastPitch?.frequency;
+      expect(initialFreq).toBeGreaterThan(0);
+
+      // Translate the dot upward (lower Y = higher pitch in canvas coordinates)
+      sm.translateStroke(dot.id, 50, -250, true);
+
+      expect(dot.path.segments[0].p0.x).toBe(450);
+      expect(dot.path.segments[0].p0.y).toBe(250);
+      expect(dot.playhead.lastEval?.point.x).toBe(450);
+      expect(dot.playhead.lastEval?.point.y).toBe(250);
+
+      // Run update after translation
+      sm.update(0.016, 800, 600, quantizer);
+
+      const movedFreq = dot.playhead.lastPitch?.frequency;
+      expect(movedFreq).toBeGreaterThan(initialFreq!);
+
+      // Translate back downward and verify pitch drops
+      sm.translateStroke(dot.id, 0, 300, true);
+      sm.update(0.016, 800, 600, quantizer);
+      const lowerFreq = dot.playhead.lastPitch?.frequency;
+      expect(lowerFreq).toBeLessThan(movedFreq!);
+
+      // Test undoing the move restores original coordinates and frequency
+      sm.undo();
+      sm.undo();
+      sm.update(0.016, 800, 600, quantizer);
+      expect(dot.playhead.lastEval?.point.x).toBe(400);
+      expect(dot.playhead.lastEval?.point.y).toBe(500);
+      expect(dot.playhead.lastPitch?.frequency).toBeCloseTo(initialFreq!, 2);
+    });
+
+    it('updates stationary dot note triggering coordinates for dotted and onyx drum machines', () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+      const dotPath: SplinePath = {
+        segments: [
+          {
+            p0: { x: 300, y: 550 }, // lower area = Kick drum
+            p1: { x: 300.1, y: 550 },
+            p2: { x: 300.2, y: 550 },
+            p3: { x: 300.3, y: 550 },
+          },
+        ],
+        isClosed: false,
+      };
+
+      const drumDot = sm.addStroke(
+        dotPath,
+        'dotted',
+        'onyx',
+        100,
+        quantizer,
+        600,
+        1.0,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        true,
+        true
+      );
+
+      sm.update(0.016, 800, 600, quantizer);
+      expect(drumDot.playhead.lastEval?.point.y).toBe(550);
+
+      // Move drum dot to top area (y = 50, Hi-Hat zone)
+      sm.translateStroke(drumDot.id, 0, -500, false);
+      sm.update(0.016, 800, 600, quantizer);
+      expect(drumDot.playhead.lastEval?.point.y).toBe(50);
+    });
   });
 });
 

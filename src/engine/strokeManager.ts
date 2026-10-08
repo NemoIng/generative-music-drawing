@@ -982,9 +982,23 @@ export class StrokeManager {
       pt.y += dy;
     }
 
-    if (stroke.playhead.lastEval) {
+    if (stroke.isPoint && stroke.path.segments.length > 0) {
+      stroke.playhead.lastEval = {
+        point: { x: stroke.path.segments[0].p0.x, y: stroke.path.segments[0].p0.y },
+        tangent: { x: 1, y: 0 },
+        curvature: 0,
+        segmentIndex: 0,
+        t: 0,
+        speed: 0,
+        s: 0,
+      };
+    } else if (stroke.playhead.lastEval) {
       stroke.playhead.lastEval.point.x += dx;
       stroke.playhead.lastEval.point.y += dy;
+    }
+
+    if (!stroke.isPoint) {
+      stroke.lut = buildArcLengthLUT(stroke.path, 64);
     }
 
     if (stroke.waveParams) {
@@ -1404,7 +1418,7 @@ export class StrokeManager {
       if (!stroke.active) continue;
 
       const L = stroke.lut.totalLength;
-      if (L <= 1) continue;
+      if (!stroke.isPoint && L <= 1) continue;
 
       const ph = stroke.playhead;
       if (ph.finished) continue;
@@ -1434,7 +1448,10 @@ export class StrokeManager {
 
       // Handle curve boundary according to traversal mode (restart vs bounce)
       let didWrapOrBounce = false;
-      if (stroke.lut.isClosed) {
+      if (stroke.isPoint) {
+        // Stationary Dot / Point note: fixed on canvas, zero traversal distance
+        nextDist = 0;
+      } else if (stroke.lut.isClosed) {
         if (nextDist >= L || nextDist < 0) didWrapOrBounce = true;
         nextDist = ((nextDist % L) + L) % L;
       } else if (strokeTraversal === 'bounce') {
@@ -1462,19 +1479,29 @@ export class StrokeManager {
       ph.currentDistance = nextDist;
 
       // 1. Evaluate position with Newton-Raphson refinement (2 iterations for sub-pixel accuracy)
-      const evalResult = evaluateAtDistance(stroke.path, stroke.lut, nextDist, {
-        useNewtonRaphson: true,
-        newtonIterations: 2,
-      });
+      const evalResult = stroke.isPoint && stroke.path.segments.length > 0
+        ? {
+            point: { x: stroke.path.segments[0].p0.x, y: stroke.path.segments[0].p0.y },
+            tangent: { x: 1, y: 0 },
+            curvature: 0,
+            segmentIndex: 0,
+            t: 0,
+            speed: 0,
+            s: 0,
+          }
+        : evaluateAtDistance(stroke.path, stroke.lut, nextDist, {
+            useNewtonRaphson: true,
+            newtonIterations: 2,
+          });
 
       // Visual playhead dot glides directly along the geometric curve with 100% precision
       const visualPt: Point2D = evalResult.point;
       ph.lastEval = evalResult;
 
       // 2. Motion Trail (reset immediately on loop boundary wrap/bounce to avoid cross-screen streaks)
-      if (didWrapOrBounce) {
+      if (didWrapOrBounce || stroke.isPoint) {
         ph.trail = [visualPt];
-        if (strokeTraversal === 'bounce' && this.onTriggerSpark) {
+        if (strokeTraversal === 'bounce' && !stroke.isPoint && this.onTriggerSpark) {
           this.onTriggerSpark(visualPt.x, visualPt.y, stroke.color, 8, stroke.instrumentId);
         }
       } else {
