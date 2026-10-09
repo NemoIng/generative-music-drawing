@@ -49,6 +49,11 @@ export class ScaleQuantizer {
   /** Fraction of vertical coordinate space allocated up to 2500 Hz (92%, so 300-2500 Hz takes 70%, 2500-8000 Hz takes 8%) */
   public static readonly U_HIGH = 0.92;
 
+  /** High frequency guideline declutter threshold (Hz) - keep scale degrees up to G7 (3136 Hz) */
+  public static readonly HIGH_GUIDELINE_CUTOFF = 3140;
+  /** High frequency anchor landmark degree above cutoff (C8, 4186 Hz) */
+  public static readonly HIGH_GUIDELINE_LANDMARK = 4186;
+
   /** Total number of octaves supported across the scrollable field (backward-compatibility) */
   public readonly totalFieldOctaves = 8;
   public readonly octavesBelowRoot = 2;
@@ -464,6 +469,14 @@ export class ScaleQuantizer {
     while (this.getFrequencyForDegree(k) < ScaleQuantizer.MAX_FREQ * 1.5) {
       const frequency = this.getFrequencyForDegree(k);
       if (frequency >= ScaleQuantizer.MIN_FREQ && frequency <= ScaleQuantizer.MAX_FREQ) {
+        // High frequency decluttering: after 3136 Hz, only keep ~4186 Hz (C8) and the final top line
+        if (frequency > ScaleQuantizer.HIGH_GUIDELINE_CUTOFF) {
+          if (Math.abs(frequency - ScaleQuantizer.HIGH_GUIDELINE_LANDMARK) > 50) {
+            k++;
+            continue;
+          }
+        }
+
         const u = ScaleQuantizer.frequencyToNormalizedU(frequency);
         const y = (1 - u) * worldH;
         const semitones = this.getSemitonesForDegree(k);
@@ -485,6 +498,37 @@ export class ScaleQuantizer {
       k++;
     }
 
+    // Ensure C8 landmark (4186 Hz) is present even if scale has no degree within 50 Hz
+    const has4186 = guidelines.some((g) => Math.abs(g.frequency - ScaleQuantizer.HIGH_GUIDELINE_LANDMARK) <= 50);
+    if (!has4186) {
+      const u4186 = ScaleQuantizer.frequencyToNormalizedU(ScaleQuantizer.HIGH_GUIDELINE_LANDMARK);
+      const y4186 = (1 - u4186) * worldH;
+      guidelines.push({
+        y: y4186,
+        screenY: y4186 - this._scrollY,
+        scaleDegree: 0,
+        noteName: 'C8',
+        frequency: ScaleQuantizer.HIGH_GUIDELINE_LANDMARK,
+        isRoot: false,
+        isChordTone: true,
+      });
+    }
+
+    // Always append the final top boundary line at MAX_FREQ (8000 Hz)
+    const hasTopLine = guidelines.some((g) => Math.abs(g.frequency - ScaleQuantizer.MAX_FREQ) < 5);
+    if (!hasTopLine) {
+      guidelines.push({
+        y: 0,
+        screenY: -this._scrollY,
+        scaleDegree: 0,
+        noteName: '',
+        frequency: ScaleQuantizer.MAX_FREQ,
+        isRoot: false,
+        isChordTone: false,
+      });
+    }
+
+    guidelines.sort((a, b) => a.frequency - b.frequency);
     return guidelines;
   }
 

@@ -107,14 +107,21 @@ export class CanvasRenderer {
       const nextY = i < visible.length - 1 ? visible[i + 1].y : 999;
       const nearestDist = Math.min(Math.abs(y - prevY), Math.abs(nextY - y));
 
+      const isTopBoundary = Math.round(g.frequency) >= ScaleQuantizer.MAX_FREQ;
+      const lineY = isTopBoundary ? Math.max(1, y) : y;
+
       this.ctx.beginPath();
-      this.ctx.moveTo(leftMargin, y);
-      this.ctx.lineTo(w - rightMargin, y);
+      this.ctx.moveTo(leftMargin, lineY);
+      this.ctx.lineTo(w - rightMargin, lineY);
 
       const isFifth = g.scaleDegree % 7 === 4; // Dominant 5th in heptatonic modes
       const isChordTone = !!g.isChordTone && !g.isRoot;
 
-      if (g.isRoot) {
+      if (isTopBoundary) {
+        this.ctx.strokeStyle = this.isDarkMode ? 'rgba(255, 255, 255, 0.40)' : 'rgba(28, 25, 23, 0.35)';
+        this.ctx.lineWidth = 1.2;
+        this.ctx.setLineDash([]);
+      } else if (g.isRoot) {
         this.ctx.strokeStyle = this.isDarkMode ? 'rgba(255, 255, 255, 0.55)' : 'rgba(28, 25, 23, 0.45)';
         this.ctx.lineWidth = 1.5;
         this.ctx.setLineDash([]);
@@ -134,12 +141,12 @@ export class CanvasRenderer {
       this.ctx.stroke();
 
       // Only draw text labels if the line has enough vertical headroom (>= 15px) or is a primary harmonic landmark
-      const hasRoom = nearestDist >= 15 || g.isRoot || isChordTone || isFifth;
+      const hasRoom = nearestDist >= 15 || g.isRoot || isChordTone || isFifth || isTopBoundary;
       if (!hasRoom) continue;
 
       // Note Name on margins
       this.ctx.setLineDash([]);
-      this.ctx.font = g.isRoot
+      this.ctx.font = isTopBoundary || g.isRoot
         ? '700 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
         : isChordTone
         ? '600 10.5px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
@@ -147,7 +154,7 @@ export class CanvasRenderer {
         ? '600 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
         : '400 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 
-      this.ctx.fillStyle = g.isRoot
+      this.ctx.fillStyle = isTopBoundary || g.isRoot
         ? (this.isDarkMode ? '#ffffff' : '#1c1917')
         : isChordTone
         ? (this.isDarkMode ? '#fbbf24' : '#b45309')
@@ -155,22 +162,29 @@ export class CanvasRenderer {
         ? (this.isDarkMode ? '#93c5fd' : '#2563eb')
         : (this.isDarkMode ? '#71717a' : '#a8a29e');
       this.ctx.textAlign = 'right';
-      this.ctx.textBaseline = 'middle';
+      this.ctx.textBaseline = lineY <= 8 ? 'top' : 'middle';
+      const textY = lineY <= 8 ? Math.max(3, lineY + 2) : lineY;
 
-      const label = g.isRoot
+      const label = isTopBoundary
+        ? g.noteName
+        : g.isRoot
         ? `★ ${g.noteName}`
         : isChordTone
         ? `◆ ${g.noteName}`
         : isFifth
         ? `${g.noteName} (5th)`
         : g.noteName;
-      this.ctx.fillText(label, leftMargin - 14, y);
+      if (label) {
+        this.ctx.fillText(label, leftMargin - 14, textY);
+      }
 
       this.ctx.textAlign = 'left';
-      this.ctx.fillStyle = isChordTone
+      this.ctx.fillStyle = isTopBoundary
+        ? (this.isDarkMode ? 'rgba(255, 255, 255, 0.75)' : 'rgba(28, 25, 23, 0.65)')
+        : isChordTone
         ? (this.isDarkMode ? '#fbbf24' : '#b45309')
         : (this.isDarkMode ? '#71717a' : '#a8a29e');
-      this.ctx.fillText(`${Math.round(g.frequency)}Hz`, w - rightMargin + 10, y);
+      this.ctx.fillText(`${Math.round(g.frequency)}Hz`, w - rightMargin + 10, textY);
     }
 
     this.ctx.restore();

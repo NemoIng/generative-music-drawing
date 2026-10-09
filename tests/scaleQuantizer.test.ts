@@ -140,6 +140,28 @@ describe('Coordinate-to-Pitch Scale Quantizer (Non-linear 100 Hz to 8000 Hz)', (
     expect(roots.length).toBeGreaterThanOrEqual(5);
   });
 
+  it('cleans up high-frequency guidelines above 3136 Hz to only have 4186 Hz and the top 8000 Hz line', () => {
+    const quantizer = new ScaleQuantizer({
+      scale: SCALES.dorian,
+      root: ROOT_NOTES.D2,
+    });
+
+    const guidelines = quantizer.getAllGuidelines(canvasHeight);
+    const highGuidelines = guidelines.filter((g) => g.frequency > ScaleQuantizer.HIGH_GUIDELINE_CUTOFF);
+
+    // Above 3140 Hz, there must be exactly 2 guidelines: 4186 Hz (C8) and 8000 Hz (top line)
+    expect(highGuidelines.length).toBe(2);
+
+    const c8 = highGuidelines[0];
+    const top = highGuidelines[1];
+
+    expect(Math.round(c8.frequency)).toBe(4186);
+    expect(c8.noteName).toBe('C8');
+
+    expect(Math.round(top.frequency)).toBe(8000);
+    expect(top.y).toBe(0);
+  });
+
   it('supports smooth scrolling across the full virtual world', () => {
     const quantizer = new ScaleQuantizer();
     quantizer.setScrollEnabled(true);
