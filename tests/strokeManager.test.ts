@@ -441,6 +441,33 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
     expect(hitMiss).toBeNull();
   });
 
+  it('correctly hit-tests Onyx drum strokes using world coordinates when viewport is scrolled', () => {
+    const sm = new StrokeManager();
+    const scrollY = 1200;
+    // An Onyx stroke stored in world coordinates at y = 1872
+    const onyxDrumPath: SplinePath = {
+      segments: [
+        {
+          p0: { x: 100, y: 1872 },
+          p1: { x: 300, y: 1872 },
+          p2: { x: 500, y: 1872 },
+          p3: { x: 700, y: 1872 },
+        },
+      ],
+      isClosed: false,
+    };
+    const onyxStroke = sm.addStroke(onyxDrumPath, 'striped', 'onyx', 140);
+
+    // On screen (viewport scrolled by 1200px), screenPt.y = 1872 - 1200 = 672
+    const screenPt = { x: 400, y: 672 };
+    const worldPt = { x: 400, y: 672 + scrollY }; // 1872
+
+    // Passing worldPt must hit the Onyx stroke
+    const hit = sm.hitTest(screenPt, 22, worldPt);
+    expect(hit).not.toBeNull();
+    expect(hit?.id).toBe(onyxStroke.id);
+  });
+
   it('supports restructuring a stroke into tangent and other wave shapes with undo/redo', () => {
     const sm = new StrokeManager();
     const s = sm.addStroke(dummyPath, 'solid', 'indigo', 100);

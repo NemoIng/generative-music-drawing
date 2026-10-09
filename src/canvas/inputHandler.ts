@@ -362,7 +362,7 @@ export class InputHandler {
     // ========================================================
     // B. DRAW MODE: Normal score drawing and line selection
     // ========================================================
-    // Hit test lines: Onyx lines against screen coordinates, melodic lines against world coordinates
+    // Hit test lines across world score coordinates (both melodic and drum strokes)
     const hit = this.strokeManager.hitTest(screenPt, 22, worldPt);
 
     if (hit) {

@@ -130,6 +130,44 @@ describe('Unified InputHandler Interaction Model', () => {
     handler.destroy();
   });
 
+  it('selects Onyx drum strokes when clicked on canvas with scrolling enabled', async () => {
+    const sm = new StrokeManager();
+    const quantizer = new ScaleQuantizer();
+    quantizer.setScrollEnabled(true);
+    quantizer.setScrollY(600);
+
+    // Onyx stroke in world space at y = 900 (which corresponds to screenY = 300)
+    const drumPath: SplinePath = {
+      segments: [
+        {
+          p0: { x: 50, y: 900 },
+          p1: { x: 150, y: 900 },
+          p2: { x: 250, y: 900 },
+          p3: { x: 350, y: 900 },
+        },
+      ],
+      isClosed: false,
+    };
+    const drumStroke = sm.addStroke(drumPath, 'striped', 'onyx', 140);
+
+    const onSelectStroke = vi.fn();
+    const handler = new InputHandler(mockCanvas, {
+      strokeManager: sm,
+      getQuantizer: () => quantizer,
+      onStrokeComplete: vi.fn(),
+      onSelectStroke,
+    });
+
+    // Click at screen position (100, 300) which corresponds to world position (100, 900)
+    const pointerDown = listeners['pointerdown'][0];
+    await pointerDown({ clientX: 100, clientY: 300, button: 0 } as any);
+
+    expect(sm.selectedStrokeId).toBe(drumStroke.id);
+    expect(onSelectStroke).toHaveBeenCalledWith(drumStroke.id);
+
+    handler.destroy();
+  });
+
   it('deselects selected stroke on tapping empty canvas', async () => {
     const sm = new StrokeManager();
     const quantizer = new ScaleQuantizer();

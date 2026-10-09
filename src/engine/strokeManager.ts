@@ -1363,7 +1363,7 @@ export class StrokeManager {
 
     for (let sIdx = this.strokes.length - 1; sIdx >= 0; sIdx--) {
       const stroke = this.strokes[sIdx];
-      const testPt = (stroke.instrumentId === 'onyx' || !worldPoint) ? point : worldPoint;
+      const testPt = worldPoint ?? point;
 
       if (stroke.isPoint && stroke.path.segments.length > 0) {
         const origin = stroke.path.segments[0].p0;
