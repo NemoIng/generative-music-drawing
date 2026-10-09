@@ -419,16 +419,16 @@ export const TEMPLATES: Record<string, MusicalTemplate> = {
     octaveSpan: 4,
     xAxisModulation: 'panAndTone',
     breathingMode: 'drift',
-    initialScrollRatio: 1.5,
+    initialScrollRatio: 1.65,
     strokes: (w: number, h: number, _quantizer: ScaleQuantizer) => {
-      const kickY = h * 0.84;
-      const clapY = h * 0.58;
-      const bassY = h * 0.794;
-      const stringY = h * 0.376;
-      const organY = h * 0.101;
+      const kickY = h * 0.88;
+      const clapY = h * 0.54;
+      const bassY = h * 0.76;
+      const stringY = h * 0.34;
+      const organY = h * 0.08;
 
       return [
-        // 1. Onyx 808 Sub-Bass Kick Pulse (Kick Zone >= 0.72)
+        // 1. Onyx 808 Sub-Bass Kick Pulse (Kick Zone < 260 Hz)
         {
           instrumentId: 'onyx',
           style: 'striped',

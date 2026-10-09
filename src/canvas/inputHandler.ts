@@ -300,17 +300,18 @@ export class InputHandler {
       let frequency = 0;
 
       if (instId === 'onyx') {
-        const normY = rect.height > 0 ? screenY / rect.height : 0.5;
-        if (normY >= 0.72) {
+        const pitch = quantizer.quantizeContinuous(worldPt.y, rect.height);
+        const drumFreq = pitch.frequency;
+        if (drumFreq < 260) {
           DrumSynth.triggerKick(LIVE_VOLUME, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
           noteName = 'Kick';
           frequency = 55;
-        } else if (normY >= 0.48) {
+        } else if (drumFreq < 650) {
           DrumSynth.triggerSnare(LIVE_VOLUME * 0.95, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
           noteName = 'Snare';
           frequency = 180;
-        } else if (normY >= 0.25) {
-          const tomFreq = 100 + (1 - (normY - 0.25) / 0.23) * 120;
+        } else if (drumFreq < 2200) {
+          const tomFreq = Math.max(100, Math.min(220, 100 + ((drumFreq - 650) / 1550) * 120));
           DrumSynth.triggerTom(tomFreq, LIVE_VOLUME * 0.9, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
           noteName = 'Tom';
           frequency = tomFreq;
@@ -427,17 +428,18 @@ export class InputHandler {
       let frequency = 0;
 
       if (instId === 'onyx') {
-        const normY = rect.height > 0 ? screenY / rect.height : 0.5;
-        if (normY >= 0.72) noteName = 'Kick';
-        else if (normY >= 0.48) noteName = 'Snare';
-        else if (normY >= 0.25) noteName = 'Tom';
+        const pitch = quantizer.quantizeContinuous(worldPt.y, rect.height);
+        const drumFreq = pitch.frequency;
+        if (drumFreq < 260) noteName = 'Kick';
+        else if (drumFreq < 650) noteName = 'Snare';
+        else if (drumFreq < 2200) noteName = 'Tom';
         else noteName = 'HiHat';
 
         if (dist >= 35) {
-          if (normY >= 0.72) DrumSynth.triggerKick(LIVE_VOLUME, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
-          else if (normY >= 0.48) DrumSynth.triggerSnare(LIVE_VOLUME * 0.95, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
-          else if (normY >= 0.25) {
-            const tomFreq = 100 + (1 - (normY - 0.25) / 0.23) * 120;
+          if (drumFreq < 260) DrumSynth.triggerKick(LIVE_VOLUME, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
+          else if (drumFreq < 650) DrumSynth.triggerSnare(LIVE_VOLUME * 0.95, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
+          else if (drumFreq < 2200) {
+            const tomFreq = Math.max(100, Math.min(220, 100 + ((drumFreq - 650) / 1550) * 120));
             DrumSynth.triggerTom(tomFreq, LIVE_VOLUME * 0.9, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
           } else DrumSynth.triggerHiHat(true, LIVE_VOLUME * 0.9, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
           this.lastLivePoint = { x: screenX, y: screenY };

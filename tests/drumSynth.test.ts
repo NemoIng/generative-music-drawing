@@ -112,24 +112,31 @@ describe('DrumSynth & Onyx 808 Drum Machine Integration', () => {
       isClosed: false,
     });
 
-    // 1. Kick Line at bottom (y = 520, which is > 0.72 * 600 = 432)
-    const kickStroke = sm.addStroke(makeLineAtY(520), 'dotted', 'onyx', 140, quantizer, canvasHeight);
+    // Helper to calculate exact Y coordinate from frequency
+    const yFromFreq = (freq: number) => {
+      const u = ScaleQuantizer.frequencyToNormalizedU(freq);
+      const worldH = quantizer.isScrollEnabled ? quantizer.getWorldHeight(canvasHeight) : canvasHeight;
+      return (1 - u) * worldH;
+    };
+
+    // 1. Kick Line (< 260 Hz, e.g. 180 Hz)
+    const kickStroke = sm.addStroke(makeLineAtY(yFromFreq(180)), 'dotted', 'onyx', 140, quantizer, canvasHeight);
     kickStroke.playhead.currentDistance = 0;
 
-    // 2. Snare Line at lower mid (y = 380, which is 0.63 * 600, between 0.58 and 0.72)
-    const snareStroke = sm.addStroke(makeLineAtY(380), 'dotted', 'onyx', 140, quantizer, canvasHeight);
+    // 2. Snare Line (260–650 Hz, e.g. 350 Hz)
+    const snareStroke = sm.addStroke(makeLineAtY(yFromFreq(350)), 'dotted', 'onyx', 140, quantizer, canvasHeight);
     snareStroke.playhead.currentDistance = 0;
 
-    // 3. Clap Line in clap zone (y = 310, which is 0.516 * 600, between 0.48 and 0.58) in roll/striped texture
-    const clapStroke = sm.addStroke(makeLineAtY(310), 'striped', 'onyx', 140, quantizer, canvasHeight);
+    // 3. Clap Line in clap zone (450–650 Hz, e.g. 520 Hz) in roll/striped texture
+    const clapStroke = sm.addStroke(makeLineAtY(yFromFreq(520)), 'striped', 'onyx', 140, quantizer, canvasHeight);
     clapStroke.playhead.currentDistance = 0;
 
-    // 4. Tom Line in upper mid (y = 200, which is 0.33 * 600, between 0.25 and 0.48)
-    const tomStroke = sm.addStroke(makeLineAtY(200), 'dotted', 'onyx', 140, quantizer, canvasHeight);
+    // 4. Tom Line in upper mid (650–2200 Hz, e.g. 1200 Hz)
+    const tomStroke = sm.addStroke(makeLineAtY(yFromFreq(1200)), 'dotted', 'onyx', 140, quantizer, canvasHeight);
     tomStroke.playhead.currentDistance = 0;
 
-    // 5. Hi-Hat Line at top (y = 80, which is < 0.25 * 600 = 150)
-    const hatStroke = sm.addStroke(makeLineAtY(80), 'dotted', 'onyx', 140, quantizer, canvasHeight);
+    // 5. Hi-Hat Line at top (> 2200 Hz, e.g. 3500 Hz)
+    const hatStroke = sm.addStroke(makeLineAtY(yFromFreq(3500)), 'dotted', 'onyx', 140, quantizer, canvasHeight);
     hatStroke.playhead.currentDistance = 0;
 
     // Update simulation by 1.0s to cross dot & roll distance intervals under 2bars standard
@@ -255,12 +262,15 @@ describe('DrumSynth & Onyx 808 Drum Machine Integration', () => {
       isClosed: false,
     });
 
-    // Kick line in fixed kick zone (y = 520, > 0.72 * 600)
-    const kickStroke = sm.addStroke(makeLineAtY(520), 'dotted', 'onyx', 140, quantizer, canvasHeight);
+    const worldH = quantizer.getWorldHeight(canvasHeight);
+    const yFromFreq = (freq: number) => (1 - ScaleQuantizer.frequencyToNormalizedU(freq)) * worldH;
+
+    // Kick line in sub-bass kick zone (< 260 Hz, e.g. 180 Hz)
+    const kickStroke = sm.addStroke(makeLineAtY(yFromFreq(180)), 'dotted', 'onyx', 140, quantizer, canvasHeight);
     kickStroke.playhead.currentDistance = 0;
 
-    // Snare line in fixed snare zone (y = 380, between 0.48 and 0.72 * 600)
-    const snareStroke = sm.addStroke(makeLineAtY(380), 'dotted', 'onyx', 140, quantizer, canvasHeight);
+    // Snare line in mid snare zone (260–650 Hz, e.g. 400 Hz)
+    const snareStroke = sm.addStroke(makeLineAtY(yFromFreq(400)), 'dotted', 'onyx', 140, quantizer, canvasHeight);
     snareStroke.playhead.currentDistance = 0;
 
     // Scroll camera by 300px

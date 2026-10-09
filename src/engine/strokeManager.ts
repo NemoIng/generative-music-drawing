@@ -1681,14 +1681,14 @@ export class StrokeManager {
             this.onTriggerSpark(hitScreenX, triggerY, stroke.color, 6, stroke.instrumentId);
           }
           if (stroke.instrumentId === 'onyx') {
-            const normY = canvasHeight > 0 ? triggerY / canvasHeight : 0.5;
+            const drumFreq = pitch.frequency;
             const drumGain = stroke.isPoint ? 1.05 * strokeVol : strokeVol;
-            if (normY >= 0.72) {
+            if (drumFreq < 260) {
               DrumSynth.triggerKick(0.95 * drumGain, hitScreenX, canvasWidth, this.xModMode, 0, strokeReverb, this.engine, audioTime);
-            } else if (normY >= 0.48) {
+            } else if (drumFreq < 650) {
               DrumSynth.triggerSnare(0.9 * drumGain, hitScreenX, canvasWidth, this.xModMode, 0, strokeReverb, this.engine, audioTime);
-            } else if (normY >= 0.25) {
-              const tomFreq = 100 + (1 - (normY - 0.25) / 0.23) * 120;
+            } else if (drumFreq < 2200) {
+              const tomFreq = Math.max(100, Math.min(220, 100 + ((drumFreq - 650) / 1550) * 120));
               DrumSynth.triggerTom(tomFreq, 0.85 * drumGain, hitScreenX, canvasWidth, this.xModMode, 0, strokeReverb, this.engine, audioTime);
             } else {
               DrumSynth.triggerHiHat(true, 0.85 * drumGain, hitScreenX, canvasWidth, this.xModMode, 0, strokeReverb, this.engine, audioTime);
@@ -1759,16 +1759,16 @@ export class StrokeManager {
             this.onTriggerSpark(hitScreenX, triggerY, stroke.color, 4, stroke.instrumentId);
           }
           if (stroke.instrumentId === 'onyx') {
-            const normY = canvasHeight > 0 ? triggerY / canvasHeight : 0.5;
+            const drumFreq = pitch.frequency;
             const drumGain = stroke.isPoint ? 1.05 * strokeVol : strokeVol;
-            if (normY >= 0.72) {
+            if (drumFreq < 260) {
               DrumSynth.triggerRoll('kick', 0.95 * drumGain, hitScreenX, canvasWidth, this.xModMode, 120, strokeReverb, this.engine, audioTime);
-            } else if (normY >= 0.58) {
+            } else if (drumFreq < 450) {
               DrumSynth.triggerRoll('snare', 0.9 * drumGain, hitScreenX, canvasWidth, this.xModMode, 120, strokeReverb, this.engine, audioTime);
-            } else if (normY >= 0.48) {
+            } else if (drumFreq < 650) {
               DrumSynth.triggerRoll('clap', 0.85 * drumGain, hitScreenX, canvasWidth, this.xModMode, 120, strokeReverb, this.engine, audioTime);
-            } else if (normY >= 0.25) {
-              const tomFreq = 100 + (1 - (normY - 0.25) / 0.23) * 120;
+            } else if (drumFreq < 2200) {
+              const tomFreq = Math.max(100, Math.min(220, 100 + ((drumFreq - 650) / 1550) * 120));
               DrumSynth.triggerRoll('tom', 0.85 * drumGain, hitScreenX, canvasWidth, this.xModMode, tomFreq, strokeReverb, this.engine, audioTime);
             } else {
               DrumSynth.triggerRoll('hihat', 0.85 * drumGain, hitScreenX, canvasWidth, this.xModMode, 120, strokeReverb, this.engine, audioTime);
