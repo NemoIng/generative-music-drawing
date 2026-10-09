@@ -242,45 +242,23 @@ export class InputHandler {
     const rect = this.canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const screenY = e.clientY - rect.top;
-    const isOnyx = this.getCurrentInstrument?.() === 'onyx';
+    const quantizer = this.getQuantizer();
+    let y = quantizer.screenToWorldY(screenY, rect.height);
 
-    let y: number;
-    if (isOnyx) {
-      // Drum boundaries and drum strokes are fixed to the screen
-      y = screenY;
-      if (applySnap && this.snapPitch) {
-        // Snap to center of fixed drum boundaries: Hi-Hat, Tom, Snare/Clap, Kick
-        const drumSnapYs = [rect.height * 0.16, rect.height * 0.36, rect.height * 0.60, rect.height * 0.84];
-        let closestY = y;
-        let minDiff = 30;
-        for (const snapY of drumSnapYs) {
-          const diff = Math.abs(snapY - y);
-          if (diff < minDiff) {
-            minDiff = diff;
-            closestY = snapY;
-          }
+    // Magnetic Pitch Snapping (only applied when drawing a new line)
+    if (applySnap && this.snapPitch) {
+      const guidelines = quantizer.getAllGuidelines(rect.height);
+      let closestY = y;
+      let minDiff = 20;
+
+      for (const g of guidelines) {
+        const diff = Math.abs(g.y - y);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestY = g.y;
         }
-        y = closestY;
       }
-    } else {
-      const quantizer = this.getQuantizer();
-      y = quantizer.screenToWorldY(screenY, rect.height);
-
-      // Magnetic Pitch Snapping (only applied when drawing a new line)
-      if (applySnap && this.snapPitch) {
-        const guidelines = quantizer.getAllGuidelines(rect.height);
-        let closestY = y;
-        let minDiff = 20;
-
-        for (const g of guidelines) {
-          const diff = Math.abs(g.y - y);
-          if (diff < minDiff) {
-            minDiff = diff;
-            closestY = g.y;
-          }
-        }
-        y = closestY;
-      }
+      y = closestY;
     }
 
     return { x, y };
@@ -393,7 +371,7 @@ export class InputHandler {
       this.onSelectStroke?.(hit.id);
 
       // Prepare for potential reposition dragging
-      const hitPt = hit.instrumentId === 'onyx' ? screenPt : worldPt;
+      const hitPt = worldPt;
       this.draggedStrokeId = hit.id;
       this.dragStartPoint = hitPt;
       this.lastDragPoint = hitPt;
@@ -545,9 +523,7 @@ export class InputHandler {
     // ========================================================
     // 1. If dragging an existing selected stroke to reposition it
     if (this.draggedStrokeId) {
-      const draggedStroke = this.strokeManager.activeStrokes.find((s) => s.id === this.draggedStrokeId);
-      const isOnyx = draggedStroke?.instrumentId === 'onyx';
-      const rawPt = isOnyx ? screenPt : worldPt;
+      const rawPt = worldPt;
       const dist = this.dragStartPoint
         ? Math.hypot(rawPt.x - this.dragStartPoint.x, rawPt.y - this.dragStartPoint.y)
         : 0;

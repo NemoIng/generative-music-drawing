@@ -20,22 +20,47 @@ describe('Coordinate-to-Pitch Scale Quantizer (Non-linear 100 Hz to 8000 Hz)', (
     expect(topPitch.frequency).toBeCloseTo(8000, 1);
   });
 
-  it('allocates 70% of vertical space for high precision between 200 Hz and 2000 Hz', () => {
-    // 200 Hz is at u = 0.15 (15% from bottom, y = 0.85 * H)
-    const u200 = ScaleQuantizer.frequencyToNormalizedU(200);
-    expect(u200).toBeCloseTo(0.15, 3);
+  it('allocates 76% of vertical space for high precision between 400 Hz and 2500 Hz, compacting 100-400 Hz to 12%', () => {
+    // 400 Hz is at u = 0.12 (12% from bottom, compact sub-bass/bass band)
+    const u400 = ScaleQuantizer.frequencyToNormalizedU(400);
+    expect(u400).toBeCloseTo(0.12, 3);
 
-    // 2000 Hz is at u = 0.85 (85% from bottom, y = 0.15 * H)
-    const u2000 = ScaleQuantizer.frequencyToNormalizedU(2000);
-    expect(u2000).toBeCloseTo(0.85, 3);
+    // 2500 Hz is at u = 0.88 (88% from bottom)
+    const u2500 = ScaleQuantizer.frequencyToNormalizedU(2500);
+    expect(u2500).toBeCloseTo(0.88, 3);
 
-    // The span is exactly 70% of the canvas height
-    expect(u2000 - u200).toBeCloseTo(0.70, 3);
+    // The span is exactly 76% of the canvas height
+    expect(u2500 - u400).toBeCloseTo(0.76, 3);
 
-    // Midpoint between u = 0.15 and u = 0.85 is u = 0.50 (exact canvas center)
-    // 200 * (2000/200)^0.5 = 200 * sqrt(10) = 632.45 Hz
+    // Midpoint between u = 0.12 and u = 0.88 is u = 0.50 (exact canvas center)
+    // 400 * (2500/400)^0.5 = 400 * 2.5 = 1000 Hz
     const fCenter = ScaleQuantizer.normalizedUToFrequency(0.50);
-    expect(fCenter).toBeCloseTo(200 * Math.sqrt(10), 1);
+    expect(fCenter).toBeCloseTo(1000, 1);
+  });
+
+  it('guarantees pitch invariance during scrolling for world coordinates', () => {
+    const quantizer = new ScaleQuantizer({
+      scale: SCALES.dorian,
+      root: ROOT_NOTES.D2,
+    });
+    quantizer.setScrollEnabled(true);
+
+    const worldY = 850;
+    const initialContinuous = quantizer.quantizeContinuous(worldY, canvasHeight);
+    const initialDiscrete = quantizer.quantizeDiscrete(worldY, canvasHeight);
+
+    // Scroll up and down by significant distances
+    quantizer.scrollBy(200, canvasHeight);
+    const scrolledContinuous1 = quantizer.quantizeContinuous(worldY, canvasHeight);
+    const scrolledDiscrete1 = quantizer.quantizeDiscrete(worldY, canvasHeight);
+    expect(scrolledContinuous1.frequency).toBe(initialContinuous.frequency);
+    expect(scrolledDiscrete1.frequency).toBe(initialDiscrete.frequency);
+
+    quantizer.scrollBy(-350, canvasHeight);
+    const scrolledContinuous2 = quantizer.quantizeContinuous(worldY, canvasHeight);
+    const scrolledDiscrete2 = quantizer.quantizeDiscrete(worldY, canvasHeight);
+    expect(scrolledContinuous2.frequency).toBe(initialContinuous.frequency);
+    expect(scrolledDiscrete2.frequency).toBe(initialDiscrete.frequency);
   });
 
   it('inverts normalized U and frequency accurately and losslessly', () => {
@@ -145,4 +170,51 @@ describe('Coordinate-to-Pitch Scale Quantizer (Non-linear 100 Hz to 8000 Hz)', (
     const topInfo = quantizer.getFrequencyRangeInfo(canvasHeight, 0);
     expect(topInfo.topFreq).toBeCloseTo(8000, 1);
   });
+
+  it('guarantees pitch invariance during scrolling for world coordinates in both continuous and discrete mode', () => {
+    const quantizer = new ScaleQuantizer();
+    quantizer.setScrollEnabled(true);
+    const canvasH = 600;
+    quantizer.resetScrollToDefault(canvasH);
+
+    const fixedWorldY = 550; // Fixed note coordinate in the world score
+
+    const initialContinuous = quantizer.quantizeContinuous(fixedWorldY, canvasH);
+    const initialDiscrete = quantizer.quantizeDiscrete(fixedWorldY, canvasH);
+
+    // Scroll by +300 px
+    quantizer.scrollBy(300, canvasH);
+    const scrolledContinuous = quantizer.quantizeContinuous(fixedWorldY, canvasH);
+    const scrolledDiscrete = quantizer.quantizeDiscrete(fixedWorldY, canvasH);
+
+    expect(scrolledContinuous.frequency).toBe(initialContinuous.frequency);
+    expect(scrolledContinuous.semitones).toBe(initialContinuous.semitones);
+    expect(scrolledDiscrete.frequency).toBe(initialDiscrete.frequency);
+    expect(scrolledDiscrete.semitones).toBe(initialDiscrete.semitones);
+
+    // Scroll by -450 px
+    quantizer.scrollBy(-450, canvasH);
+    const scrolledBackContinuous = quantizer.quantizeContinuous(fixedWorldY, canvasH);
+    const scrolledBackDiscrete = quantizer.quantizeDiscrete(fixedWorldY, canvasH);
+
+    expect(scrolledBackContinuous.frequency).toBe(initialContinuous.frequency);
+    expect(scrolledBackDiscrete.frequency).toBe(initialDiscrete.frequency);
+  });
+
+  it('allocates only 12% vertical space to 100 Hz - 400 Hz and 76% to 400 Hz - 2500 Hz', () => {
+    const u100 = ScaleQuantizer.frequencyToNormalizedU(100);
+    const u400 = ScaleQuantizer.frequencyToNormalizedU(400);
+    const u2500 = ScaleQuantizer.frequencyToNormalizedU(2500);
+    const u8000 = ScaleQuantizer.frequencyToNormalizedU(8000);
+
+    expect(u100).toBe(0);
+    expect(u400).toBeCloseTo(0.12, 3); // exactly 12% for 100-400 Hz
+    expect(u2500).toBeCloseTo(0.88, 3); // 88% - 12% = 76% for 400-2500 Hz precision band
+    expect(u8000).toBe(1);
+
+    // Test roundtrip inversion
+    expect(ScaleQuantizer.normalizedUToFrequency(0.12)).toBeCloseTo(400, 1);
+    expect(ScaleQuantizer.normalizedUToFrequency(0.88)).toBeCloseTo(2500, 1);
+  });
 });
+

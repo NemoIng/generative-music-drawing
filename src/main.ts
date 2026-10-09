@@ -2536,13 +2536,11 @@ async function loadTemplate(tId: string, initAudio = true): Promise<void> {
   const strokes = buildTemplateStrokes(tId, renderer.width, renderer.height, quantizer);
 
   for (const s of strokes) {
-    if (s.instrumentId !== 'onyx') {
-      for (const seg of s.path.segments) {
-        seg.p0.y += defaultScroll;
-        seg.p1.y += defaultScroll;
-        seg.p2.y += defaultScroll;
-        seg.p3.y += defaultScroll;
-      }
+    for (const seg of s.path.segments) {
+      seg.p0.y += defaultScroll;
+      seg.p1.y += defaultScroll;
+      seg.p2.y += defaultScroll;
+      seg.p3.y += defaultScroll;
     }
     strokeManager.addStroke(
       s.path,
@@ -2979,7 +2977,7 @@ function updateTrackActionsVisibility(): void {
       for (const seg of stroke.path.segments) {
         minY = Math.min(minY, seg.p0.y, seg.p1.y, seg.p2.y, seg.p3.y);
       }
-      const screenMinY = stroke.instrumentId === 'onyx' ? minY : quantizer.worldToScreenY(minY, renderer.height);
+      const screenMinY = quantizer.worldToScreenY(minY, renderer.height);
 
       // Always clear inline top/bottom so CSS handles smooth positioning
       trackInspectorBar.style.top = '';
@@ -4401,7 +4399,7 @@ function animationLoop(nowMs: number): void {
 
   // 3b. Render drum tier zone guides when Onyx is active or selected
   const showDrumZones = currentInstrumentId === 'onyx' || strokeManager.activeStrokes.some((s) => s.instrumentId === 'onyx' && (s.selected || s.hovered));
-  renderer.drawDrumZones(showDrumZones);
+  renderer.drawDrumZones(showDrumZones, quantizer);
 
   // 4. Render 4-beat visual measure tracker along the top
   renderer.drawBeatTracker(strokeManager.measureProgress, strokeManager.measureBeatIndex);
@@ -4409,35 +4407,19 @@ function animationLoop(nowMs: number): void {
   // 5. Render active strokes & playheads
   const hasSolo = strokeManager.hasSoloedStrokes;
 
-  // 5a. Melodic strokes in world coordinate layer (scrolls with frequency pitch field)
+  // 5. Render active strokes & playheads in world coordinate layer (scrolls smoothly with frequency field)
   renderer.drawWorldLayer(quantizer.scrollY, () => {
     for (const stroke of strokeManager.activeStrokes) {
-      if (stroke.instrumentId !== 'onyx') {
-        renderer.drawStroke(stroke, hasSolo);
-        renderer.drawPlayhead(stroke, nowMs, hasSolo);
-      }
+      renderer.drawStroke(stroke, hasSolo);
+      renderer.drawPlayhead(stroke, nowMs, hasSolo);
     }
 
-    // Active in-flight gesture for melodic instruments
-    if (activeDrawingPoints.length > 1 && currentInstrumentId !== 'onyx') {
+    // Active in-flight gesture
+    if (activeDrawingPoints.length > 1) {
       const gestureColor = getInstrumentColor(currentInstrumentId, renderer.isDarkMode);
       renderer.drawActiveGesture(activeDrawingPoints, gestureColor);
     }
   });
-
-  // 5b. Drum strokes in fixed screen layer (locked to drum boundaries)
-  for (const stroke of strokeManager.activeStrokes) {
-    if (stroke.instrumentId === 'onyx') {
-      renderer.drawStroke(stroke, hasSolo);
-      renderer.drawPlayhead(stroke, nowMs, hasSolo);
-    }
-  }
-
-  // Active in-flight gesture for drum machine (fixed to screen coordinates)
-  if (activeDrawingPoints.length > 1 && currentInstrumentId === 'onyx') {
-    const gestureColor = getInstrumentColor(currentInstrumentId, renderer.isDarkMode);
-    renderer.drawActiveGesture(activeDrawingPoints, gestureColor);
-  }
 
   // 5c. Disappearing live trail (Live Play mode with dynamic reverb, release & trail lifetime)
   if (inputHandler.liveTrail.length > 0) {
@@ -4468,9 +4450,8 @@ function animationLoop(nowMs: number): void {
 }
 
 // Wire Spark Emitter to StrokeManager Trigger Hits
-strokeManager.onTriggerSpark = (x: number, y: number, color: string, count = 6, instrumentId?: string) => {
-  // If instrument is melodic, convert world coordinate y to viewport screen y
-  const screenY = instrumentId === 'onyx' ? y : quantizer.worldToScreenY(y, renderer.height);
+strokeManager.onTriggerSpark = (x: number, y: number, color: string, count = 6, _instrumentId?: string) => {
+  const screenY = quantizer.worldToScreenY(y, renderer.height);
   renderer.spawnSparks(x, screenY, color, count);
 };
 

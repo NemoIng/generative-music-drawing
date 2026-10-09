@@ -1,5 +1,5 @@
 import { DrawnStroke } from '../engine/types';
-import { ScaleGuideline } from '../audio/scaleQuantizer';
+import { ScaleGuideline, ScaleQuantizer } from '../audio/scaleQuantizer';
 import { Point2D } from '../math/types';
 import { getHitJitter } from '../engine/strokeManager';
 import { evaluateAtDistance } from '../math/arcLengthInverter';
@@ -189,7 +189,7 @@ export class CanvasRenderer {
   /**
    * Draws subtle drum tier zone guides when the Onyx drum machine ink is active.
    */
-  public drawDrumZones(isActive: boolean): void {
+  public drawDrumZones(isActive: boolean, quantizer?: ScaleQuantizer): void {
     if (!isActive) return;
     const w = this.width;
     const h = this.height;
@@ -197,15 +197,31 @@ export class CanvasRenderer {
     ctx.save();
 
     const leftMargin = Math.min(84, Math.max(56, w * 0.08));
-    const rightMargin = Math.min(80, Math.max(56, w * 0.08));
+    const rightMargin = Math.min(150, Math.max(130, w * 0.09));
 
-    const zones = [
-      { y: h * 0.25, label: '🥢 Hi-Hats' },
-      { y: h * 0.48, label: '🥁 Toms' },
-      { y: h * 0.72, label: '🪘 Snare / Clap' },
-    ];
+    let zones: { y: number; label: string }[];
+    if (quantizer) {
+      const worldH = quantizer.getWorldHeight(h);
+      const yFromFreq = (freq: number) => {
+        const u = ScaleQuantizer.frequencyToNormalizedU(freq);
+        const worldY = (1 - u) * worldH;
+        return quantizer.worldToScreenY(worldY, h);
+      };
+      zones = [
+        { y: yFromFreq(2200), label: 'Hi-Hats (2.2k+ Hz)' },
+        { y: yFromFreq(650), label: 'Toms (650–2.2k Hz)' },
+        { y: yFromFreq(260), label: 'Snare / Clap (260–650 Hz)' },
+      ];
+    } else {
+      zones = [
+        { y: h * 0.25, label: 'Hi-Hats' },
+        { y: h * 0.48, label: 'Toms' },
+        { y: h * 0.72, label: 'Snare / Clap' },
+      ];
+    }
 
     for (const z of zones) {
+      if (z.y < -20 || z.y > h + 20) continue;
       ctx.beginPath();
       ctx.moveTo(leftMargin, z.y);
       ctx.lineTo(w - rightMargin, z.y);
@@ -223,11 +239,20 @@ export class CanvasRenderer {
     }
 
     // Bottom Kick label
-    ctx.font = '700 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-    ctx.fillStyle = this.isDarkMode ? 'rgba(255, 255, 255, 0.85)' : 'rgba(24, 24, 27, 0.75)';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText('💥 Kick Drum', w - rightMargin, h - 14);
+    let kickScreenY = h - 14;
+    if (quantizer) {
+      const worldH = quantizer.getWorldHeight(h);
+      const uKick = ScaleQuantizer.frequencyToNormalizedU(140);
+      const worldY = (1 - uKick) * worldH;
+      kickScreenY = quantizer.worldToScreenY(worldY, h);
+    }
+    if (kickScreenY >= -20 && kickScreenY <= h + 20) {
+      ctx.font = '700 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+      ctx.fillStyle = this.isDarkMode ? 'rgba(255, 255, 255, 0.85)' : 'rgba(24, 24, 27, 0.75)';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('Kick Drum (100–260 Hz)', w - rightMargin, kickScreenY - 3);
+    }
 
     ctx.restore();
   }
@@ -460,8 +485,8 @@ export class CanvasRenderer {
             : `${volPercent}% vol • Dot Note`)
         : `${volPercent}% vol • ${speedLabel} • ${progressPct}% • ${travMode}`;
       if (stroke.instrumentId === 'onyx') {
-        const normY = this.height > 0 ? startPt.y / this.height : 0.5;
-        const drumName = normY >= 0.72 ? 'Kick' : normY >= 0.48 ? 'Snare' : normY >= 0.25 ? 'Tom' : 'Hi-Hat';
+        const drumFreq = stroke.playhead.lastPitch?.frequency ?? 200;
+        const drumName = drumFreq < 260 ? 'Kick' : drumFreq < 650 ? 'Snare' : drumFreq < 2200 ? 'Tom' : 'Hi-Hat';
         const drumLabel = stroke.style === 'striped' ? `${drumName} Roll` : drumName;
         tagText = stroke.isPoint
           ? `${volPercent}% vol • ${drumLabel} Dot`

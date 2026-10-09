@@ -1906,6 +1906,58 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
       expect(sm2.activeStrokes[0].lofi).toBe(0.8);
     });
   });
+
+  describe('World Score Scrolling & Pitch Invariance', () => {
+    it('maintains 100% invariant playback pitch for strokes as user scrolls canvas', () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+      quantizer.setScrollEnabled(true);
+      const canvasW = 800;
+      const canvasH = 600;
+      quantizer.resetScrollToDefault(canvasH);
+
+      const path: SplinePath = {
+        segments: [
+          {
+            p0: { x: 50, y: 700 },
+            p1: { x: 150, y: 700 },
+            p2: { x: 250, y: 700 },
+            p3: { x: 350, y: 700 },
+          },
+        ],
+        isClosed: false,
+      };
+
+      const solidStroke = sm.addStroke(path, 'solid', 'indigo', 140, quantizer, canvasH);
+      const dottedStroke = sm.addStroke(path, 'dotted', 'spruce', 140, quantizer, canvasH);
+
+      // Evaluate initial pitch
+      sm.update(0.016, canvasW, canvasH, quantizer);
+      const initialSolidFreq = solidStroke.playhead.lastPitch?.frequency;
+      const initialDottedFreq = dottedStroke.playhead.lastPitch?.frequency;
+
+      expect(initialSolidFreq).toBeDefined();
+      expect(initialDottedFreq).toBeDefined();
+
+      // Scroll viewport down by 250px
+      quantizer.scrollBy(250, canvasH);
+      sm.update(0.016, canvasW, canvasH, quantizer);
+
+      const scrolledSolidFreq = solidStroke.playhead.lastPitch?.frequency;
+      const scrolledDottedFreq = dottedStroke.playhead.lastPitch?.frequency;
+
+      expect(scrolledSolidFreq).toBeCloseTo(initialSolidFreq!, 2);
+      expect(scrolledDottedFreq).toBeCloseTo(initialDottedFreq!, 2);
+
+      // Scroll viewport up by 400px
+      quantizer.scrollBy(-400, canvasH);
+      sm.update(0.016, canvasW, canvasH, quantizer);
+
+      expect(solidStroke.playhead.lastPitch?.frequency).toBeCloseTo(initialSolidFreq!, 2);
+      expect(dottedStroke.playhead.lastPitch?.frequency).toBeCloseTo(initialDottedFreq!, 2);
+    });
+  });
 });
+
 
 

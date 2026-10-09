@@ -37,17 +37,17 @@ export class ScaleQuantizer {
 
   /** Minimum supported frequency (100 Hz) */
   public static readonly MIN_FREQ = 100;
-  /** Start of high-precision middle band (200 Hz) */
-  public static readonly MID_FREQ_LOW = 200;
-  /** End of high-precision middle band (2000 Hz) */
-  public static readonly MID_FREQ_HIGH = 2000;
+  /** Start of high-precision middle band (400 Hz) */
+  public static readonly MID_FREQ_LOW = 400;
+  /** End of high-precision middle band (2500 Hz) */
+  public static readonly MID_FREQ_HIGH = 2500;
   /** Maximum supported frequency (8000 Hz) */
   public static readonly MAX_FREQ = 8000;
 
-  /** Fraction of vertical coordinate space allocated to 100 Hz - 200 Hz (15%) */
-  public static readonly U_LOW = 0.15;
-  /** Fraction of vertical coordinate space allocated up to 2000 Hz (85%, so 200-2000 Hz takes 70%) */
-  public static readonly U_HIGH = 0.85;
+  /** Fraction of vertical coordinate space allocated to 100 Hz - 400 Hz (12%) */
+  public static readonly U_LOW = 0.12;
+  /** Fraction of vertical coordinate space allocated up to 2500 Hz (88%, so 400-2500 Hz takes 76%) */
+  public static readonly U_HIGH = 0.88;
 
   /** Total number of octaves supported across the scrollable field (backward-compatibility) */
   public readonly totalFieldOctaves = 8;
@@ -183,12 +183,12 @@ export class ScaleQuantizer {
   }
 
   /**
-   * Default scroll offset that positions the viewport centered around the musical mid-band (~200 to 2000 Hz).
+   * Default scroll offset that positions the viewport centered around the musical mid-band (~400 to 2500 Hz).
    */
   public getDefaultScrollY(viewportHeight: number): number {
     const worldH = this.getWorldHeight(viewportHeight);
     const maxScroll = this.getMaxScrollY(viewportHeight);
-    // Center around u = 0.50 (where 632 Hz is located)
+    // Center around u = 0.50 (where 1000 Hz is located)
     const midWorldY = 0.50 * worldH;
     return Math.max(0, Math.min(maxScroll, midWorldY - viewportHeight * 0.5));
   }
@@ -307,7 +307,7 @@ export class ScaleQuantizer {
    */
   public quantizeDiscrete(y: number, canvasHeight: number): PitchResult {
     if (this._scrollEnabled) {
-      return this.quantizeDiscreteWorld(this.screenToWorldY(y, canvasHeight), canvasHeight);
+      return this.quantizeDiscreteWorld(y, canvasHeight);
     }
     const u = this.normalizeY(y, canvasHeight);
     const targetFreq = ScaleQuantizer.normalizedUToFrequency(u);
@@ -332,7 +332,7 @@ export class ScaleQuantizer {
    */
   public quantizeContinuous(y: number, canvasHeight: number): PitchResult {
     if (this._scrollEnabled) {
-      return this.quantizeContinuousWorld(this.screenToWorldY(y, canvasHeight), canvasHeight);
+      return this.quantizeContinuousWorld(y, canvasHeight);
     }
     const u = this.normalizeY(y, canvasHeight);
     const targetFreq = ScaleQuantizer.normalizedUToFrequency(u);
