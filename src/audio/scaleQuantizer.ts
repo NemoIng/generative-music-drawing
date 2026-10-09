@@ -37,17 +37,17 @@ export class ScaleQuantizer {
 
   /** Minimum supported frequency (100 Hz) */
   public static readonly MIN_FREQ = 100;
-  /** Start of high-precision middle band (400 Hz) */
-  public static readonly MID_FREQ_LOW = 400;
+  /** Start of high-precision middle band (300 Hz) */
+  public static readonly MID_FREQ_LOW = 300;
   /** End of high-precision middle band (2500 Hz) */
   public static readonly MID_FREQ_HIGH = 2500;
   /** Maximum supported frequency (8000 Hz) */
   public static readonly MAX_FREQ = 8000;
 
-  /** Fraction of vertical coordinate space allocated to 100 Hz - 400 Hz (12%) */
-  public static readonly U_LOW = 0.12;
-  /** Fraction of vertical coordinate space allocated up to 2500 Hz (88%, so 400-2500 Hz takes 76%) */
-  public static readonly U_HIGH = 0.88;
+  /** Fraction of vertical coordinate space allocated to 100 Hz - 300 Hz (22%) */
+  public static readonly U_LOW = 0.22;
+  /** Fraction of vertical coordinate space allocated up to 2500 Hz (92%, so 300-2500 Hz takes 70%, 2500-8000 Hz takes 8%) */
+  public static readonly U_HIGH = 0.92;
 
   /** Total number of octaves supported across the scrollable field (backward-compatibility) */
   public readonly totalFieldOctaves = 8;
@@ -109,9 +109,9 @@ export class ScaleQuantizer {
   /**
    * Non-linear mapping from physical frequency (Hz) to normalized vertical coordinate u in [0, 1].
    * 100 Hz -> 0.0
-   * 200 Hz -> 0.15 (15% height)
-   * 2000 Hz -> 0.85 (70% height allocated for precision between 200 and 2000 Hz)
-   * 8000 Hz -> 1.0 (15% height)
+   * 300 Hz -> 0.22 (22% height for low bass foundations)
+   * 2500 Hz -> 0.92 (70% height allocated for precision between 300 and 2500 Hz)
+   * 8000 Hz -> 1.0 (8% height for upper sparkle & chimes)
    */
   public static frequencyToNormalizedU(freq: number): number {
     const f = Math.max(ScaleQuantizer.MIN_FREQ, Math.min(ScaleQuantizer.MAX_FREQ, freq));

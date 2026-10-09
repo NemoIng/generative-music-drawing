@@ -20,22 +20,21 @@ describe('Coordinate-to-Pitch Scale Quantizer (Non-linear 100 Hz to 8000 Hz)', (
     expect(topPitch.frequency).toBeCloseTo(8000, 1);
   });
 
-  it('allocates 76% of vertical space for high precision between 400 Hz and 2500 Hz, compacting 100-400 Hz to 12%', () => {
-    // 400 Hz is at u = 0.12 (12% from bottom, compact sub-bass/bass band)
-    const u400 = ScaleQuantizer.frequencyToNormalizedU(400);
-    expect(u400).toBeCloseTo(0.12, 3);
+  it('allocates 70% of vertical space for high precision between 300 Hz and 2500 Hz, giving 100-300 Hz 22% and top shelf 8%', () => {
+    // 300 Hz is at u = 0.22 (22% from bottom, generous bass foundation)
+    const u300 = ScaleQuantizer.frequencyToNormalizedU(300);
+    expect(u300).toBeCloseTo(0.22, 3);
 
-    // 2500 Hz is at u = 0.88 (88% from bottom)
+    // 2500 Hz is at u = 0.92 (92% from bottom)
     const u2500 = ScaleQuantizer.frequencyToNormalizedU(2500);
-    expect(u2500).toBeCloseTo(0.88, 3);
+    expect(u2500).toBeCloseTo(0.92, 3);
 
-    // The span is exactly 76% of the canvas height
-    expect(u2500 - u400).toBeCloseTo(0.76, 3);
+    // The span is exactly 70% of the canvas height
+    expect(u2500 - u300).toBeCloseTo(0.70, 3);
 
-    // Midpoint between u = 0.12 and u = 0.88 is u = 0.50 (exact canvas center)
-    // 400 * (2500/400)^0.5 = 400 * 2.5 = 1000 Hz
-    const fCenter = ScaleQuantizer.normalizedUToFrequency(0.50);
-    expect(fCenter).toBeCloseTo(1000, 1);
+    // High shelf 2500-8000 Hz occupies only 8%
+    const u8000 = ScaleQuantizer.frequencyToNormalizedU(8000);
+    expect(u8000 - u2500).toBeCloseTo(0.08, 3);
   });
 
   it('guarantees pitch invariance during scrolling for world coordinates', () => {
@@ -201,20 +200,20 @@ describe('Coordinate-to-Pitch Scale Quantizer (Non-linear 100 Hz to 8000 Hz)', (
     expect(scrolledBackDiscrete.frequency).toBe(initialDiscrete.frequency);
   });
 
-  it('allocates only 12% vertical space to 100 Hz - 400 Hz and 76% to 400 Hz - 2500 Hz', () => {
+  it('allocates 22% vertical space to 100 Hz - 300 Hz, 70% to 300 Hz - 2500 Hz, and 8% to 2500 Hz - 8000 Hz', () => {
     const u100 = ScaleQuantizer.frequencyToNormalizedU(100);
-    const u400 = ScaleQuantizer.frequencyToNormalizedU(400);
+    const u300 = ScaleQuantizer.frequencyToNormalizedU(300);
     const u2500 = ScaleQuantizer.frequencyToNormalizedU(2500);
     const u8000 = ScaleQuantizer.frequencyToNormalizedU(8000);
 
     expect(u100).toBe(0);
-    expect(u400).toBeCloseTo(0.12, 3); // exactly 12% for 100-400 Hz
-    expect(u2500).toBeCloseTo(0.88, 3); // 88% - 12% = 76% for 400-2500 Hz precision band
+    expect(u300).toBeCloseTo(0.22, 3); // 22% for 100-300 Hz
+    expect(u2500).toBeCloseTo(0.92, 3); // 92% - 22% = 70% for 300-2500 Hz precision band
     expect(u8000).toBe(1);
 
     // Test roundtrip inversion
-    expect(ScaleQuantizer.normalizedUToFrequency(0.12)).toBeCloseTo(400, 1);
-    expect(ScaleQuantizer.normalizedUToFrequency(0.88)).toBeCloseTo(2500, 1);
+    expect(ScaleQuantizer.normalizedUToFrequency(0.22)).toBeCloseTo(300, 1);
+    expect(ScaleQuantizer.normalizedUToFrequency(0.92)).toBeCloseTo(2500, 1);
   });
 });
 
