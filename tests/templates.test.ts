@@ -104,18 +104,18 @@ describe('Starter Musical Groove Templates', () => {
     const organPitch = qCath.quantizeContinuous(organWorldY, height);
     expect(organPitch.frequency).toBeCloseTo(142.2, 0);
 
-    // Cello chant ~210 Hz
+    // Cello chant ~205 Hz (in Cathedral Lydian scale)
     const celloWorldY = cathStrokes[1].path.segments[0].p0.y + scrollCath;
     const celloPitch = qCath.quantizeContinuous(celloWorldY, height);
-    expect(celloPitch.frequency).toBeCloseTo(209.6, 0);
+    expect(celloPitch.frequency).toBeCloseTo(205, 0);
 
-    // Harp swell baseline ~292 Hz (end segment terminates at harpY)
+    // Harp swell baseline ~281 Hz (end segment terminates at harpY)
     const lastSeg = cathStrokes[2].path.segments[cathStrokes[2].path.segments.length - 1];
     const harpWorldY = lastSeg.p3.y + scrollCath;
     const harpPitch = qCath.quantizeContinuous(harpWorldY, height);
-    expect(harpPitch.frequency).toBeCloseTo(292.3, 0);
+    expect(harpPitch.frequency).toBeCloseTo(280.6, 0);
 
-    // Deep Cosmic Drone sub-bass ~121 Hz
+    // Deep Cosmic Drone sub-bass ~122 Hz
     const cosmic = TEMPLATES.deepCosmicDrone;
     const qCosmic = new ScaleQuantizer();
     qCosmic.setScrollEnabled(true);
@@ -123,7 +123,7 @@ describe('Starter Musical Groove Templates', () => {
     const cosmicStrokes = buildTemplateStrokes('deepCosmicDrone', width, height, qCosmic);
     const subBassWorldY = cosmicStrokes[0].path.segments[0].p0.y + scrollCosmic;
     const subBassPitch = qCosmic.quantizeContinuous(subBassWorldY, height);
-    expect(subBassPitch.frequency).toBeCloseTo(120.9, 0);
+    expect(subBassPitch.frequency).toBeCloseTo(122.0, 0);
   });
 });
 

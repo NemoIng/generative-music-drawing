@@ -35,14 +35,16 @@ export interface ScaleGuideline {
 export class ScaleQuantizer {
   private config: QuantizerConfig;
 
-  /** Minimum supported frequency (100 Hz) */
-  public static readonly MIN_FREQ = 100;
+  /** Minimum supported frequency (110 Hz / A2) */
+  public static readonly MIN_FREQ = 110;
   /** Start of high-precision middle band (300 Hz) */
   public static readonly MID_FREQ_LOW = 300;
   /** End of high-precision middle band (2500 Hz) */
   public static readonly MID_FREQ_HIGH = 2500;
   /** Maximum supported frequency (8000 Hz) */
   public static readonly MAX_FREQ = 8000;
+  /** Breathing room margin in pixels above 8k and below 110 Hz */
+  public static readonly MARGIN_Y = 32;
 
   /** Fraction of vertical coordinate space allocated to 100 Hz - 300 Hz (22%) */
   public static readonly U_LOW = 0.22;
@@ -249,12 +251,34 @@ export class ScaleQuantizer {
   /**
    * Converts vertical canvas Y coordinate into normalized pitch coordinate u in [0, 1].
    * Computer graphics places (0, 0) at top-left; pitch increases upwards.
-   * u = clamp(1 - y / H, 0, 1)
+   * Accounts for MARGIN_Y breathing room above 8k and below 110 Hz.
    */
   public normalizeY(y: number, canvasHeight: number): number {
     if (canvasHeight <= 0) return 0;
-    const ratio = y / canvasHeight;
+    const activeH = Math.max(1, canvasHeight - 2 * ScaleQuantizer.MARGIN_Y);
+    const ratio = (y - ScaleQuantizer.MARGIN_Y) / activeH;
     return Math.max(0, Math.min(1, 1 - ratio));
+  }
+
+  /**
+   * Converts normalized pitch coordinate u in [0, 1] into world Y coordinate,
+   * preserving MARGIN_Y breathing room above 8k (u=1) and below 110 Hz (u=0).
+   */
+  public normalizedUToWorldY(u: number, viewportHeight: number): number {
+    const worldH = this.getWorldHeight(viewportHeight);
+    const activeH = Math.max(1, worldH - 2 * ScaleQuantizer.MARGIN_Y);
+    const clampedU = Math.max(0, Math.min(1, u));
+    return ScaleQuantizer.MARGIN_Y + (1 - clampedU) * activeH;
+  }
+
+  /**
+   * Converts normalized pitch coordinate u in [0, 1] into single-canvas Y coordinate,
+   * preserving MARGIN_Y breathing room above 8k (u=1) and below 110 Hz (u=0).
+   */
+  public normalizedUToCanvasY(u: number, canvasHeight: number): number {
+    const activeH = Math.max(1, canvasHeight - 2 * ScaleQuantizer.MARGIN_Y);
+    const clampedU = Math.max(0, Math.min(1, u));
+    return ScaleQuantizer.MARGIN_Y + (1 - clampedU) * activeH;
   }
 
   /**
@@ -460,7 +484,6 @@ export class ScaleQuantizer {
    * Generates all guidelines across the entire [100 Hz, 8000 Hz] non-linear world spectrum.
    */
   public getAllGuidelines(viewportHeight: number): ScaleGuideline[] {
-    const worldH = this.getWorldHeight(viewportHeight);
     const guidelines: ScaleGuideline[] = [];
     const K = this.config.scale.intervals.length;
     const chordDegs = this.config.chordDegrees;
@@ -478,7 +501,7 @@ export class ScaleQuantizer {
         }
 
         const u = ScaleQuantizer.frequencyToNormalizedU(frequency);
-        const y = (1 - u) * worldH;
+        const y = this.normalizedUToWorldY(u, viewportHeight);
         const semitones = this.getSemitonesForDegree(k);
         const noteName = getNoteNameFromSemitones(this.config.root.baseMidi, semitones);
         const degInScale = ((k % K) + K) % K;
@@ -502,7 +525,7 @@ export class ScaleQuantizer {
     const has4186 = guidelines.some((g) => Math.abs(g.frequency - ScaleQuantizer.HIGH_GUIDELINE_LANDMARK) <= 50);
     if (!has4186) {
       const u4186 = ScaleQuantizer.frequencyToNormalizedU(ScaleQuantizer.HIGH_GUIDELINE_LANDMARK);
-      const y4186 = (1 - u4186) * worldH;
+      const y4186 = this.normalizedUToWorldY(u4186, viewportHeight);
       guidelines.push({
         y: y4186,
         screenY: y4186 - this._scrollY,
@@ -517,12 +540,28 @@ export class ScaleQuantizer {
     // Always append the final top boundary line at MAX_FREQ (8000 Hz)
     const hasTopLine = guidelines.some((g) => Math.abs(g.frequency - ScaleQuantizer.MAX_FREQ) < 5);
     if (!hasTopLine) {
+      const yTop = this.normalizedUToWorldY(1.0, viewportHeight);
       guidelines.push({
-        y: 0,
-        screenY: -this._scrollY,
+        y: yTop,
+        screenY: yTop - this._scrollY,
         scaleDegree: 0,
         noteName: '',
         frequency: ScaleQuantizer.MAX_FREQ,
+        isRoot: false,
+        isChordTone: false,
+      });
+    }
+
+    // Always append the final bottom boundary line at MIN_FREQ (110 Hz)
+    const hasBottomLine = guidelines.some((g) => Math.abs(g.frequency - ScaleQuantizer.MIN_FREQ) < 5);
+    if (!hasBottomLine) {
+      const yBottom = this.normalizedUToWorldY(0.0, viewportHeight);
+      guidelines.push({
+        y: yBottom,
+        screenY: yBottom - this._scrollY,
+        scaleDegree: 0,
+        noteName: 'A2',
+        frequency: ScaleQuantizer.MIN_FREQ,
         isRoot: false,
         isChordTone: false,
       });

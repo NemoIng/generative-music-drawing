@@ -2,18 +2,18 @@ import { describe, it, expect } from 'vitest';
 import { ScaleQuantizer } from '../src/audio/scaleQuantizer';
 import { SCALES, ROOT_NOTES } from '../src/audio/scales';
 
-describe('Coordinate-to-Pitch Scale Quantizer (Non-linear 100 Hz to 8000 Hz)', () => {
+describe('Coordinate-to-Pitch Scale Quantizer (Non-linear 110 Hz to 8000 Hz)', () => {
   const canvasHeight = 600;
 
-  it('inverts canvas Y coordinate: bottom is 100 Hz, top is 8000 Hz', () => {
+  it('inverts canvas Y coordinate: bottom is 110 Hz, top is 8000 Hz', () => {
     const quantizer = new ScaleQuantizer({
       scale: SCALES.dorian,
       root: ROOT_NOTES.D2,
     });
 
-    // Bottom of canvas (y = 600) -> u = 0 -> 100 Hz
+    // Bottom of canvas (y = 600) -> u = 0 -> 110 Hz
     const bottomPitch = quantizer.quantizeContinuous(600, canvasHeight);
-    expect(bottomPitch.frequency).toBeCloseTo(100, 1);
+    expect(bottomPitch.frequency).toBeCloseTo(110, 1);
 
     // Top of canvas (y = 0) -> u = 1 -> 8000 Hz
     const topPitch = quantizer.quantizeContinuous(0, canvasHeight);
@@ -63,7 +63,7 @@ describe('Coordinate-to-Pitch Scale Quantizer (Non-linear 100 Hz to 8000 Hz)', (
   });
 
   it('inverts normalized U and frequency accurately and losslessly', () => {
-    const testFreqs = [100, 150, 200, 440, 1000, 2000, 5000, 8000];
+    const testFreqs = [110, 150, 200, 440, 1000, 2000, 5000, 8000];
     for (const f of testFreqs) {
       const u = ScaleQuantizer.frequencyToNormalizedU(f);
       const recovered = ScaleQuantizer.normalizedUToFrequency(u);
@@ -71,19 +71,19 @@ describe('Coordinate-to-Pitch Scale Quantizer (Non-linear 100 Hz to 8000 Hz)', (
     }
   });
 
-  it('quantizes discrete notes correctly within 100 Hz - 8000 Hz bounds', () => {
+  it('quantizes discrete notes correctly within 110 Hz - 8000 Hz bounds', () => {
     const quantizer = new ScaleQuantizer({
       scale: SCALES.dorian,
       root: ROOT_NOTES.D2,
     });
 
-    // Root D2 (73.4 Hz) is below 100 Hz, so lowest degree is G2 (98 Hz) / A2 (110 Hz)
+    // Root D2 (73.4 Hz) is below 110 Hz, lowest degree at bottom is A2 (110 Hz)
     const pBottom = quantizer.quantizeDiscrete(600, canvasHeight);
-    expect(pBottom.frequency).toBeGreaterThanOrEqual(95);
+    expect(pBottom.frequency).toBeGreaterThanOrEqual(105);
 
     // Middle A4 (440 Hz) should be accurately identified
     const u440 = ScaleQuantizer.frequencyToNormalizedU(440);
-    const y440 = (1 - u440) * canvasHeight;
+    const y440 = quantizer.normalizedUToCanvasY(u440, canvasHeight);
     const p440 = quantizer.quantizeDiscrete(y440, canvasHeight);
     expect(p440.frequency).toBeCloseTo(440, 1);
     expect(p440.noteName).toBe('A4');
@@ -97,7 +97,7 @@ describe('Coordinate-to-Pitch Scale Quantizer (Non-linear 100 Hz to 8000 Hz)', (
 
     // Degree 18 in Dorian D2 is A4 (440 Hz)
     const uA4 = ScaleQuantizer.frequencyToNormalizedU(440);
-    const yA4 = (1 - uA4) * canvasHeight;
+    const yA4 = quantizer.normalizedUToCanvasY(uA4, canvasHeight);
 
     const pCenter = quantizer.quantizeContinuous(yA4, canvasHeight);
     expect(pCenter.isSnapped).toBe(true);
@@ -114,10 +114,10 @@ describe('Coordinate-to-Pitch Scale Quantizer (Non-linear 100 Hz to 8000 Hz)', (
     const belowCanvas = quantizer.quantizeContinuous(1000, canvasHeight);
 
     expect(aboveCanvas.frequency).toBeCloseTo(8000, 1);
-    expect(belowCanvas.frequency).toBeCloseTo(100, 1);
+    expect(belowCanvas.frequency).toBeCloseTo(110, 1);
   });
 
-  it('generates guidelines covering full 100 Hz to 8000 Hz range with root and chord tones', () => {
+  it('generates guidelines covering full 110 Hz to 8000 Hz range with root and chord tones', () => {
     const quantizer = new ScaleQuantizer({
       scale: SCALES.dorian,
       root: ROOT_NOTES.D2,
@@ -126,10 +126,10 @@ describe('Coordinate-to-Pitch Scale Quantizer (Non-linear 100 Hz to 8000 Hz)', (
     const guidelines = quantizer.getAllGuidelines(canvasHeight);
     expect(guidelines.length).toBeGreaterThan(30);
 
-    // All guidelines must fall within [100 Hz, 8000 Hz]
+    // All guidelines must fall within [110 Hz, 8000 Hz]
     const worldH = quantizer.getWorldHeight(canvasHeight);
     for (const g of guidelines) {
-      expect(g.frequency).toBeGreaterThanOrEqual(100);
+      expect(g.frequency).toBeGreaterThanOrEqual(110);
       expect(g.frequency).toBeLessThanOrEqual(8000);
       expect(g.y).toBeGreaterThanOrEqual(0);
       expect(g.y).toBeLessThanOrEqual(worldH);
@@ -159,7 +159,7 @@ describe('Coordinate-to-Pitch Scale Quantizer (Non-linear 100 Hz to 8000 Hz)', (
     expect(c8.noteName).toBe('C8');
 
     expect(Math.round(top.frequency)).toBe(8000);
-    expect(top.y).toBe(0);
+    expect(top.y).toBe(ScaleQuantizer.MARGIN_Y);
   });
 
   it('supports smooth scrolling across the full virtual world', () => {
@@ -176,7 +176,7 @@ describe('Coordinate-to-Pitch Scale Quantizer (Non-linear 100 Hz to 8000 Hz)', (
     expect(quantizer.scrollY).toBe(before + 100);
   });
 
-  it('provides frequency spectrum info with exact 100 Hz and 8000 Hz boundaries', () => {
+  it('provides frequency spectrum info with exact 110 Hz and 8000 Hz boundaries', () => {
     const quantizer = new ScaleQuantizer({
       scale: SCALES.dorian,
       root: ROOT_NOTES.D2,
@@ -184,9 +184,9 @@ describe('Coordinate-to-Pitch Scale Quantizer (Non-linear 100 Hz to 8000 Hz)', (
 
     const maxScroll = quantizer.getMaxScrollY(canvasHeight);
     const bottomInfo = quantizer.getFrequencyRangeInfo(canvasHeight, maxScroll);
-    expect(bottomInfo.minFreq).toBe(100);
+    expect(bottomInfo.minFreq).toBe(110);
     expect(bottomInfo.maxFreq).toBe(8000);
-    expect(bottomInfo.bottomFreq).toBeCloseTo(100, 1);
+    expect(bottomInfo.bottomFreq).toBeCloseTo(110, 1);
 
     const topInfo = quantizer.getFrequencyRangeInfo(canvasHeight, 0);
     expect(topInfo.topFreq).toBeCloseTo(8000, 1);

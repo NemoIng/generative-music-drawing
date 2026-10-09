@@ -108,6 +108,7 @@ export class CanvasRenderer {
       const nearestDist = Math.min(Math.abs(y - prevY), Math.abs(nextY - y));
 
       const isTopBoundary = Math.round(g.frequency) >= ScaleQuantizer.MAX_FREQ;
+      const isBottomBoundary = Math.round(g.frequency) <= ScaleQuantizer.MIN_FREQ;
       const lineY = isTopBoundary ? Math.max(1, y) : y;
 
       this.ctx.beginPath();
@@ -117,7 +118,7 @@ export class CanvasRenderer {
       const isFifth = g.scaleDegree % 7 === 4; // Dominant 5th in heptatonic modes
       const isChordTone = !!g.isChordTone && !g.isRoot;
 
-      if (isTopBoundary) {
+      if (isTopBoundary || isBottomBoundary) {
         this.ctx.strokeStyle = this.isDarkMode ? 'rgba(255, 255, 255, 0.40)' : 'rgba(28, 25, 23, 0.35)';
         this.ctx.lineWidth = 1.2;
         this.ctx.setLineDash([]);
@@ -141,12 +142,12 @@ export class CanvasRenderer {
       this.ctx.stroke();
 
       // Only draw text labels if the line has enough vertical headroom (>= 15px) or is a primary harmonic landmark
-      const hasRoom = nearestDist >= 15 || g.isRoot || isChordTone || isFifth || isTopBoundary;
+      const hasRoom = nearestDist >= 15 || g.isRoot || isChordTone || isFifth || isTopBoundary || isBottomBoundary;
       if (!hasRoom) continue;
 
       // Note Name on margins
       this.ctx.setLineDash([]);
-      this.ctx.font = isTopBoundary || g.isRoot
+      this.ctx.font = isTopBoundary || isBottomBoundary || g.isRoot
         ? '700 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
         : isChordTone
         ? '600 10.5px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
@@ -154,7 +155,7 @@ export class CanvasRenderer {
         ? '600 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
         : '400 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 
-      this.ctx.fillStyle = isTopBoundary || g.isRoot
+      this.ctx.fillStyle = isTopBoundary || isBottomBoundary || g.isRoot
         ? (this.isDarkMode ? '#ffffff' : '#1c1917')
         : isChordTone
         ? (this.isDarkMode ? '#fbbf24' : '#b45309')
@@ -167,6 +168,8 @@ export class CanvasRenderer {
 
       const label = isTopBoundary
         ? g.noteName
+        : isBottomBoundary
+        ? g.noteName || 'A2'
         : g.isRoot
         ? `★ ${g.noteName}`
         : isChordTone
@@ -215,10 +218,9 @@ export class CanvasRenderer {
 
     let zones: { y: number; label: string }[];
     if (quantizer) {
-      const worldH = quantizer.getWorldHeight(h);
       const yFromFreq = (freq: number) => {
         const u = ScaleQuantizer.frequencyToNormalizedU(freq);
-        const worldY = (1 - u) * worldH;
+        const worldY = quantizer.normalizedUToWorldY(u, h);
         return quantizer.worldToScreenY(worldY, h);
       };
       zones = [
@@ -255,9 +257,8 @@ export class CanvasRenderer {
     // Bottom Kick label
     let kickScreenY = h - 14;
     if (quantizer) {
-      const worldH = quantizer.getWorldHeight(h);
       const uKick = ScaleQuantizer.frequencyToNormalizedU(140);
-      const worldY = (1 - uKick) * worldH;
+      const worldY = quantizer.normalizedUToWorldY(uKick, h);
       kickScreenY = quantizer.worldToScreenY(worldY, h);
     }
     if (kickScreenY >= -20 && kickScreenY <= h + 20) {
@@ -265,7 +266,7 @@ export class CanvasRenderer {
       ctx.fillStyle = this.isDarkMode ? 'rgba(255, 255, 255, 0.85)' : 'rgba(24, 24, 27, 0.75)';
       ctx.textAlign = 'right';
       ctx.textBaseline = 'bottom';
-      ctx.fillText('Kick Drum (100–260 Hz)', w - rightMargin, kickScreenY - 3);
+      ctx.fillText('Kick Drum (110–260 Hz)', w - rightMargin, kickScreenY - 3);
     }
 
     ctx.restore();
