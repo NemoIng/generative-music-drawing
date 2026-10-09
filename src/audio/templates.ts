@@ -31,6 +31,7 @@ export interface MusicalTemplate {
   xAxisModulation?: XAxisModulationMode;
   progressionId?: string;
   breathingMode?: BreathingMode;
+  initialScrollRatio?: number;
   strokes: (width: number, height: number, quantizer: ScaleQuantizer) => TemplateStrokeConfig[];
 }
 
@@ -46,11 +47,12 @@ export const TEMPLATES: Record<string, MusicalTemplate> = {
     octaveSpan: 4,
     xAxisModulation: 'panAndTone',
     breathingMode: 'deep',
+    initialScrollRatio: 1.5,
     strokes: (w: number, h: number, _quantizer: ScaleQuantizer) => {
-      const subBassY = h * 0.82;
-      const celloY = h * 0.60;
-      const organY = h * 0.42;
-      const tineY = h * 0.50;
+      const subBassY = h * 0.959;
+      const celloY = h * 0.827;
+      const organY = h * 0.719;
+      const tineY = h * 0.767;
 
       return [
         // 1. Slate Analog Sub-Bass Drone (Sustained Bounce, 90s timer)
@@ -139,11 +141,12 @@ export const TEMPLATES: Record<string, MusicalTemplate> = {
     octaveSpan: 4,
     xAxisModulation: 'panAndTone',
     breathingMode: 'deep',
+    initialScrollRatio: 1.5,
     strokes: (w: number, h: number, _quantizer: ScaleQuantizer) => {
-      const organRootY = h * 0.72;
-      const celloY = h * 0.58;
-      const harpY = h * 0.46;
-      const bellY = h * 0.32;
+      const organRootY = h * 0.924;
+      const celloY = h * 0.840;
+      const harpY = h * 0.768;
+      const bellY = h * 0.623;
 
       return [
         // 1. Spruce Glass Organ Foundation (Bounce, 80s timer)
@@ -231,11 +234,12 @@ export const TEMPLATES: Record<string, MusicalTemplate> = {
     octaveSpan: 3,
     xAxisModulation: 'panAndTone',
     breathingMode: 'drift',
+    initialScrollRatio: 1.5,
     strokes: (w: number, h: number, _quantizer: ScaleQuantizer) => {
-      const celloY = h * 0.78;
-      const kalimbaY = h * 0.62;
-      const harpY = h * 0.44;
-      const fluteY = h * 0.36;
+      const celloY = h * 0.872;
+      const kalimbaY = h * 0.776;
+      const harpY = h * 0.548;
+      const fluteY = h * 0.319;
 
       return [
         // 1. Indigo Bowed Cello Bass Foundation (Bounce, 70s timer)
@@ -322,11 +326,12 @@ export const TEMPLATES: Record<string, MusicalTemplate> = {
     octaveSpan: 4,
     xAxisModulation: 'panAndTone',
     breathingMode: 'gentle',
+    initialScrollRatio: 1.4,
     strokes: (w: number, h: number, _quantizer: ScaleQuantizer) => {
-      const bowlY = h * 0.76;
-      const bambooDropsY = h * 0.56;
-      const kotoY = h * 0.42;
-      const chimeY = h * 0.30;
+      const bowlY = h * 0.935;
+      const bambooDropsY = h * 0.815;
+      const kotoY = h * 0.470;
+      const chimeY = h * 0.128;
 
       return [
         // 1. Spruce Glass Organ Singing Bowl Drone (Bounce, 85s timer)
@@ -414,12 +419,13 @@ export const TEMPLATES: Record<string, MusicalTemplate> = {
     octaveSpan: 4,
     xAxisModulation: 'panAndTone',
     breathingMode: 'drift',
+    initialScrollRatio: 1.5,
     strokes: (w: number, h: number, _quantizer: ScaleQuantizer) => {
       const kickY = h * 0.84;
       const clapY = h * 0.58;
-      const bassY = h * 0.74;
-      const stringY = h * 0.46;
-      const organY = h * 0.34;
+      const bassY = h * 0.911;
+      const stringY = h * 0.743;
+      const organY = h * 0.560;
 
       return [
         // 1. Onyx 808 Sub-Bass Kick Pulse (Kick Zone >= 0.72)

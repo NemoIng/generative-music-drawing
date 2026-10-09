@@ -1288,12 +1288,33 @@ body.dark-mode .inspector-wave-cell select.track-mini-select:hover {
   color: var(--text-secondary);
   font-weight: 500;
   box-shadow: var(--shadow-sm);
+  font-family: inherit;
+  line-height: inherit;
+}
+
+button.status-chip {
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s ease;
 }
 
 .status-chip.chip-ready {
   color: #15803d;
   background: #f0fdf4;
   border-color: #bbf7d0;
+}
+
+.status-chip.chip-unstarted {
+  color: #2563eb;
+  background: #eff6ff;
+  border-color: #93c5fd;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.status-chip.chip-unstarted:hover {
+  background: #dbeafe;
+  border-color: #3b82f6;
 }
 
 .status-center {
@@ -1786,6 +1807,23 @@ body.dark-mode .status-chip {
   background: var(--bg-subtle);
   border-color: var(--border-subtle);
   color: var(--text-secondary);
+}
+
+body.dark-mode .status-chip.chip-ready {
+  color: #4ade80;
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+body.dark-mode .status-chip.chip-unstarted {
+  color: #60a5fa;
+  background: rgba(37, 99, 235, 0.2);
+  border-color: rgba(96, 165, 250, 0.4);
+}
+
+body.dark-mode .status-chip.chip-unstarted:hover {
+  background: rgba(37, 99, 235, 0.35);
+  border-color: #60a5fa;
 }
 
 body.dark-mode .welcome-card {

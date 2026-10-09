@@ -129,6 +129,7 @@ const shortcutsModal = document.getElementById('shortcutsModal') as HTMLDivEleme
 const closeShortcutsModalBtn = document.getElementById('closeShortcutsModalBtn') as HTMLButtonElement | null;
 const shareLinkBtn = document.getElementById('shareLinkBtn') as HTMLButtonElement | null;
 const audioUnlockPrompt = document.getElementById('audioUnlockPrompt') as HTMLDivElement | null;
+const startAudioBannerBtn = document.getElementById('startAudioBannerBtn') as HTMLButtonElement | null;
 
 export function dismissWelcomePrompt(): void {
   if (audioUnlockPrompt) {
@@ -143,7 +144,40 @@ const statTempo = document.getElementById('statTempo') as HTMLSpanElement;
 const statInstrument = document.getElementById('statInstrument') as HTMLSpanElement;
 const statLoopSync = document.getElementById('statLoopSync') as HTMLSpanElement;
 const statPitchSnap = document.getElementById('statPitchSnap') as HTMLSpanElement;
-const statAudio = document.getElementById('statAudio') as HTMLSpanElement;
+const statAudio = document.getElementById('statAudio') as HTMLButtonElement | HTMLSpanElement | null;
+
+export async function ensureAudioUnlocked(): Promise<void> {
+  if (!soundEngine.isReady) {
+    try {
+      await soundEngine.init();
+      try {
+        LiveRecorder.preloadWorklet(soundEngine.context);
+      } catch {
+        // optional worklet preload
+      }
+      strokeManager.activateAudioVoices();
+      if (statAudio) {
+        statAudio.textContent = 'Audio: Active';
+        statAudio.classList.remove('chip-unstarted');
+        statAudio.classList.add('chip-ready');
+      }
+      dismissWelcomePrompt();
+    } catch (err) {
+      console.warn('Audio initialization deferred:', err);
+    }
+  }
+}
+
+startAudioBannerBtn?.addEventListener('click', async (e) => {
+  e.stopPropagation();
+  await ensureAudioUnlocked();
+});
+audioUnlockPrompt?.addEventListener('click', async () => {
+  await ensureAudioUnlocked();
+});
+statAudio?.addEventListener('click', async () => {
+  await ensureAudioUnlocked();
+});
 const contextHelp = document.getElementById('contextHelp') as HTMLSpanElement;
 const trackDurationGroup = document.getElementById('trackDurationGroup') as HTMLElement;
 const trackDurationSlider = document.getElementById('trackDurationSlider') as HTMLInputElement;
@@ -663,12 +697,7 @@ async function loadComposition(comp: SavedComposition): Promise<void> {
   prevCanvasWidth = renderer.width;
   prevCanvasHeight = renderer.height;
 
-  if (!soundEngine.isReady) {
-    await soundEngine.init();
-    statAudio.textContent = 'Audio: Active';
-    statAudio.classList.add('chip-ready');
-  }
-  dismissWelcomePrompt();
+  await ensureAudioUnlocked();
 
   if (comp.scaleId && SCALES[comp.scaleId]) {
     quantizer.updateConfig({ scale: SCALES[comp.scaleId] });
@@ -2366,13 +2395,7 @@ startSimulateBtn?.addEventListener('click', async () => {
 
 // Start Live Recording
 startLiveRecBtn?.addEventListener('click', async () => {
-  if (!soundEngine.isReady) {
-    await soundEngine.init();
-    strokeManager.activateAudioVoices();
-    statAudio.textContent = 'Audio: Active';
-    statAudio.classList.add('chip-ready');
-    dismissWelcomePrompt();
-  }
+  await ensureAudioUnlocked();
 
   closeRecordModal();
 
@@ -2483,11 +2506,8 @@ async function loadTemplate(tId: string, initAudio = true): Promise<void> {
   currentLoadedPresetName = template.name;
   templateSelect.value = tId;
 
-  if (initAudio && !soundEngine.isReady) {
-    await soundEngine.init();
-    statAudio.textContent = 'Audio: Active';
-    statAudio.classList.add('chip-ready');
-    dismissWelcomePrompt();
+  if (initAudio) {
+    await ensureAudioUnlocked();
   }
 
   // Update scale, root, and tempo to template recommendations
@@ -2528,19 +2548,23 @@ async function loadTemplate(tId: string, initAudio = true): Promise<void> {
     strokeManager.setBreathingMode('gentle');
   }
 
-  // Clear existing and reset scroll to default middle register
+  // Clear existing and set scroll to template's view register
   strokeManager.clearAll();
-  const defaultScroll = quantizer.resetScrollToDefault(renderer.height);
+  const templateScroll = template.initialScrollRatio !== undefined
+    ? quantizer.clampScrollY(template.initialScrollRatio * renderer.height, renderer.height)
+    : quantizer.getMaxScrollY(renderer.height);
+  quantizer.setScrollY(templateScroll);
+  targetScrollY = templateScroll;
   updatePitchNavigator();
 
   const strokes = buildTemplateStrokes(tId, renderer.width, renderer.height, quantizer);
 
   for (const s of strokes) {
     for (const seg of s.path.segments) {
-      seg.p0.y += defaultScroll;
-      seg.p1.y += defaultScroll;
-      seg.p2.y += defaultScroll;
-      seg.p3.y += defaultScroll;
+      seg.p0.y += templateScroll;
+      seg.p1.y += templateScroll;
+      seg.p2.y += templateScroll;
+      seg.p3.y += templateScroll;
     }
     strokeManager.addStroke(
       s.path,
@@ -3525,7 +3549,8 @@ duplicateTrackBtn?.addEventListener('click', () => {
 });
 
 // Play / Pause Toggle
-function togglePlayPause(): void {
+async function togglePlayPause(): Promise<void> {
+  await ensureAudioUnlocked();
   const isPaused = !strokeManager.paused;
   strokeManager.setPaused(isPaused);
 
@@ -3538,7 +3563,9 @@ function togglePlayPause(): void {
   }
 }
 
-playPauseBtn.addEventListener('click', togglePlayPause);
+playPauseBtn.addEventListener('click', () => {
+  togglePlayPause();
+});
 
 // Undo Action
 undoBtn.addEventListener('click', () => {
@@ -4178,21 +4205,14 @@ window.addEventListener('blur', () => {
 });
 
 // Audio Unlock & Welcome Banner Dismissal on First Interaction
-window.addEventListener('pointerdown', async () => {
-  dismissWelcomePrompt();
-  if (!soundEngine.isReady) {
-    await soundEngine.init();
-    LiveRecorder.preloadWorklet(soundEngine.context);
-    strokeManager.activateAudioVoices();
-    statAudio.textContent = 'Audio: Active';
-    statAudio.classList.add('chip-ready');
-  }
+const unlockAudioOnGesture = async () => {
+  await ensureAudioUnlocked();
   setTimeout(updateTrackActionsVisibility, 50);
-}, { once: false });
-
-window.addEventListener('click', () => {
-  dismissWelcomePrompt();
-}, { once: false });
+};
+window.addEventListener('pointerdown', unlockAudioOnGesture, { passive: true });
+window.addEventListener('click', unlockAudioOnGesture, { passive: true });
+window.addEventListener('keydown', unlockAudioOnGesture, { passive: true });
+window.addEventListener('touchstart', unlockAudioOnGesture, { passive: true });
 
 window.addEventListener('pointerup', () => {
   if (strokeManager.selectedStrokeId) {

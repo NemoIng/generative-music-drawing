@@ -39,6 +39,7 @@ export interface RootNote {
 }
 
 export const ROOT_NOTES: Record<string, RootNote> = {
+  C2: { name: 'C2', frequency: 65.406, baseMidi: 36 },
   D2: { name: 'D2', frequency: 73.416, baseMidi: 38 },
   E2: { name: 'E2', frequency: 82.407, baseMidi: 40 },
   F2: { name: 'F2', frequency: 87.307, baseMidi: 41 },

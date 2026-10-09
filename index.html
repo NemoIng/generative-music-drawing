@@ -748,11 +748,14 @@
         </aside>
 
         <!-- Initial Gentle Invitation Banner -->
-        <div id="audioUnlockPrompt" class="welcome-banner">
+        <div id="audioUnlockPrompt" class="welcome-banner" style="cursor: pointer;">
           <div class="welcome-card">
             <h3>Draw on the canvas or load an ambient template</h3>
             <p>Y = Pitch • X = Stereo Pan & Tone • Arc = Rhythm • Ultra-slow 10–60 BPM & Drone modes</p>
             <span class="hint-small">Click any line to select & voice chords • Open Controls for Scale & Reverb</span>
+            <div style="margin-top: 10px; display: flex; justify-content: center;">
+              <button type="button" id="startAudioBannerBtn" class="action-btn action-btn-accent" style="padding: 6px 14px; font-weight: 600;">Start Audio</button>
+            </div>
           </div>
         </div>
 
@@ -839,7 +842,7 @@
             <span id="statTempo" class="status-chip">100 BPM</span>
             <span id="statLoopSync" class="status-chip">Default: 2 Bars</span>
             <span id="statPitchSnap" class="status-chip">Snap Off</span>
-            <span id="statAudio" class="status-chip chip-ready">Audio ready</span>
+            <button type="button" id="statAudio" class="status-chip chip-unstarted has-tooltip" data-tooltip="Click to Start Audio Engine">Click to Start Audio</button>
           </div>
           <div class="status-center">
             <span id="contextHelp" class="context-help">Hover over any setting for details</span>

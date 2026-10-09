@@ -147,6 +147,7 @@ export class SoundEngine {
     this.widthSplitter.connect(midSum, 1);
     this.widthSplitter.connect(sideDiff, 0);
     this.widthSplitter.connect(sideInvert, 1);
+    sideInvert.connect(sideDiff);
 
     midSum.connect(this.widthMidGain);
     sideDiff.connect(this.widthSideGain);
