@@ -496,8 +496,10 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     const layerCountBadge = doc.getElementById('layerCountBadge');
     expect(layerCountBadge).toBeDefined();
 
-    const layersToggleBtn = doc.getElementById('layersToggleBtn');
-    expect(layersToggleBtn).toBeDefined();
+    const layersStatusChip = doc.getElementById('layersStatusChip');
+    expect(layersStatusChip).toBeDefined();
+    expect(layersStatusChip?.tagName.toLowerCase()).toBe('span');
+    expect(layersStatusChip?.classList.contains('status-chip')).toBe(true);
   });
 
   it('contains dirtyIndicator element within top-template-group with zero layout shift structure', () => {

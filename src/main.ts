@@ -209,7 +209,6 @@ const trackHarmonizerSelect = document.getElementById('trackHarmonizerSelect') a
 const breathingSelect = document.getElementById('breathingSelect') as HTMLSelectElement | null;
 
 // Layers Mixer & Presets Dirty State Controls
-const layersToggleBtn = document.getElementById('layersToggleBtn') as HTMLButtonElement | null;
 const layerCountBadge = document.getElementById('layerCountBadge') as HTMLSpanElement | null;
 const dirtyIndicator = document.getElementById('dirtyIndicator') as HTMLSpanElement | null;
 const quickSaveBtn = document.getElementById('quickSaveBtn') as HTMLButtonElement | null;
@@ -1126,25 +1125,6 @@ function renderLayerMixer(): void {
     renderStudioMixer();
   }
 }
-
-// Bottom-left Layers button toggles Studio mode with the Layers Mixer tab active
-layersToggleBtn?.addEventListener('click', () => {
-  const currentMode = viewModeManager.getMode();
-  if (currentMode === 'zen') {
-    viewModeManager.setMode('studio');
-    switchStudioDeckTab('mixer');
-  } else {
-    // Already in studio mode
-    const isMixerActive = studioTabBtnMixer?.classList.contains('active');
-    if (!isMixerActive) {
-      // If on Master FX or Scenes tab, switch directly to Layers mixer tab
-      switchStudioDeckTab('mixer');
-    } else {
-      // If already on Layers mixer in studio mode, toggle to Zen view
-      viewModeManager.setMode('zen');
-    }
-  }
-});
 
 // ==========================================================================
 // View Architecture Implementations (Studio Deck, Zen Canvas, Scene Arranger)
@@ -3911,10 +3891,11 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     return;
   }
 
-  // Toggle Layers Mixer: M key when no stroke is selected
+  // Layers Mixer: M key switches Studio Deck to mixer tab
   if (e.key.toLowerCase() === 'm' && !e.metaKey && !e.ctrlKey && !strokeManager.selectedStrokeId) {
     e.preventDefault();
-    layersToggleBtn?.click();
+    viewModeManager.setMode('studio');
+    switchStudioDeckTab('mixer');
     return;
   }
 
