@@ -486,14 +486,18 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     const studioMixerList = doc.getElementById('studioMixerList');
     expect(studioMixerList).toBeDefined();
 
-    const layerMixerList = doc.getElementById('layerMixerList');
-    expect(layerMixerList).toBeDefined();
+    // The separate floating layerMixerDrawer panel is removed
+    const layerMixerDrawer = doc.getElementById('layerMixerDrawer');
+    expect(layerMixerDrawer).toBeNull();
 
     const studioLayerCount = doc.getElementById('studioLayerCount');
     expect(studioLayerCount).toBeDefined();
 
     const layerCountBadge = doc.getElementById('layerCountBadge');
     expect(layerCountBadge).toBeDefined();
+
+    const layersToggleBtn = doc.getElementById('layersToggleBtn');
+    expect(layersToggleBtn).toBeDefined();
   });
 
   it('contains dirtyIndicator element within top-template-group with zero layout shift structure', () => {

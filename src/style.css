@@ -2449,85 +2449,7 @@ body.dark-mode .dirty-badge {
   color: #2563eb;
 }
 
-/* Persistent Layers Mixer Panel */
-.layer-mixer-drawer {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  bottom: 10px;
-  width: 320px;
-  max-width: calc(100vw - 20px);
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08);
-  z-index: 40;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-}
-
-.mixer-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--bg-subtle);
-}
-
-.mixer-header-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.82rem;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.mixer-count-chip {
-  font-size: 0.65rem;
-  font-weight: 600;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
-}
-
-.mixer-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.action-btn-xs {
-  font-size: 0.68rem;
-  padding: 2px 7px;
-  height: 22px;
-}
-
-.mixer-track-list {
-  flex: 1;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  scroll-behavior: smooth;
-  overscroll-behavior: contain;
-  padding: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.mixer-empty-state {
-  padding: 30px 16px;
-  text-align: center;
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  line-height: 1.5;
-}
+/* Persistent Layers Mixer Cards */
 
 .layer-card {
   display: flex;
@@ -2862,24 +2784,20 @@ body.dark-mode .studio-tab-btn.active {
   padding-right: 2px;
 }
 
-.studio-mixer-list::-webkit-scrollbar,
-.mixer-track-list::-webkit-scrollbar {
+.studio-mixer-list::-webkit-scrollbar {
   width: 4px;
 }
 
-.studio-mixer-list::-webkit-scrollbar-track,
-.mixer-track-list::-webkit-scrollbar-track {
+.studio-mixer-list::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.studio-mixer-list::-webkit-scrollbar-thumb,
-.mixer-track-list::-webkit-scrollbar-thumb {
+.studio-mixer-list::-webkit-scrollbar-thumb {
   background: var(--border-subtle);
   border-radius: 9999px;
 }
 
-.studio-mixer-list::-webkit-scrollbar-thumb:hover,
-.mixer-track-list::-webkit-scrollbar-thumb:hover {
+.studio-mixer-list::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
 }
 

@@ -532,24 +532,6 @@
       <!-- Main Workspace Layout supporting Option A (Studio Deck) and Option B (Zen Canvas) -->
       <div class="workspace-layout" id="workspaceLayout">
         <main class="canvas-container" id="canvasContainer">
-        <!-- Persistent / Collapsible Layers Mixer Panel -->
-        <aside id="layerMixerDrawer" class="layer-mixer-drawer" style="display: none;">
-          <div class="mixer-header">
-            <div class="mixer-header-title">
-              <span>Layers Mixer</span>
-              <span id="mixerTrackCount" class="mixer-count-chip">0 Lines</span>
-            </div>
-            <div class="mixer-header-actions">
-              <button type="button" id="mixerMuteAllBtn" class="action-btn action-btn-xs has-tooltip" data-tooltip="Mute all lines">Mute All</button>
-              <button type="button" id="mixerUnmuteAllBtn" class="action-btn action-btn-xs has-tooltip" data-tooltip="Unmute all lines">Unmute</button>
-              <button type="button" id="mixerCloseBtn" class="drawer-close-btn" aria-label="Close Mixer" title="Close Mixer">Close</button>
-            </div>
-          </div>
-          <div id="layerMixerList" class="mixer-track-list">
-            <!-- Dynamically populated track cards -->
-          </div>
-        </aside>
-
         <!-- Floating Dedicated Selected Line Inspector (Two rows: Sound parameters & Motion/Shape) -->
         <section id="trackInspectorBar" class="track-inspector-bar" style="display: none;">
           <div class="track-inspector-inner">
@@ -833,7 +815,7 @@
         <!-- Bottom Status Bar with Contextual Help & Secondary Utility Actions -->
         <footer class="bottom-bar">
           <div class="status-left">
-            <button type="button" id="layersToggleBtn" class="status-chip status-chip-btn has-tooltip" data-tooltip="Composition Layers Mixer: Persistent track overview with Volume, Mute, Solo, and Reverb for all lines.">
+            <button type="button" id="layersToggleBtn" class="status-chip status-chip-btn has-tooltip" data-tooltip="Studio Layers Mixer: Switch to Studio view with active layers rack.">
               Layers <span id="layerCountBadge" class="layer-badge-count">0</span>
             </button>
             <span id="statStrokes" class="status-chip" style="display:none">0 strokes</span>

@@ -211,12 +211,6 @@ const breathingSelect = document.getElementById('breathingSelect') as HTMLSelect
 // Layers Mixer & Presets Dirty State Controls
 const layersToggleBtn = document.getElementById('layersToggleBtn') as HTMLButtonElement | null;
 const layerCountBadge = document.getElementById('layerCountBadge') as HTMLSpanElement | null;
-const layerMixerDrawer = document.getElementById('layerMixerDrawer') as HTMLElement | null;
-const layerMixerList = document.getElementById('layerMixerList') as HTMLElement | null;
-const mixerTrackCount = document.getElementById('mixerTrackCount') as HTMLSpanElement | null;
-const mixerMuteAllBtn = document.getElementById('mixerMuteAllBtn') as HTMLButtonElement | null;
-const mixerUnmuteAllBtn = document.getElementById('mixerUnmuteAllBtn') as HTMLButtonElement | null;
-const mixerCloseBtn = document.getElementById('mixerCloseBtn') as HTMLButtonElement | null;
 const dirtyIndicator = document.getElementById('dirtyIndicator') as HTMLSpanElement | null;
 const quickSaveBtn = document.getElementById('quickSaveBtn') as HTMLButtonElement | null;
 
@@ -1128,63 +1122,28 @@ function renderLayerMixer(): void {
   if (layerCountBadge) {
     layerCountBadge.textContent = strokes.length.toString();
   }
-  if (mixerTrackCount) {
-    mixerTrackCount.textContent = `${strokes.length} ${strokes.length === 1 ? 'Line' : 'Lines'}`;
-  }
   if (typeof renderStudioMixer === 'function') {
     renderStudioMixer();
   }
-  if (!layerMixerList) return;
-
-  if (strokes.length === 0) {
-    layerMixerList.innerHTML = '<div class="mixer-empty-state">No lines yet. Draw on the canvas to add ambient sound layers.</div>';
-    return;
-  }
-
-  const hasSolo = strokeManager.hasSoloedStrokes;
-  layerMixerList.innerHTML = '';
-
-  strokes.forEach((stroke, idx) => {
-    layerMixerList!.appendChild(createLayerCard(stroke, idx, hasSolo));
-  });
-  updateMixerSelection();
 }
 
+// Bottom-left Layers button toggles Studio mode with the Layers Mixer tab active
 layersToggleBtn?.addEventListener('click', () => {
-  if (!layerMixerDrawer) return;
-  const isShown = layerMixerDrawer.style.display !== 'none';
-  layerMixerDrawer.style.display = isShown ? 'none' : 'flex';
-  layersToggleBtn.classList.toggle('active', !isShown);
-  if (!isShown) {
-    renderLayerMixer();
+  const currentMode = viewModeManager.getMode();
+  if (currentMode === 'zen') {
+    viewModeManager.setMode('studio');
+    switchStudioDeckTab('mixer');
+  } else {
+    // Already in studio mode
+    const isMixerActive = studioTabBtnMixer?.classList.contains('active');
+    if (!isMixerActive) {
+      // If on Master FX or Scenes tab, switch directly to Layers mixer tab
+      switchStudioDeckTab('mixer');
+    } else {
+      // If already on Layers mixer in studio mode, toggle to Zen view
+      viewModeManager.setMode('zen');
+    }
   }
-});
-
-mixerCloseBtn?.addEventListener('click', () => {
-  if (layerMixerDrawer) {
-    layerMixerDrawer.style.display = 'none';
-    layersToggleBtn?.classList.remove('active');
-  }
-});
-
-mixerMuteAllBtn?.addEventListener('click', () => {
-  strokeManager.activeStrokes.forEach((s) => {
-    strokeManager.setStrokeMuted(s.id, true);
-  });
-  setCompositionDirty(true);
-  updateStats();
-  updateTrackActionsVisibility();
-  renderLayerMixer();
-});
-
-mixerUnmuteAllBtn?.addEventListener('click', () => {
-  strokeManager.activeStrokes.forEach((s) => {
-    strokeManager.setStrokeMuted(s.id, false);
-  });
-  setCompositionDirty(true);
-  updateStats();
-  updateTrackActionsVisibility();
-  renderLayerMixer();
 });
 
 // ==========================================================================
