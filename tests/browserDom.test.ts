@@ -760,6 +760,23 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     expect((trackWaveCell as HTMLElement)?.style.display).toBe('none');
     expect((zenContextTravBtn as HTMLElement)?.style.display).toBe('none');
   });
+
+  it('contains statAudio element with initial unstarted state and updates properly', () => {
+    const statAudio = doc.getElementById('statAudio') as HTMLButtonElement;
+    expect(statAudio).toBeDefined();
+    expect(statAudio.classList.contains('status-chip')).toBe(true);
+    expect(statAudio.classList.contains('chip-unstarted')).toBe(true);
+    expect(statAudio.textContent).toBe('Click to Start Audio');
+
+    // Simulate transition when audio unlocks
+    statAudio.textContent = 'Audio: Active';
+    statAudio.classList.remove('chip-unstarted');
+    statAudio.classList.add('chip-ready');
+
+    expect(statAudio.textContent).toBe('Audio: Active');
+    expect(statAudio.classList.contains('chip-ready')).toBe(true);
+    expect(statAudio.classList.contains('chip-unstarted')).toBe(false);
+  });
 });
 
 

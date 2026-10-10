@@ -146,6 +146,29 @@ const statLoopSync = document.getElementById('statLoopSync') as HTMLSpanElement;
 const statPitchSnap = document.getElementById('statPitchSnap') as HTMLSpanElement;
 const statAudio = document.getElementById('statAudio') as HTMLButtonElement | HTMLSpanElement | null;
 
+/**
+ * Synchronizes the bottom bar audio status chip (#statAudio) with Web Audio engine state.
+ */
+export function updateAudioStatusChip(): void {
+  if (!statAudio) return;
+  if (soundEngine.isReady) {
+    statAudio.textContent = 'Audio: Active';
+    statAudio.setAttribute('data-tooltip', 'Audio Engine Active: Web Audio synthesizer running');
+    statAudio.classList.remove('chip-unstarted');
+    statAudio.classList.add('chip-ready');
+  } else {
+    statAudio.textContent = 'Click to Start Audio';
+    statAudio.setAttribute('data-tooltip', 'Click to Start Audio Engine');
+    statAudio.classList.add('chip-unstarted');
+    statAudio.classList.remove('chip-ready');
+  }
+}
+
+// Reactively update audio status chip whenever AudioContext state changes (running/suspended)
+soundEngine.onStateChange = () => {
+  updateAudioStatusChip();
+};
+
 export async function ensureAudioUnlocked(): Promise<void> {
   if (!soundEngine.isReady) {
     try {
@@ -156,16 +179,14 @@ export async function ensureAudioUnlocked(): Promise<void> {
         // optional worklet preload
       }
       strokeManager.activateAudioVoices();
-      if (statAudio) {
-        statAudio.textContent = 'Audio: Active';
-        statAudio.classList.remove('chip-unstarted');
-        statAudio.classList.add('chip-ready');
-      }
-      dismissWelcomePrompt();
     } catch (err) {
       console.warn('Audio initialization deferred:', err);
     }
+  } else {
+    strokeManager.activateAudioVoices();
   }
+  updateAudioStatusChip();
+  dismissWelcomePrompt();
 }
 
 startAudioBannerBtn?.addEventListener('click', async (e) => {
@@ -405,6 +426,7 @@ const inputHandler = new InputHandler(canvasEl, {
   getXAxisModulation: () => (xAxisSelect ? xAxisSelect.value : 'panAndTone'),
   onPointerDown: () => {
     dismissWelcomePrompt();
+    updateAudioStatusChip();
   },
   onStrokeComplete: (path: SplinePath, isPoint?: boolean) => {
     dismissWelcomePrompt();
@@ -4240,6 +4262,7 @@ window.addEventListener('resize', handleResize);
 function updateStats(): void {
   const count = strokeManager.activeStrokes.length;
   statStrokes.textContent = `${count} ${count === 1 ? 'stroke' : 'strokes'}`;
+  updateAudioStatusChip();
 }
 
 // Animation & Sequencer Loop with Smooth Frame-Delta Filtering
