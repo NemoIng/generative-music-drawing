@@ -808,6 +808,34 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     expect(buttons[0].classList.contains('active')).toBe(true);
     expect(blendSelect).toBeDefined();
   });
+
+  it('contains Top-Bar Preset Suite with quick open/save buttons, visible saved presets optgroup, and open file action', () => {
+    const topLoadBtn = doc.getElementById('topLoadPresetBtn') as HTMLButtonElement;
+    const topSaveBtn = doc.getElementById('topSavePresetBtn') as HTMLButtonElement;
+    const templateSelect = doc.getElementById('templateSelect') as HTMLSelectElement;
+    const savedGroup = doc.getElementById('savedTemplatesGroup') as HTMLOptGroupElement;
+    const loadFileInput = doc.getElementById('loadFileInput') as HTMLInputElement;
+
+    expect(topLoadBtn).toBeDefined();
+    expect(topSaveBtn).toBeDefined();
+    expect(templateSelect).toBeDefined();
+    expect(savedGroup).toBeDefined();
+    expect(loadFileInput).toBeDefined();
+
+    // Optgroup does not use display: none (preventing Safari/WebKit macOS menu caching bug)
+    expect(savedGroup.style.display).not.toBe('none');
+
+    // Contains Open File action
+    const openFileOpt = templateSelect.querySelector('option[value="__open_file__"]');
+    expect(openFileOpt).not.toBeNull();
+    expect(openFileOpt?.textContent).toContain('Open Preset File');
+
+    // Button attributes and tooltips
+    expect(topLoadBtn.getAttribute('aria-label')).toBe('Open Preset File');
+    expect(topSaveBtn.getAttribute('aria-label')).toBe('Save Preset');
+    expect(topLoadBtn.classList.contains('top-preset-icon-btn')).toBe(true);
+    expect(topSaveBtn.classList.contains('top-preset-icon-btn')).toBe(true);
+  });
 });
 
 

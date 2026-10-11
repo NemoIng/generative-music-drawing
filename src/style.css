@@ -2354,17 +2354,61 @@ body.dark-mode .pitch-thumb-label {
   justify-content: center;
 }
 
-/* Dirty / Unsaved Preset State Indicator */
+/* Dirty / Unsaved Preset State Indicator & Top Preset Suite */
 .top-template-group {
-  width: 200px;
-  min-width: 175px;
-  max-width: 215px;
+  width: 250px;
+  min-width: 220px;
+  max-width: 270px;
   flex-shrink: 0;
 }
 
-.top-template-group .select-wrapper,
-.top-template-group .minimal-select {
+.top-preset-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   width: 100%;
+}
+
+.top-preset-controls-row .select-wrapper {
+  flex: 1;
+  min-width: 0;
+}
+
+.top-preset-controls-row .minimal-select {
+  width: 100%;
+}
+
+.top-preset-btn-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.top-preset-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--ctrl-h);
+  height: var(--ctrl-h);
+  padding: 0;
+  box-sizing: border-box;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.top-preset-icon-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+  background: var(--bg-hover);
+}
+
+.top-preset-icon-btn:active {
+  transform: scale(0.95);
 }
 
 .top-row-label-row {

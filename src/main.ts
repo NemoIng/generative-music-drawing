@@ -18,6 +18,8 @@ const canvasEl = document.getElementById('musicCanvas') as HTMLCanvasElement;
 const templateSelect = document.getElementById('templateSelect') as HTMLSelectElement;
 const saveTemplateBtn = document.getElementById('saveTemplateBtn') as HTMLButtonElement;
 const loadTemplateFileBtn = document.getElementById('loadTemplateFileBtn') as HTMLButtonElement;
+const topLoadPresetBtn = document.getElementById('topLoadPresetBtn') as HTMLButtonElement | null;
+const topSavePresetBtn = document.getElementById('topSavePresetBtn') as HTMLButtonElement | null;
 const loadFileInput = document.getElementById('loadFileInput') as HTMLInputElement;
 const savedTemplatesGroup = document.getElementById('savedTemplatesGroup') as HTMLOptGroupElement;
 const savePresetModal = document.getElementById('savePresetModal') as HTMLElement;
@@ -695,9 +697,12 @@ function refreshSavedTemplatesDropdown(): void {
   const names = Object.keys(saved);
   savedTemplatesGroup.innerHTML = '';
   if (names.length === 0) {
-    savedTemplatesGroup.style.display = 'none';
+    const emptyOpt = document.createElement('option');
+    emptyOpt.value = '';
+    emptyOpt.disabled = true;
+    emptyOpt.textContent = '(No saved presets yet)';
+    savedTemplatesGroup.appendChild(emptyOpt);
   } else {
-    savedTemplatesGroup.style.display = '';
     names.forEach((name) => {
       const opt = document.createElement('option');
       opt.value = `custom:${name}`;
@@ -2427,6 +2432,18 @@ loadTemplateFileBtn?.addEventListener('click', () => {
   loadFileInput?.click();
 });
 
+topLoadPresetBtn?.addEventListener('click', () => {
+  loadFileInput?.click();
+});
+
+topSavePresetBtn?.addEventListener('click', () => {
+  if (strokeManager.activeStrokes.length === 0) {
+    alert('Draw or create some musical lines first before saving a preset.');
+    return;
+  }
+  openSavePresetModal();
+});
+
 loadFileInput?.addEventListener('change', async () => {
   const file = loadFileInput.files?.[0];
   if (!file) return;
@@ -2446,7 +2463,9 @@ loadFileInput?.addEventListener('change', async () => {
     localStorage.setItem('harmonic_saved_grooves', JSON.stringify(saved));
     refreshSavedTemplatesDropdown();
     templateSelect.value = `custom:${compName}`;
+    currentLoadedPresetName = compName;
     await loadComposition(comp);
+    statMode.textContent = `Preset Loaded: ${compName}`;
   } catch (err) {
     console.error('Failed to parse groove template file:', err);
     alert('Could not parse template JSON file.');
@@ -2574,10 +2593,21 @@ templateSelect.addEventListener('change', async () => {
   const tId = templateSelect.value;
   if (!tId) return;
 
+  // Handle Action item: Open Preset File (.json)
+  if (tId === '__open_file__') {
+    templateSelect.value = currentLoadedPresetName
+      ? (getSavedCompositions()[currentLoadedPresetName] ? `custom:${currentLoadedPresetName}` : (TEMPLATES[currentLoadedPresetName] ? currentLoadedPresetName : 'cathedralSolitude'))
+      : 'cathedralSolitude';
+    loadFileInput?.click();
+    return;
+  }
+
   if (isCompositionDirty && strokeManager.activeStrokes.length > 0) {
     const ok = confirm(`You have unsaved changes in "${currentLoadedPresetName || 'current composition'}". Discard changes and load new preset?`);
     if (!ok) {
-      templateSelect.value = currentLoadedPresetName ? `custom:${currentLoadedPresetName}` : '';
+      templateSelect.value = currentLoadedPresetName
+        ? (getSavedCompositions()[currentLoadedPresetName] ? `custom:${currentLoadedPresetName}` : (TEMPLATES[currentLoadedPresetName] ? currentLoadedPresetName : 'cathedralSolitude'))
+        : 'cathedralSolitude';
       return;
     }
   }
@@ -2589,6 +2619,7 @@ templateSelect.addEventListener('change', async () => {
     const saved = getSavedCompositions();
     if (saved[name]) {
       await loadComposition(saved[name]);
+      templateSelect.value = `custom:${name}`;
     }
     return;
   }

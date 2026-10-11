@@ -32,18 +32,32 @@
               <label class="top-row-label" for="templateSelect">Preset</label>
               <span id="dirtyIndicator" class="dirty-badge" title="Unsaved changes in current composition">Edited</span>
             </div>
-            <div class="select-wrapper">
-              <select id="templateSelect" class="minimal-select">
-                <option value="">Load Preset...</option>
-                <optgroup label="Ambient Starting Points">
-                  <option value="cathedralSolitude" selected>Cathedral of Solitude (30 BPM)</option>
-                  <option value="deepCosmicDrone">Deep Cosmic Drone (24 BPM)</option>
-                  <option value="warmTapeDrift">Warm Tape Drift (36 BPM)</option>
-                  <option value="zenGarden">Zen Garden (42 BPM)</option>
-                  <option value="midnightPulse">Midnight Pulse (52 BPM)</option>
-                </optgroup>
-                <optgroup label="My Saved Presets" id="savedTemplatesGroup" style="display:none"></optgroup>
-              </select>
+            <div class="top-preset-controls-row">
+              <div class="select-wrapper">
+                <select id="templateSelect" class="minimal-select">
+                  <optgroup label="Ambient Starting Points">
+                    <option value="cathedralSolitude" selected>Cathedral of Solitude (30 BPM)</option>
+                    <option value="deepCosmicDrone">Deep Cosmic Drone (24 BPM)</option>
+                    <option value="warmTapeDrift">Warm Tape Drift (36 BPM)</option>
+                    <option value="zenGarden">Zen Garden (42 BPM)</option>
+                    <option value="midnightPulse">Midnight Pulse (52 BPM)</option>
+                  </optgroup>
+                  <optgroup label="My Saved Presets" id="savedTemplatesGroup">
+                    <option value="" disabled>(No saved presets yet)</option>
+                  </optgroup>
+                  <optgroup label="Actions">
+                    <option value="__open_file__">Open Preset File (.json)...</option>
+                  </optgroup>
+                </select>
+              </div>
+              <div class="top-preset-btn-group">
+                <button type="button" id="topLoadPresetBtn" class="top-preset-icon-btn has-tooltip" data-tooltip="Open Preset File: Load a saved composition JSON file from your computer" aria-label="Open Preset File">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
+                </button>
+                <button type="button" id="topSavePresetBtn" class="top-preset-icon-btn has-tooltip" data-tooltip="Save Preset (⌘S): Save composition or export as .json" aria-label="Save Preset">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                </button>
+              </div>
             </div>
           </div>
 
