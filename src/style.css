@@ -3329,25 +3329,69 @@ body.dark-mode .studio-tab-btn.active {
 .studio-scenes-params {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  padding: 6px 8px;
+  padding: 8px 10px;
   flex-shrink: 0;
+  box-sizing: border-box;
+  min-width: 0;
 }
 
-.studio-scenes-param-row {
+.studio-scenes-params .control-group {
+  gap: 4px;
+}
+
+.studio-scenes-params .slider-header {
+  margin-bottom: 2px;
+}
+
+.scene-blend-label {
+  font-size: 0.64rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.scene-blend-switch {
   display: flex;
-  align-items: center;
-  gap: 6px;
   width: 100%;
+  box-sizing: border-box;
+  height: 28px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  gap: 2px;
+}
+
+.scene-blend-switch .seg-btn {
+  flex: 1;
+  height: 100%;
+  padding: 0 6px;
+  font-size: 0.70rem;
+  font-weight: 500;
+  border-radius: calc(var(--radius-sm) - 2px);
+  text-align: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.scene-blend-switch .seg-btn.active {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .studio-scenes-actions-row {
   display: flex;
-  gap: 4px;
+  gap: 6px;
   width: 100%;
+  margin-top: 2px;
 }
 
 .studio-scene-cards-list {
@@ -3367,45 +3411,6 @@ body.dark-mode .studio-tab-btn.active {
   max-width: 100% !important;
   width: 100%;
   padding: 8px 10px;
-}
-
-.scene-morph-wrap {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  padding: 2px 8px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  flex: 1;
-}
-
-.scene-morph-wrap input[type="range"] {
-  flex: 1;
-  min-width: 40px;
-}
-
-.scene-blend-wrap {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  padding: 2px 6px;
-  font-size: 0.70rem;
-  font-weight: 600;
-}
-
-.scene-blend-label {
-  font-size: 0.65rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-muted);
-  user-select: none;
 }
 
 .scene-cards-list {

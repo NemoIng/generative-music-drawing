@@ -1118,27 +1118,33 @@
               </div>
 
               <div class="studio-scenes-params">
-                <div class="studio-scenes-param-row">
-                  <div class="scene-morph-wrap has-tooltip" data-tooltip="Morph Duration: Crossfade seconds between scene movements (2s - 25s)">
-                    <label for="sceneMorphSlider">Morph</label>
-                    <input type="range" id="sceneMorphSlider" min="2" max="25" step="1" value="6" class="minimal-slider" />
+                <!-- Morph Duration Crossfade -->
+                <div class="control-group slider-group has-tooltip" data-tooltip="Morph Duration: Crossfade seconds between scene movements (2s - 25s)">
+                  <div class="slider-header">
+                    <label for="sceneMorphSlider">Morph Duration</label>
                     <span id="sceneMorphVal" class="value-badge">6s</span>
                   </div>
-                  <div class="scene-blend-wrap has-tooltip" data-tooltip="Transition Blend Style: Lush Overlap (equal-power energy), Reverb Wash, or Linear">
-                    <label class="scene-blend-label">Blend</label>
-                    <div class="segmented-switch mini-switch" id="sceneMorphBlendSwitch">
-                      <button type="button" class="seg-btn active" data-blend="equalPower" title="Lush Overlap">Lush</button>
-                      <button type="button" class="seg-btn" data-blend="reverbWash" title="Reverb Wash">Wash</button>
-                      <button type="button" class="seg-btn" data-blend="linear" title="Linear">Lin</button>
-                    </div>
-                    <select id="sceneMorphCurveSelect" class="hidden" title="Morph Blend Mode">
-                      <option value="equalPower" selected>Lush Overlap</option>
-                      <option value="reverbWash">Reverb Wash</option>
-                      <option value="linear">Linear Blend</option>
-                    </select>
-                  </div>
+                  <input type="range" id="sceneMorphSlider" min="2" max="25" step="1" value="6" class="minimal-slider" />
                 </div>
 
+                <!-- Transition Blend Style -->
+                <div class="control-group has-tooltip" data-tooltip="Transition Blend Style: Lush Overlap (equal-power energy), Reverb Wash, or Linear">
+                  <div class="slider-header">
+                    <label class="scene-blend-label">Transition Blend</label>
+                  </div>
+                  <div class="segmented-switch scene-blend-switch" id="sceneMorphBlendSwitch">
+                    <button type="button" class="seg-btn active" data-blend="equalPower" title="Lush Overlap (Equal Power Crossfade)">Lush</button>
+                    <button type="button" class="seg-btn" data-blend="reverbWash" title="Reverb Wash (Ambient Space Swell)">Wash</button>
+                    <button type="button" class="seg-btn" data-blend="linear" title="Linear Blend (Direct Crossfade)">Linear</button>
+                  </div>
+                  <select id="sceneMorphCurveSelect" class="hidden" title="Morph Blend Mode">
+                    <option value="equalPower" selected>Lush Overlap</option>
+                    <option value="reverbWash">Reverb Wash</option>
+                    <option value="linear">Linear Blend</option>
+                  </select>
+                </div>
+
+                <!-- Scene Actions Row -->
                 <div class="studio-scenes-actions-row">
                   <button type="button" id="sceneAddBtn" class="action-btn action-btn-xs" style="flex: 1.2;">+ New Scene</button>
                   <button type="button" id="sceneDupBtn" class="action-btn action-btn-xs" style="flex: 1;">Duplicate</button>

@@ -783,6 +783,31 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     expect(statAudio.classList.contains('chip-ready')).toBe(true);
     expect(statAudio.classList.contains('chip-unstarted')).toBe(false);
   });
+
+  it('contains Scenes Arranger Morph duration slider and Transition Blend segmented control with full labels', () => {
+    const morphSlider = doc.getElementById('sceneMorphSlider') as HTMLInputElement;
+    const morphVal = doc.getElementById('sceneMorphVal') as HTMLSpanElement;
+    const blendSwitch = doc.getElementById('sceneMorphBlendSwitch') as HTMLElement;
+    const blendSelect = doc.getElementById('sceneMorphCurveSelect') as HTMLSelectElement;
+
+    expect(morphSlider).toBeDefined();
+    expect(morphVal).toBeDefined();
+    expect(morphVal.textContent?.trim()).toBe('6s');
+    expect(blendSwitch).toBeDefined();
+    expect(blendSwitch.classList.contains('scene-blend-switch')).toBe(true);
+
+    const buttons = Array.from(blendSwitch.querySelectorAll<HTMLButtonElement>('.seg-btn'));
+    expect(buttons.length).toBe(3);
+
+    const modes = buttons.map(b => b.getAttribute('data-blend'));
+    expect(modes).toEqual(['equalPower', 'reverbWash', 'linear']);
+
+    const labels = buttons.map(b => b.textContent?.trim());
+    expect(labels).toEqual(['Lush', 'Wash', 'Linear']);
+
+    expect(buttons[0].classList.contains('active')).toBe(true);
+    expect(blendSelect).toBeDefined();
+  });
 });
 
 
