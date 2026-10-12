@@ -766,6 +766,64 @@ describe('Unified InputHandler Interaction Model', () => {
       sm.update(0.016, 800, 600, quantizer);
       expect(drumDot.playhead.lastEval?.point.y).toBe(50);
     });
+
+    it('toggles selection with metaKey / ctrlKey and moves multiple strokes simultaneously', () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+      new InputHandler(mockCanvas, {
+        strokeManager: sm,
+        getQuantizer: () => quantizer,
+        onStrokeComplete: vi.fn(),
+        onSelectStroke: vi.fn(),
+      });
+
+      const pathA: SplinePath = {
+        segments: [{ p0: { x: 50, y: 100 }, p1: { x: 100, y: 100 }, p2: { x: 150, y: 100 }, p3: { x: 200, y: 100 } }],
+        isClosed: false,
+      };
+      const pathB: SplinePath = {
+        segments: [{ p0: { x: 50, y: 300 }, p1: { x: 100, y: 300 }, p2: { x: 150, y: 300 }, p3: { x: 200, y: 300 } }],
+        isClosed: false,
+      };
+
+      const sA = sm.addStroke(pathA, 'solid', 'indigo', 120);
+      const sB = sm.addStroke(pathB, 'solid', 'amber', 120);
+
+      // 1. Click stroke A without metaKey -> selects A
+      listeners['pointerdown'][0]({ clientX: 100, clientY: 100, pointerId: 1, button: 0, metaKey: false });
+      expect(sm.selectedStrokeIds).toEqual([sA.id]);
+      expect(sm.selectedStrokeId).toBe(sA.id);
+
+      // 2. Cmd+Click stroke B -> adds B to selection
+      listeners['pointerdown'][0]({ clientX: 100, clientY: 300, pointerId: 1, button: 0, metaKey: true });
+      expect(sm.selectedStrokeIds).toContain(sA.id);
+      expect(sm.selectedStrokeIds).toContain(sB.id);
+      expect(sm.selectedStrokeIds.length).toBe(2);
+      expect(sm.selectedStrokeId).toBeNull(); // Inspector suppressed for multi-selection!
+
+      // 3. Pointer move on stroke B by dx=20, dy=15
+      windowListeners['pointermove'][0]({ clientX: 120, clientY: 315, pointerId: 1 });
+
+      // Both strokes should be translated by dx=20, dy=15
+      expect(sA.path.segments[0].p0.x).toBe(70);
+      expect(sA.path.segments[0].p0.y).toBe(115);
+      expect(sB.path.segments[0].p0.x).toBe(70);
+      expect(sB.path.segments[0].p0.y).toBe(315);
+
+      // 4. Pointer up commits move
+      windowListeners['pointerup'][0]({ clientX: 120, clientY: 315, pointerId: 1 });
+
+      // Undo should revert both strokes
+      sm.undo();
+      expect(sA.path.segments[0].p0.x).toBe(50);
+      expect(sA.path.segments[0].p0.y).toBe(100);
+      expect(sB.path.segments[0].p0.x).toBe(50);
+      expect(sB.path.segments[0].p0.y).toBe(300);
+
+      // 5. Clicking empty canvas clears selection
+      listeners['pointerdown'][0]({ clientX: 500, clientY: 500, pointerId: 1, button: 0, metaKey: false });
+      expect(sm.selectedStrokeIds).toEqual([]);
+    });
   });
 });
 

@@ -835,6 +835,17 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     expect(topSaveBtn.getAttribute('aria-label')).toBe('Save Preset');
     expect(topLoadBtn.classList.contains('top-preset-icon-btn')).toBe(true);
     expect(topSaveBtn.classList.contains('top-preset-icon-btn')).toBe(true);
+
+    // Delete preset button and saved preset list manager
+    const topDeleteBtn = doc.getElementById('topDeletePresetBtn') as HTMLButtonElement;
+    expect(topDeleteBtn).toBeDefined();
+    expect(topDeleteBtn.getAttribute('aria-label')).toBe('Delete Custom Preset');
+    expect(topDeleteBtn.classList.contains('top-preset-icon-btn')).toBe(true);
+    expect(topDeleteBtn.classList.contains('btn-delete')).toBe(true);
+    expect(topDeleteBtn.disabled).toBe(true);
+
+    const savedListContainer = doc.getElementById('savedPresetsListContainer');
+    expect(savedListContainer).not.toBeNull();
   });
 });
 

@@ -367,11 +367,40 @@ export class InputHandler {
     const hit = this.strokeManager.hitTest(screenPt, 22, worldPt);
 
     if (hit) {
-      // Direct click on a line: immediately select it for modifications!
-      this.strokeManager.selectStroke(hit.id);
-      this.onSelectStroke?.(hit.id);
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+      if (isCmdOrCtrl) {
+        // Command + Click: toggle selection of clicked stroke
+        this.strokeManager.toggleSelectStroke(hit.id);
+        const selectedIds = this.strokeManager.selectedStrokeIds;
+        this.onSelectStroke?.(selectedIds.length === 1 ? selectedIds[0] : null);
 
-      // Prepare for potential reposition dragging
+        if (this.strokeManager.isStrokeSelected(hit.id)) {
+          this.draggedStrokeId = hit.id;
+          this.dragStartPoint = worldPt;
+          this.lastDragPoint = worldPt;
+          this.isDragging = false;
+          this.dragAccumDx = 0;
+          this.dragAccumDy = 0;
+          this.isDrawing = false;
+          this.canvas.style.cursor = 'grab';
+        } else {
+          this.draggedStrokeId = null;
+          this.isDragging = false;
+          this.canvas.style.cursor = 'default';
+        }
+        return;
+      }
+
+      // Normal click without Command/Ctrl:
+      // If clicked stroke is not already in the selection, select only this stroke
+      if (!this.strokeManager.isStrokeSelected(hit.id)) {
+        this.strokeManager.selectStroke(hit.id);
+        this.onSelectStroke?.(hit.id);
+      } else if (this.strokeManager.selectedStrokeIds.length === 1) {
+        this.onSelectStroke?.(hit.id);
+      }
+
+      // Prepare for potential reposition dragging (moves all selected strokes together if multiple)
       const hitPt = worldPt;
       this.draggedStrokeId = hit.id;
       this.dragStartPoint = hitPt;
@@ -382,6 +411,14 @@ export class InputHandler {
       this.isDrawing = false;
       this.canvas.style.cursor = 'grab';
       return;
+    }
+
+    // Clicked on empty canvas: deselect active selection if not holding Command/Ctrl
+    if (!e.metaKey && !e.ctrlKey) {
+      if (this.strokeManager.selectedStrokeIds.length > 0) {
+        this.strokeManager.selectStroke(null);
+        this.onSelectStroke?.(null);
+      }
     }
 
     // Clicked on empty canvas: initialize drawing gesture
@@ -523,7 +560,7 @@ export class InputHandler {
     // ========================================================
     // B. DRAW MODE: Normal pointer move
     // ========================================================
-    // 1. If dragging an existing selected stroke to reposition it
+    // 1. If dragging an existing selected stroke to reposition it (moves all selected strokes together)
     if (this.draggedStrokeId) {
       const rawPt = worldPt;
       const dist = this.dragStartPoint
@@ -535,7 +572,13 @@ export class InputHandler {
         if (this.lastDragPoint) {
           const dx = rawPt.x - this.lastDragPoint.x;
           const dy = rawPt.y - this.lastDragPoint.y;
-          this.strokeManager.translateStroke(this.draggedStrokeId, dx, dy, false);
+          const targetIds = this.strokeManager.isStrokeSelected(this.draggedStrokeId)
+            ? this.strokeManager.selectedStrokeIds
+            : [this.draggedStrokeId];
+
+          for (const id of targetIds) {
+            this.strokeManager.translateStroke(id, dx, dy, false);
+          }
           this.dragAccumDx += dx;
           this.dragAccumDy += dy;
           this.lastDragPoint = rawPt;
@@ -602,7 +645,7 @@ export class InputHandler {
     }
   };
 
-  private handlePointerUp = (): void => {
+  private handlePointerUp = (e?: PointerEvent): void => {
     // Live Play mode: release live voice
     if (this.mode === 'live') {
       this.isLivePointerDown = false;
@@ -618,7 +661,15 @@ export class InputHandler {
     // 1. If dragging an existing stroke, finalize translation with undo entry
     if (this.isDragging && this.draggedStrokeId) {
       if (Math.abs(this.dragAccumDx) > 0.5 || Math.abs(this.dragAccumDy) > 0.5) {
-        this.strokeManager.translateStroke(this.draggedStrokeId, 0, 0, true);
+        const targetIds = this.strokeManager.isStrokeSelected(this.draggedStrokeId)
+          ? this.strokeManager.selectedStrokeIds
+          : [this.draggedStrokeId];
+
+        if (targetIds.length === 1) {
+          this.strokeManager.recordTranslateUndo(targetIds[0], this.dragAccumDx, this.dragAccumDy);
+        } else if (targetIds.length > 1) {
+          this.strokeManager.recordMultiTranslateUndo(targetIds, this.dragAccumDx, this.dragAccumDy);
+        }
       }
       this.isDragging = false;
       this.draggedStrokeId = null;
@@ -628,8 +679,14 @@ export class InputHandler {
       return;
     }
 
-    // 2. If clicked a stroke without dragging, it remains selected
+    // 2. If clicked a stroke without dragging:
     if (this.draggedStrokeId) {
+      // If user clicked an already selected stroke in a multi-selection without dragging and without Command/Ctrl,
+      // narrow selection to just that clicked stroke
+      if (!this.isDragging && e && !e.metaKey && !e.ctrlKey && this.strokeManager.selectedStrokeIds.length > 1) {
+        this.strokeManager.selectStroke(this.draggedStrokeId);
+        this.onSelectStroke?.(this.draggedStrokeId);
+      }
       this.draggedStrokeId = null;
       this.lastDragPoint = null;
       this.dragStartPoint = null;

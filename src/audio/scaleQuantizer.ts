@@ -165,11 +165,21 @@ export class ScaleQuantizer {
   public static readonly WORLD_MULTIPLIER = 2.5;
 
   /**
+   * Total musical octaves across the full addressable frequency spectrum [100 Hz, 8000 Hz].
+   * log2(8000 / 100) ≈ 6.3219 octaves.
+   */
+  public static readonly TOTAL_OCTAVES = Math.log2(ScaleQuantizer.MAX_FREQ / ScaleQuantizer.MIN_FREQ);
+
+  /**
    * Total virtual height in pixels of the frequency world.
+   * Dynamically scales with visible octaveSpan (reference 4 octaves = standard 2.5x world height)
+   * so changing the Octaves View zooms the pitch field resolution while musical pitches remain 100% constant.
    */
   public getWorldHeight(viewportHeight: number): number {
     const vh = viewportHeight > 0 ? viewportHeight : 800;
-    return vh * ScaleQuantizer.WORLD_MULTIPLIER;
+    const visibleOctaves = Math.max(1, this.config.octaveSpan ?? 4);
+    const multiplier = ScaleQuantizer.WORLD_MULTIPLIER * (4 / visibleOctaves);
+    return vh * multiplier;
   }
 
   /**

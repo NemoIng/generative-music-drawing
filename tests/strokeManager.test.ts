@@ -1987,6 +1987,179 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
       expect(dottedStroke.playhead.lastPitch?.frequency).toBeCloseTo(initialDottedFreq!, 2);
     });
   });
+
+  describe('Multi-line Selection and Multi-Move', () => {
+    it('manages multiple selected stroke IDs and suppresses single selectedStrokeId', () => {
+      const sm = new StrokeManager();
+      const s1 = sm.addStroke(dummyPath, 'solid', 'indigo', 120);
+      const s2 = sm.addStroke(dummyPath, 'solid', 'amber', 120);
+      const s3 = sm.addStroke(dummyPath, 'solid', 'emerald', 120);
+
+      expect(sm.selectedStrokeIds).toEqual([]);
+      expect(sm.selectedStrokeId).toBeNull();
+
+      // Select single stroke
+      sm.selectStroke(s1.id);
+      expect(sm.selectedStrokeIds).toEqual([s1.id]);
+      expect(sm.selectedStrokeId).toBe(s1.id);
+      expect(sm.isStrokeSelected(s1.id)).toBe(true);
+      expect(sm.isStrokeSelected(s2.id)).toBe(false);
+
+      // Toggle select second stroke (Cmd+Click)
+      sm.toggleSelectStroke(s2.id);
+      expect(sm.selectedStrokeIds).toContain(s1.id);
+      expect(sm.selectedStrokeIds).toContain(s2.id);
+      expect(sm.selectedStrokeIds.length).toBe(2);
+      // Suppresses single line inspector by returning null for selectedStrokeId
+      expect(sm.selectedStrokeId).toBeNull();
+      expect(sm.isStrokeSelected(s1.id)).toBe(true);
+      expect(sm.isStrokeSelected(s2.id)).toBe(true);
+      expect(sm.isStrokeSelected(s3.id)).toBe(false);
+
+      // Select all strokes (Cmd+A)
+      sm.selectAllStrokes();
+      expect(sm.selectedStrokeIds.length).toBe(3);
+      expect(sm.selectedStrokeId).toBeNull();
+
+      // Deselect via null
+      sm.selectStroke(null);
+      expect(sm.selectedStrokeIds).toEqual([]);
+      expect(sm.selectedStrokeId).toBeNull();
+    });
+
+    it('records and undoes/redoes multiMove correctly', () => {
+      const sm = new StrokeManager();
+      const p1: SplinePath = {
+        segments: [{ p0: { x: 0, y: 100 }, p1: { x: 50, y: 100 }, p2: { x: 50, y: 100 }, p3: { x: 100, y: 100 } }],
+        isClosed: false,
+      };
+      const p2: SplinePath = {
+        segments: [{ p0: { x: 0, y: 200 }, p1: { x: 50, y: 200 }, p2: { x: 50, y: 200 }, p3: { x: 100, y: 200 } }],
+        isClosed: false,
+      };
+      const s1 = sm.addStroke(p1, 'solid', 'indigo', 120);
+      const s2 = sm.addStroke(p2, 'solid', 'amber', 120);
+
+      const s1InitX = s1.path.segments[0].p0.x;
+      const s2InitX = s2.path.segments[0].p0.x;
+
+      sm.selectMultipleStrokes([s1.id, s2.id]);
+
+      // Move both strokes by (30, 20)
+      sm.translateStroke(s1.id, 30, 20, false);
+      sm.translateStroke(s2.id, 30, 20, false);
+      sm.recordMultiTranslateUndo([s1.id, s2.id], 30, 20);
+
+      expect(s1.path.segments[0].p0.x).toBe(s1InitX + 30);
+      expect(s2.path.segments[0].p0.x).toBe(s2InitX + 30);
+
+      // Undo
+      sm.undo();
+      expect(s1.path.segments[0].p0.x).toBe(s1InitX);
+      expect(s2.path.segments[0].p0.x).toBe(s2InitX);
+
+      // Redo
+      sm.redo();
+      expect(s1.path.segments[0].p0.x).toBe(s1InitX + 30);
+      expect(s2.path.segments[0].p0.x).toBe(s2InitX + 30);
+    });
+
+    it('deletes all selected strokes when deleteSelected is called', () => {
+      const sm = new StrokeManager();
+      const s1 = sm.addStroke(dummyPath, 'solid', 'indigo', 120);
+      const s2 = sm.addStroke(dummyPath, 'solid', 'amber', 120);
+      const s3 = sm.addStroke(dummyPath, 'solid', 'emerald', 120);
+
+      sm.selectMultipleStrokes([s1.id, s2.id]);
+      expect(sm.activeStrokes.length).toBe(3);
+
+      const deleted = sm.deleteSelected();
+      expect(deleted).toBe(true);
+      expect(sm.activeStrokes.length).toBe(1);
+      expect(sm.activeStrokes[0].id).toBe(s3.id);
+      expect(sm.selectedStrokeIds).toEqual([]);
+    });
+
+    it('converts all strokes to speed timing and supports undo/redo', () => {
+      const sm = new StrokeManager();
+      sm.setBpm(120);
+      const p1: SplinePath = {
+        segments: [{ p0: { x: 0, y: 100 }, p1: { x: 100, y: 100 }, p2: { x: 200, y: 100 }, p3: { x: 300, y: 100 } }],
+        isClosed: false,
+      };
+      const p2: SplinePath = {
+        segments: [{ p0: { x: 0, y: 200 }, p1: { x: 100, y: 200 }, p2: { x: 200, y: 200 }, p3: { x: 300, y: 200 } }],
+        isClosed: false,
+      };
+
+      const s1 = sm.addStroke(p1, 'solid', 'indigo', 120);
+      const s2 = sm.addStroke(p2, 'solid', 'amber', 120);
+
+      // Set s1 to 15s timer, s2 to 60s timer
+      sm.setStrokeTimingMode(s1.id, 'timer', 1200);
+      s1.duration = 15;
+      sm.setStrokeTimingMode(s2.id, 'timer', 1200);
+      s2.duration = 60;
+
+      expect(s1.timingMode).toBe('timer');
+      expect(s2.timingMode).toBe('timer');
+
+      // Convert all strokes to speed timing
+      const count = sm.convertAllStrokesToSpeedTiming(1200);
+      expect(count).toBe(2);
+
+      expect(s1.timingMode).toBe('speed');
+      expect(s2.timingMode).toBe('speed');
+      expect(s1.speedMultiplier).toBeGreaterThan(0);
+      expect(s2.speedMultiplier).toBeGreaterThan(0);
+
+      // Undo reverts both to timer
+      sm.undo();
+      expect(s1.timingMode).toBe('timer');
+      expect(s1.duration).toBe(15);
+      expect(s2.timingMode).toBe('timer');
+      expect(s2.duration).toBe(60);
+
+      // Redo restores speed timing
+      sm.redo();
+      expect(s1.timingMode).toBe('speed');
+      expect(s2.timingMode).toBe('speed');
+    });
+
+    it('guarantees musical pitch constancy when changing octaveSpan', () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer({ octaveSpan: 4 });
+      quantizer.setScrollEnabled(true);
+      const viewportHeight = 800;
+
+      const p: SplinePath = {
+        segments: [{ p0: { x: 50, y: 650 }, p1: { x: 100, y: 650 }, p2: { x: 150, y: 650 }, p3: { x: 200, y: 650 } }],
+        isClosed: false,
+      };
+      const stroke = sm.addStroke(p, 'solid', 'indigo', 120);
+
+      const initialPitch = quantizer.quantizeContinuous(stroke.path.segments[0].p0.y, viewportHeight);
+
+      // Change octave view from 4 to 2, 3, 5, 6
+      for (const newOct of [2, 3, 5, 6]) {
+        const oldWorldH = quantizer.getWorldHeight(viewportHeight);
+        const oldActiveH = Math.max(1, oldWorldH - 2 * ScaleQuantizer.MARGIN_Y);
+
+        quantizer.updateConfig({ octaveSpan: newOct });
+
+        const newWorldH = quantizer.getWorldHeight(viewportHeight);
+        const newActiveH = Math.max(1, newWorldH - 2 * ScaleQuantizer.MARGIN_Y);
+        const scaleFactor = newActiveH / oldActiveH;
+
+        sm.scaleMelodicStrokesY(scaleFactor, ScaleQuantizer.MARGIN_Y);
+
+        const evalPitch = quantizer.quantizeContinuous(stroke.path.segments[0].p0.y, viewportHeight);
+        expect(evalPitch.frequency).toBeCloseTo(initialPitch.frequency, 4);
+        expect(evalPitch.noteName).toBe(initialPitch.noteName);
+        expect(evalPitch.scaleDegree).toBeCloseTo(initialPitch.scaleDegree, 4);
+      }
+    });
+  });
 });
 
 

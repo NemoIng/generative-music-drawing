@@ -18,6 +18,7 @@ type UndoAction =
   | { type: 'add'; stroke: DrawnStroke }
   | { type: 'remove'; stroke: DrawnStroke; index: number }
   | { type: 'move'; strokeId: string; dx: number; dy: number }
+  | { type: 'multiMove'; moves: { strokeId: string; dx: number; dy: number }[] }
   | { type: 'revoice'; strokeId: string; oldInstrumentId: string; newInstrumentId: string }
   | { type: 'volume'; strokeId: string; oldVolume: number; newVolume: number }
   | { type: 'duration'; strokeId: string; oldDuration: number; newDuration: number }
@@ -31,6 +32,18 @@ type UndoAction =
       newSpeed?: number;
       oldDuration?: number;
       newDuration?: number;
+    }
+  | {
+      type: 'batchTimingMode';
+      records: {
+        strokeId: string;
+        oldTimingMode: TimingMode;
+        newTimingMode: TimingMode;
+        oldSpeed?: number;
+        newSpeed?: number;
+        oldDuration?: number;
+        newDuration?: number;
+      }[];
     }
   | { type: 'speedMode'; strokeId: string; oldSpeedMode: SpeedMode; newSpeedMode: SpeedMode }
   | { type: 'style'; strokeId: string; oldStyle: StrokeStyle; newStyle: StrokeStyle }
@@ -123,6 +136,7 @@ export class StrokeManager {
   private defaultHarmonizer: HarmonizerMode = 'single';
   private breathingMode: BreathingMode = 'gentle';
   private selectedId: string | null = null;
+  private selectedIds: Set<string> = new Set();
   private hoveredId: string | null = null;
   private masterClockTime = 0;
   private lastCanvasWidth = 1200;
@@ -247,7 +261,18 @@ export class StrokeManager {
   }
 
   public get selectedStrokeId(): string | null {
-    return this.selectedId;
+    return this.selectedIds.size === 1 ? Array.from(this.selectedIds)[0] : (this.selectedIds.size === 0 ? this.selectedId : null);
+  }
+
+  public get selectedStrokeIds(): string[] {
+    if (this.selectedIds.size > 0) {
+      return Array.from(this.selectedIds);
+    }
+    return this.selectedId ? [this.selectedId] : [];
+  }
+
+  public isStrokeSelected(id: string): boolean {
+    return this.selectedIds.has(id) || this.selectedId === id;
   }
 
   public get hoveredStrokeId(): string | null {
@@ -337,9 +362,44 @@ export class StrokeManager {
   }
 
   public selectStroke(id: string | null): void {
-    this.selectedId = id;
+    this.selectedIds.clear();
+    if (id) {
+      this.selectedIds.add(id);
+      this.selectedId = id;
+    } else {
+      this.selectedId = null;
+    }
     for (const stroke of this.strokes) {
       stroke.selected = stroke.id === id;
+    }
+  }
+
+  public toggleSelectStroke(id: string): void {
+    if (this.selectedIds.has(id)) {
+      this.selectedIds.delete(id);
+    } else {
+      this.selectedIds.add(id);
+    }
+    this.selectedId = this.selectedIds.size === 1 ? Array.from(this.selectedIds)[0] : null;
+    for (const stroke of this.strokes) {
+      stroke.selected = this.selectedIds.has(stroke.id);
+    }
+  }
+
+  public selectAllStrokes(): void {
+    this.selectedIds.clear();
+    for (const stroke of this.strokes) {
+      this.selectedIds.add(stroke.id);
+      stroke.selected = true;
+    }
+    this.selectedId = this.selectedIds.size === 1 ? Array.from(this.selectedIds)[0] : null;
+  }
+
+  public selectMultipleStrokes(ids: string[]): void {
+    this.selectedIds = new Set(ids);
+    this.selectedId = this.selectedIds.size === 1 ? ids[0] : null;
+    for (const stroke of this.strokes) {
+      stroke.selected = this.selectedIds.has(stroke.id);
     }
   }
 
@@ -878,6 +938,68 @@ export class StrokeManager {
   }
 
   /**
+   * Converts all active strokes in the score to speed timing mode (BPM-synced velocity).
+   * For lines previously in fixed-duration timer mode, their velocity is mapped
+   * to an equivalent speed multiplier, ensuring seamless playback without abrupt jumps.
+   * Returns the count of strokes converted.
+   */
+  public convertAllStrokesToSpeedTiming(canvasWidth?: number): number {
+    const records: {
+      strokeId: string;
+      oldTimingMode: TimingMode;
+      newTimingMode: TimingMode;
+      oldSpeed?: number;
+      newSpeed?: number;
+      oldDuration?: number;
+      newDuration?: number;
+    }[] = [];
+
+    const effWidth = canvasWidth && canvasWidth > 0 ? canvasWidth : this.lastCanvasWidth;
+    const normRatio = effWidth > 0 ? effWidth / 1200 : 1;
+    const baseSpeed = (this.bpm / 60) * StrokeManager.BEAT_DISTANCE * normRatio;
+
+    for (const stroke of this.strokes) {
+      const oldTimingMode: TimingMode = stroke.timingMode ?? (stroke.speedMode === 'timer' ? 'timer' : 'speed');
+      const oldSpeed = stroke.speedMultiplier ?? 1.0;
+      const oldDuration = stroke.duration ?? 30;
+
+      let newSpeed = oldSpeed;
+      const L = stroke.lut.totalLength;
+
+      if (oldTimingMode === 'timer') {
+        if (L > 1 && oldDuration > 0 && baseSpeed > 0) {
+          const rawSpeed = L / (oldDuration * baseSpeed);
+          newSpeed = Math.max(0.05, Math.min(5.0, Math.round(rawSpeed * 100) / 100));
+        } else {
+          newSpeed = 1.0;
+        }
+      }
+
+      stroke.timingMode = 'speed';
+      stroke.speedMode = 'speed';
+      stroke.speedMultiplier = newSpeed;
+
+      records.push({
+        strokeId: stroke.id,
+        oldTimingMode,
+        newTimingMode: 'speed',
+        oldSpeed,
+        newSpeed,
+        oldDuration,
+        newDuration: stroke.duration,
+      });
+    }
+
+    if (records.length > 0) {
+      this.undoStack.push({ type: 'batchTimingMode', records });
+      this.redoStack = [];
+    }
+
+    this.defaultSpeedMode = 'speed';
+    return records.length;
+  }
+
+  /**
    * Sets the harmonic voicing mode ('single', 'octave', 'fifth', 'triad', 'seventh') for an individual stroke.
    */
   public setStrokeHarmonizer(strokeId: string, newHarmonizer: HarmonizerMode, recordUndo = true): boolean {
@@ -1048,25 +1170,40 @@ export class StrokeManager {
     return true;
   }
 
+  public recordTranslateUndo(strokeId: string, dx: number, dy: number): void {
+    this.undoStack.push({ type: 'move', strokeId, dx, dy });
+    this.redoStack = [];
+  }
+
+  public recordMultiTranslateUndo(strokeIds: string[], dx: number, dy: number): void {
+    this.undoStack.push({
+      type: 'multiMove',
+      moves: strokeIds.map((id) => ({ strokeId: id, dx, dy })),
+    });
+    this.redoStack = [];
+  }
+
   /**
    * Rescales melodic stroke Y coordinates proportionally when octave view zoom changes,
    * guaranteeing that musical pitch (frequency and scale degree) remains identical.
    * Onyx drum machine strokes remain locked to their fixed screen zones.
    */
-  public scaleMelodicStrokesY(scaleFactor: number): void {
+  public scaleMelodicStrokesY(scaleFactor: number, originY: number = 0): void {
     if (scaleFactor === 1 || !isFinite(scaleFactor) || scaleFactor <= 0) return;
 
     const scaledStrokes = new Set<DrawnStroke>();
     const scaledPaths = new Set<SplinePath>();
 
+    const scaleY = (y: number) => originY + (y - originY) * scaleFactor;
+
     const scalePathSegments = (p: SplinePath) => {
       if (scaledPaths.has(p)) return;
       scaledPaths.add(p);
       for (const seg of p.segments) {
-        seg.p0.y *= scaleFactor;
-        seg.p1.y *= scaleFactor;
-        seg.p2.y *= scaleFactor;
-        seg.p3.y *= scaleFactor;
+        seg.p0.y = scaleY(seg.p0.y);
+        seg.p1.y = scaleY(seg.p1.y);
+        seg.p2.y = scaleY(seg.p2.y);
+        seg.p3.y = scaleY(seg.p3.y);
       }
     };
 
@@ -1084,13 +1221,23 @@ export class StrokeManager {
 
       stroke.playhead.trail = [];
 
-      if (stroke.playhead.lastEval) {
-        stroke.playhead.lastEval.point.y *= scaleFactor;
+      if (stroke.isPoint && stroke.path.segments.length > 0) {
+        stroke.playhead.lastEval = {
+          point: { x: stroke.path.segments[0].p0.x, y: stroke.path.segments[0].p0.y },
+          tangent: { x: 1, y: 0 },
+          curvature: 0,
+          segmentIndex: 0,
+          t: 0,
+          speed: 0,
+          s: 0,
+        };
+      } else if (stroke.playhead.lastEval) {
+        stroke.playhead.lastEval.point.y = scaleY(stroke.playhead.lastEval.point.y);
       }
 
       if (stroke.waveParams) {
-        stroke.waveParams.baseP0.y *= scaleFactor;
-        stroke.waveParams.baseP1.y *= scaleFactor;
+        stroke.waveParams.baseP0.y = scaleY(stroke.waveParams.baseP0.y);
+        stroke.waveParams.baseP1.y = scaleY(stroke.waveParams.baseP1.y);
         stroke.waveParams.amplitude *= scaleFactor;
       }
     }
@@ -1098,8 +1245,8 @@ export class StrokeManager {
     if (this.clipboard && this.clipboard.instrumentId !== 'onyx') {
       scalePathSegments(this.clipboard.path);
       if (this.clipboard.waveParams) {
-        this.clipboard.waveParams.baseP0.y *= scaleFactor;
-        this.clipboard.waveParams.baseP1.y *= scaleFactor;
+        this.clipboard.waveParams.baseP0.y = scaleY(this.clipboard.waveParams.baseP0.y);
+        this.clipboard.waveParams.baseP1.y = scaleY(this.clipboard.waveParams.baseP1.y);
         this.clipboard.waveParams.amplitude *= scaleFactor;
       }
     }
@@ -1107,14 +1254,18 @@ export class StrokeManager {
     const scaleUndoAction = (action: UndoAction) => {
       if (action.type === 'move') {
         action.dy *= scaleFactor;
+      } else if (action.type === 'multiMove') {
+        for (const m of action.moves) {
+          m.dy *= scaleFactor;
+        }
       } else if (action.type === 'add' || action.type === 'remove') {
         if (action.stroke.instrumentId !== 'onyx' && !scaledStrokes.has(action.stroke)) {
           scaledStrokes.add(action.stroke);
           scalePathSegments(action.stroke.path);
           action.stroke.lut = buildArcLengthLUT(action.stroke.path);
           if (action.stroke.waveParams) {
-            action.stroke.waveParams.baseP0.y *= scaleFactor;
-            action.stroke.waveParams.baseP1.y *= scaleFactor;
+            action.stroke.waveParams.baseP0.y = scaleY(action.stroke.waveParams.baseP0.y);
+            action.stroke.waveParams.baseP1.y = scaleY(action.stroke.waveParams.baseP1.y);
             action.stroke.waveParams.amplitude *= scaleFactor;
           }
         }
@@ -1123,8 +1274,8 @@ export class StrokeManager {
           scalePathSegments(action.oldPath);
           action.oldLut = buildArcLengthLUT(action.oldPath);
           if (action.oldWaveParams) {
-            action.oldWaveParams.baseP0.y *= scaleFactor;
-            action.oldWaveParams.baseP1.y *= scaleFactor;
+            action.oldWaveParams.baseP0.y = scaleY(action.oldWaveParams.baseP0.y);
+            action.oldWaveParams.baseP1.y = scaleY(action.oldWaveParams.baseP1.y);
             action.oldWaveParams.amplitude *= scaleFactor;
           }
         }
@@ -1132,8 +1283,8 @@ export class StrokeManager {
           scalePathSegments(action.newPath);
           action.newLut = buildArcLengthLUT(action.newPath);
           if (action.newWaveParams) {
-            action.newWaveParams.baseP0.y *= scaleFactor;
-            action.newWaveParams.baseP1.y *= scaleFactor;
+            action.newWaveParams.baseP0.y = scaleY(action.newWaveParams.baseP0.y);
+            action.newWaveParams.baseP1.y = scaleY(action.newWaveParams.baseP1.y);
             action.newWaveParams.amplitude *= scaleFactor;
           }
         }
@@ -1829,6 +1980,11 @@ export class StrokeManager {
     } else if (action.type === 'move') {
       this.translateStroke(action.strokeId, -action.dx, -action.dy, false);
       this.redoStack.push(action);
+    } else if (action.type === 'multiMove') {
+      for (const m of action.moves) {
+        this.translateStroke(m.strokeId, -m.dx, -m.dy, false);
+      }
+      this.redoStack.push(action);
     } else if (action.type === 'revoice') {
       this.revoiceStroke(action.strokeId, action.oldInstrumentId, false);
       this.redoStack.push(action);
@@ -1891,6 +2047,17 @@ export class StrokeManager {
         if (action.oldDuration !== undefined) stroke.duration = action.oldDuration;
       }
       this.redoStack.push(action);
+    } else if (action.type === 'batchTimingMode') {
+      for (const r of action.records) {
+        const stroke = this.strokes.find((s) => s.id === r.strokeId);
+        if (stroke) {
+          stroke.timingMode = r.oldTimingMode;
+          stroke.speedMode = r.oldTimingMode;
+          if (r.oldSpeed !== undefined) stroke.speedMultiplier = r.oldSpeed;
+          if (r.oldDuration !== undefined) stroke.duration = r.oldDuration;
+        }
+      }
+      this.redoStack.push(action);
     } else if (action.type === 'duration') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) stroke.duration = action.oldDuration;
@@ -1946,6 +2113,11 @@ export class StrokeManager {
       }
     } else if (action.type === 'move') {
       this.translateStroke(action.strokeId, action.dx, action.dy, false);
+      this.undoStack.push(action);
+    } else if (action.type === 'multiMove') {
+      for (const m of action.moves) {
+        this.translateStroke(m.strokeId, m.dx, m.dy, false);
+      }
       this.undoStack.push(action);
     } else if (action.type === 'revoice') {
       this.revoiceStroke(action.strokeId, action.newInstrumentId, false);
@@ -2009,6 +2181,17 @@ export class StrokeManager {
         if (action.newDuration !== undefined) stroke.duration = action.newDuration;
       }
       this.undoStack.push(action);
+    } else if (action.type === 'batchTimingMode') {
+      for (const r of action.records) {
+        const stroke = this.strokes.find((s) => s.id === r.strokeId);
+        if (stroke) {
+          stroke.timingMode = r.newTimingMode;
+          stroke.speedMode = r.newTimingMode;
+          if (r.newSpeed !== undefined) stroke.speedMultiplier = r.newSpeed;
+          if (r.newDuration !== undefined) stroke.duration = r.newDuration;
+        }
+      }
+      this.undoStack.push(action);
     } else if (action.type === 'duration') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) stroke.duration = action.newDuration;
@@ -2042,14 +2225,22 @@ export class StrokeManager {
   }
 
   public deleteSelected(): boolean {
-    if (!this.selectedId) return false;
-    const idx = this.strokes.findIndex((s) => s.id === this.selectedId);
-    if (idx !== -1) {
-      const [removed] = this.strokes.splice(idx, 1);
-      removed.droneVoice?.stop();
-      removed.droneVoice = null;
-      this.undoStack.push({ type: 'remove', stroke: removed, index: idx });
+    const ids = this.selectedIds.size > 0 ? Array.from(this.selectedIds) : (this.selectedId ? [this.selectedId] : []);
+    if (ids.length === 0) return false;
+    let anyRemoved = false;
+    for (const id of ids) {
+      const idx = this.strokes.findIndex((s) => s.id === id);
+      if (idx !== -1) {
+        const [removed] = this.strokes.splice(idx, 1);
+        removed.droneVoice?.stop();
+        removed.droneVoice = null;
+        this.undoStack.push({ type: 'remove', stroke: removed, index: idx });
+        anyRemoved = true;
+      }
+    }
+    if (anyRemoved) {
       this.redoStack = [];
+      this.selectedIds.clear();
       this.selectedId = null;
       return true;
     }
@@ -2064,7 +2255,8 @@ export class StrokeManager {
       stroke.droneVoice = null;
       this.undoStack.push({ type: 'remove', stroke, index: idx });
       this.redoStack = [];
-      if (this.selectedId === id) this.selectedId = null;
+      this.selectedIds.delete(id);
+      if (this.selectedId === id) this.selectedId = this.selectedIds.size === 1 ? Array.from(this.selectedIds)[0] : null;
     }
   }
 
@@ -2076,6 +2268,7 @@ export class StrokeManager {
     this.strokes = [];
     this.undoStack = [];
     this.redoStack = [];
+    this.selectedIds.clear();
     this.selectedId = null;
     this.hoveredId = null;
     this.masterClockTime = 0;
