@@ -1,5 +1,5 @@
 import { DrawnStroke } from '../engine/types';
-import { ScaleGuideline } from '../audio/scaleQuantizer';
+import { ScaleGuideline, ScaleQuantizer } from '../audio/scaleQuantizer';
 import { Point2D } from '../math/types';
 import { getHitJitter } from '../engine/strokeManager';
 import { evaluateAtDistance } from '../math/arcLengthInverter';
@@ -91,21 +91,38 @@ export class CanvasRenderer {
     this.ctx.save();
 
     // Responsive blank background margins for scale names (left) and Hz (right)
+    // 135px rightMargin ensures frequency labels sit to the left of the pitch navigator rail (width 54px + 12px margin + padding)
     const leftMargin = Math.min(84, Math.max(56, w * 0.04));
-    const rightMargin = Math.min(80, Math.max(56, w * 0.04));
+    const rightMargin = Math.min(150, Math.max(130, w * 0.09));
 
-    for (const g of guidelines) {
-      const y = typeof g.screenY === 'number' ? g.screenY : g.y;
-      if (y < -30 || y > h + 30) continue;
+    // Filter visible guidelines and calculate vertical distances to avoid text overlapping
+    const visible = guidelines
+      .map((g) => ({ g, y: typeof g.screenY === 'number' ? g.screenY : g.y }))
+      .filter(({ y }) => y >= -30 && y <= h + 30)
+      .sort((a, b) => a.y - b.y);
+
+    for (let i = 0; i < visible.length; i++) {
+      const { g, y } = visible[i];
+      const prevY = i > 0 ? visible[i - 1].y : -999;
+      const nextY = i < visible.length - 1 ? visible[i + 1].y : 999;
+      const nearestDist = Math.min(Math.abs(y - prevY), Math.abs(nextY - y));
+
+      const isTopBoundary = Math.round(g.frequency) >= ScaleQuantizer.MAX_FREQ;
+      const isBottomBoundary = Math.round(g.frequency) <= ScaleQuantizer.MIN_FREQ;
+      const lineY = isTopBoundary ? Math.max(1, y) : y;
 
       this.ctx.beginPath();
-      this.ctx.moveTo(leftMargin, y);
-      this.ctx.lineTo(w - rightMargin, y);
+      this.ctx.moveTo(leftMargin, lineY);
+      this.ctx.lineTo(w - rightMargin, lineY);
 
       const isFifth = g.scaleDegree % 7 === 4; // Dominant 5th in heptatonic modes
       const isChordTone = !!g.isChordTone && !g.isRoot;
 
-      if (g.isRoot) {
+      if (isTopBoundary || isBottomBoundary) {
+        this.ctx.strokeStyle = this.isDarkMode ? 'rgba(255, 255, 255, 0.40)' : 'rgba(28, 25, 23, 0.35)';
+        this.ctx.lineWidth = 1.2;
+        this.ctx.setLineDash([]);
+      } else if (g.isRoot) {
         this.ctx.strokeStyle = this.isDarkMode ? 'rgba(255, 255, 255, 0.55)' : 'rgba(28, 25, 23, 0.45)';
         this.ctx.lineWidth = 1.5;
         this.ctx.setLineDash([]);
@@ -124,9 +141,13 @@ export class CanvasRenderer {
       }
       this.ctx.stroke();
 
+      // Only draw text labels if the line has enough vertical headroom (>= 15px) or is a primary harmonic landmark
+      const hasRoom = nearestDist >= 15 || g.isRoot || isChordTone || isFifth || isTopBoundary || isBottomBoundary;
+      if (!hasRoom) continue;
+
       // Note Name on margins
       this.ctx.setLineDash([]);
-      this.ctx.font = g.isRoot
+      this.ctx.font = isTopBoundary || isBottomBoundary || g.isRoot
         ? '700 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
         : isChordTone
         ? '600 10.5px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
@@ -134,7 +155,7 @@ export class CanvasRenderer {
         ? '600 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
         : '400 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 
-      this.ctx.fillStyle = g.isRoot
+      this.ctx.fillStyle = isTopBoundary || isBottomBoundary || g.isRoot
         ? (this.isDarkMode ? '#ffffff' : '#1c1917')
         : isChordTone
         ? (this.isDarkMode ? '#fbbf24' : '#b45309')
@@ -142,22 +163,31 @@ export class CanvasRenderer {
         ? (this.isDarkMode ? '#93c5fd' : '#2563eb')
         : (this.isDarkMode ? '#71717a' : '#a8a29e');
       this.ctx.textAlign = 'right';
-      this.ctx.textBaseline = 'middle';
+      this.ctx.textBaseline = lineY <= 8 ? 'top' : 'middle';
+      const textY = lineY <= 8 ? Math.max(3, lineY + 2) : lineY;
 
-      const label = g.isRoot
+      const label = isTopBoundary
+        ? g.noteName
+        : isBottomBoundary
+        ? g.noteName || 'A2'
+        : g.isRoot
         ? `★ ${g.noteName}`
         : isChordTone
         ? `◆ ${g.noteName}`
         : isFifth
         ? `${g.noteName} (5th)`
         : g.noteName;
-      this.ctx.fillText(label, leftMargin - 14, y);
+      if (label) {
+        this.ctx.fillText(label, leftMargin - 14, textY);
+      }
 
       this.ctx.textAlign = 'left';
-      this.ctx.fillStyle = isChordTone
+      this.ctx.fillStyle = isTopBoundary
+        ? (this.isDarkMode ? 'rgba(255, 255, 255, 0.75)' : 'rgba(28, 25, 23, 0.65)')
+        : isChordTone
         ? (this.isDarkMode ? '#fbbf24' : '#b45309')
         : (this.isDarkMode ? '#71717a' : '#a8a29e');
-      this.ctx.fillText(`${Math.round(g.frequency)}Hz`, w - rightMargin + 14, y);
+      this.ctx.fillText(`${Math.round(g.frequency)}Hz`, w - rightMargin + 10, textY);
     }
 
     this.ctx.restore();
@@ -176,7 +206,7 @@ export class CanvasRenderer {
   /**
    * Draws subtle drum tier zone guides when the Onyx drum machine ink is active.
    */
-  public drawDrumZones(isActive: boolean): void {
+  public drawDrumZones(isActive: boolean, quantizer?: ScaleQuantizer): void {
     if (!isActive) return;
     const w = this.width;
     const h = this.height;
@@ -184,15 +214,30 @@ export class CanvasRenderer {
     ctx.save();
 
     const leftMargin = Math.min(84, Math.max(56, w * 0.08));
-    const rightMargin = Math.min(80, Math.max(56, w * 0.08));
+    const rightMargin = Math.min(150, Math.max(130, w * 0.09));
 
-    const zones = [
-      { y: h * 0.25, label: '🥢 Hi-Hats' },
-      { y: h * 0.48, label: '🥁 Toms' },
-      { y: h * 0.72, label: '🪘 Snare / Clap' },
-    ];
+    let zones: { y: number; label: string }[];
+    if (quantizer) {
+      const yFromFreq = (freq: number) => {
+        const u = ScaleQuantizer.frequencyToNormalizedU(freq);
+        const worldY = quantizer.normalizedUToWorldY(u, h);
+        return quantizer.worldToScreenY(worldY, h);
+      };
+      zones = [
+        { y: yFromFreq(2200), label: 'Hi-Hats (2.2k+ Hz)' },
+        { y: yFromFreq(650), label: 'Toms (650–2.2k Hz)' },
+        { y: yFromFreq(260), label: 'Snare / Clap (260–650 Hz)' },
+      ];
+    } else {
+      zones = [
+        { y: h * 0.25, label: 'Hi-Hats' },
+        { y: h * 0.48, label: 'Toms' },
+        { y: h * 0.72, label: 'Snare / Clap' },
+      ];
+    }
 
     for (const z of zones) {
+      if (z.y < -20 || z.y > h + 20) continue;
       ctx.beginPath();
       ctx.moveTo(leftMargin, z.y);
       ctx.lineTo(w - rightMargin, z.y);
@@ -210,11 +255,19 @@ export class CanvasRenderer {
     }
 
     // Bottom Kick label
-    ctx.font = '700 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-    ctx.fillStyle = this.isDarkMode ? 'rgba(255, 255, 255, 0.85)' : 'rgba(24, 24, 27, 0.75)';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText('💥 Kick Drum', w - rightMargin, h - 14);
+    let kickScreenY = h - 14;
+    if (quantizer) {
+      const uKick = ScaleQuantizer.frequencyToNormalizedU(140);
+      const worldY = quantizer.normalizedUToWorldY(uKick, h);
+      kickScreenY = quantizer.worldToScreenY(worldY, h);
+    }
+    if (kickScreenY >= -20 && kickScreenY <= h + 20) {
+      ctx.font = '700 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+      ctx.fillStyle = this.isDarkMode ? 'rgba(255, 255, 255, 0.85)' : 'rgba(24, 24, 27, 0.75)';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('Kick Drum (110–260 Hz)', w - rightMargin, kickScreenY - 3);
+    }
 
     ctx.restore();
   }
@@ -276,7 +329,7 @@ export class CanvasRenderer {
   /**
    * Renders completed strokes with ink-on-paper aesthetics and mute/solo awareness.
    */
-  public drawStroke(stroke: DrawnStroke, hasSolo: boolean = false): void {
+  public drawStroke(stroke: DrawnStroke, hasSolo: boolean = false, isMultiSelection: boolean = false): void {
     const { path, style } = stroke;
     const ctx = this.ctx;
     ctx.save();
@@ -431,49 +484,51 @@ export class CanvasRenderer {
         ctx.stroke();
       }
 
-      // Floating pill badge above start point with Volume, Texture, Speed Multiplier & Progress
-      const volPercent = Math.round(vol * 100);
-      const speedMult = stroke.speedMultiplier ?? 1.0;
-      const speedText = Number.isInteger(speedMult * 10) ? speedMult.toFixed(1) : speedMult.toFixed(2);
-      const speedLabel = `${speedText}x`;
-      const progressPct = stroke.lut.totalLength > 0
-        ? Math.min(100, Math.max(0, Math.round((stroke.playhead.currentDistance / stroke.lut.totalLength) * 100)))
-        : 0;
-      const travMode = (stroke.traversal === 'bounce' || (stroke.traversal as string) === 'pingpong') ? 'Bounce' : 'Loop';
+      // Floating pill badge above start point with Volume, Texture, Speed Multiplier & Progress (suppressed during multi-selection)
+      if (!isMultiSelection) {
+        const volPercent = Math.round(vol * 100);
+        const speedMult = stroke.speedMultiplier ?? 1.0;
+        const speedText = Number.isInteger(speedMult * 10) ? speedMult.toFixed(1) : speedMult.toFixed(2);
+        const speedLabel = `${speedText}x`;
+        const progressPct = stroke.lut.totalLength > 0
+          ? Math.min(100, Math.max(0, Math.round((stroke.playhead.currentDistance / stroke.lut.totalLength) * 100)))
+          : 0;
+        const travMode = (stroke.traversal === 'bounce' || (stroke.traversal as string) === 'pingpong') ? 'Bounce' : 'Loop';
 
-      let tagText = stroke.isPoint
-        ? (stroke.playhead.lastPitch
-            ? `${volPercent}% vol • Dot (${stroke.playhead.lastPitch.noteName} · ${Math.round(stroke.playhead.lastPitch.frequency)}Hz)`
-            : `${volPercent}% vol • Dot Note`)
-        : `${volPercent}% vol • ${speedLabel} • ${progressPct}% • ${travMode}`;
-      if (stroke.instrumentId === 'onyx') {
-        const normY = this.height > 0 ? startPt.y / this.height : 0.5;
-        const drumName = normY >= 0.72 ? 'Kick' : normY >= 0.48 ? 'Snare' : normY >= 0.25 ? 'Tom' : 'Hi-Hat';
-        const drumLabel = stroke.style === 'striped' ? `${drumName} Roll` : drumName;
-        tagText = stroke.isPoint
-          ? `${volPercent}% vol • ${drumLabel} Dot`
-          : `${volPercent}% vol • ${drumLabel} • ${speedLabel} • ${progressPct}%`;
-      } else if (stroke.waveParams && stroke.waveParams.amplitude > 0) {
-        tagText = `${volPercent}% vol • Wave • ${speedLabel} • ${progressPct}%`;
+        let tagText = stroke.isPoint
+          ? (stroke.playhead.lastPitch
+              ? `${volPercent}% vol • Dot (${stroke.playhead.lastPitch.noteName} · ${Math.round(stroke.playhead.lastPitch.frequency)}Hz)`
+              : `${volPercent}% vol • Dot Note`)
+          : `${volPercent}% vol • ${speedLabel} • ${progressPct}% • ${travMode}`;
+        if (stroke.instrumentId === 'onyx') {
+          const drumFreq = stroke.playhead.lastPitch?.frequency ?? 200;
+          const drumName = drumFreq < 260 ? 'Kick' : drumFreq < 650 ? 'Snare' : drumFreq < 2200 ? 'Tom' : 'Hi-Hat';
+          const drumLabel = stroke.style === 'striped' ? `${drumName} Roll` : drumName;
+          tagText = stroke.isPoint
+            ? `${volPercent}% vol • ${drumLabel} Dot`
+            : `${volPercent}% vol • ${drumLabel} • ${speedLabel} • ${progressPct}%`;
+        } else if (stroke.waveParams && stroke.waveParams.amplitude > 0) {
+          tagText = `${volPercent}% vol • Wave • ${speedLabel} • ${progressPct}%`;
+        }
+
+        ctx.font = '600 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+        const textMetrics = ctx.measureText(tagText);
+        const padX = 7;
+        const tagW = textMetrics.width + padX * 2;
+        const tagH = 17;
+        const tagX = startPt.x - tagW / 2;
+        const tagY = startPt.y - 22;
+
+        ctx.fillStyle = '#1c1917';
+        ctx.beginPath();
+        ctx.roundRect(tagX, tagY, tagW, tagH, 8);
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(tagText, tagX + tagW / 2, tagY + tagH / 2);
       }
-
-      ctx.font = '600 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-      const textMetrics = ctx.measureText(tagText);
-      const padX = 7;
-      const tagW = textMetrics.width + padX * 2;
-      const tagH = 17;
-      const tagX = startPt.x - tagW / 2;
-      const tagY = startPt.y - 22;
-
-      ctx.fillStyle = '#1c1917';
-      ctx.beginPath();
-      ctx.roundRect(tagX, tagY, tagW, tagH, 8);
-      ctx.fill();
-
-      ctx.fillStyle = '#ffffff';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(tagText, tagX + tagW / 2, tagY + tagH / 2);
     }
 
     ctx.restore();

@@ -242,45 +242,23 @@ export class InputHandler {
     const rect = this.canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const screenY = e.clientY - rect.top;
-    const isOnyx = this.getCurrentInstrument?.() === 'onyx';
+    const quantizer = this.getQuantizer();
+    let y = quantizer.screenToWorldY(screenY, rect.height);
 
-    let y: number;
-    if (isOnyx) {
-      // Drum boundaries and drum strokes are fixed to the screen
-      y = screenY;
-      if (applySnap && this.snapPitch) {
-        // Snap to center of fixed drum boundaries: Hi-Hat, Tom, Snare/Clap, Kick
-        const drumSnapYs = [rect.height * 0.16, rect.height * 0.36, rect.height * 0.60, rect.height * 0.84];
-        let closestY = y;
-        let minDiff = 30;
-        for (const snapY of drumSnapYs) {
-          const diff = Math.abs(snapY - y);
-          if (diff < minDiff) {
-            minDiff = diff;
-            closestY = snapY;
-          }
+    // Magnetic Pitch Snapping (only applied when drawing a new line)
+    if (applySnap && this.snapPitch) {
+      const guidelines = quantizer.getAllGuidelines(rect.height);
+      let closestY = y;
+      let minDiff = 20;
+
+      for (const g of guidelines) {
+        const diff = Math.abs(g.y - y);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestY = g.y;
         }
-        y = closestY;
       }
-    } else {
-      const quantizer = this.getQuantizer();
-      y = quantizer.screenToWorldY(screenY, rect.height);
-
-      // Magnetic Pitch Snapping (only applied when drawing a new line)
-      if (applySnap && this.snapPitch) {
-        const guidelines = quantizer.getAllGuidelines(rect.height);
-        let closestY = y;
-        let minDiff = 20;
-
-        for (const g of guidelines) {
-          const diff = Math.abs(g.y - y);
-          if (diff < minDiff) {
-            minDiff = diff;
-            closestY = g.y;
-          }
-        }
-        y = closestY;
-      }
+      y = closestY;
     }
 
     return { x, y };
@@ -322,17 +300,18 @@ export class InputHandler {
       let frequency = 0;
 
       if (instId === 'onyx') {
-        const normY = rect.height > 0 ? screenY / rect.height : 0.5;
-        if (normY >= 0.72) {
+        const pitch = quantizer.quantizeContinuous(worldPt.y, rect.height);
+        const drumFreq = pitch.frequency;
+        if (drumFreq < 260) {
           DrumSynth.triggerKick(LIVE_VOLUME, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
           noteName = 'Kick';
           frequency = 55;
-        } else if (normY >= 0.48) {
+        } else if (drumFreq < 650) {
           DrumSynth.triggerSnare(LIVE_VOLUME * 0.95, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
           noteName = 'Snare';
           frequency = 180;
-        } else if (normY >= 0.25) {
-          const tomFreq = 100 + (1 - (normY - 0.25) / 0.23) * 120;
+        } else if (drumFreq < 2200) {
+          const tomFreq = Math.max(100, Math.min(220, 100 + ((drumFreq - 650) / 1550) * 120));
           DrumSynth.triggerTom(tomFreq, LIVE_VOLUME * 0.9, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
           noteName = 'Tom';
           frequency = tomFreq;
@@ -384,16 +363,45 @@ export class InputHandler {
     // ========================================================
     // B. DRAW MODE: Normal score drawing and line selection
     // ========================================================
-    // Hit test lines: Onyx lines against screen coordinates, melodic lines against world coordinates
+    // Hit test lines across world score coordinates (both melodic and drum strokes)
     const hit = this.strokeManager.hitTest(screenPt, 22, worldPt);
 
     if (hit) {
-      // Direct click on a line: immediately select it for modifications!
-      this.strokeManager.selectStroke(hit.id);
-      this.onSelectStroke?.(hit.id);
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+      if (isCmdOrCtrl) {
+        // Command + Click: toggle selection of clicked stroke
+        this.strokeManager.toggleSelectStroke(hit.id);
+        const selectedIds = this.strokeManager.selectedStrokeIds;
+        this.onSelectStroke?.(selectedIds.length === 1 ? selectedIds[0] : null);
 
-      // Prepare for potential reposition dragging
-      const hitPt = hit.instrumentId === 'onyx' ? screenPt : worldPt;
+        if (this.strokeManager.isStrokeSelected(hit.id)) {
+          this.draggedStrokeId = hit.id;
+          this.dragStartPoint = worldPt;
+          this.lastDragPoint = worldPt;
+          this.isDragging = false;
+          this.dragAccumDx = 0;
+          this.dragAccumDy = 0;
+          this.isDrawing = false;
+          this.canvas.style.cursor = 'grab';
+        } else {
+          this.draggedStrokeId = null;
+          this.isDragging = false;
+          this.canvas.style.cursor = 'default';
+        }
+        return;
+      }
+
+      // Normal click without Command/Ctrl:
+      // If clicked stroke is not already in the selection, select only this stroke
+      if (!this.strokeManager.isStrokeSelected(hit.id)) {
+        this.strokeManager.selectStroke(hit.id);
+        this.onSelectStroke?.(hit.id);
+      } else if (this.strokeManager.selectedStrokeIds.length === 1) {
+        this.onSelectStroke?.(hit.id);
+      }
+
+      // Prepare for potential reposition dragging (moves all selected strokes together if multiple)
+      const hitPt = worldPt;
       this.draggedStrokeId = hit.id;
       this.dragStartPoint = hitPt;
       this.lastDragPoint = hitPt;
@@ -403,6 +411,14 @@ export class InputHandler {
       this.isDrawing = false;
       this.canvas.style.cursor = 'grab';
       return;
+    }
+
+    // Clicked on empty canvas: deselect active selection if not holding Command/Ctrl
+    if (!e.metaKey && !e.ctrlKey) {
+      if (this.strokeManager.selectedStrokeIds.length > 0) {
+        this.strokeManager.selectStroke(null);
+        this.onSelectStroke?.(null);
+      }
     }
 
     // Clicked on empty canvas: initialize drawing gesture
@@ -449,17 +465,18 @@ export class InputHandler {
       let frequency = 0;
 
       if (instId === 'onyx') {
-        const normY = rect.height > 0 ? screenY / rect.height : 0.5;
-        if (normY >= 0.72) noteName = 'Kick';
-        else if (normY >= 0.48) noteName = 'Snare';
-        else if (normY >= 0.25) noteName = 'Tom';
+        const pitch = quantizer.quantizeContinuous(worldPt.y, rect.height);
+        const drumFreq = pitch.frequency;
+        if (drumFreq < 260) noteName = 'Kick';
+        else if (drumFreq < 650) noteName = 'Snare';
+        else if (drumFreq < 2200) noteName = 'Tom';
         else noteName = 'HiHat';
 
         if (dist >= 35) {
-          if (normY >= 0.72) DrumSynth.triggerKick(LIVE_VOLUME, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
-          else if (normY >= 0.48) DrumSynth.triggerSnare(LIVE_VOLUME * 0.95, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
-          else if (normY >= 0.25) {
-            const tomFreq = 100 + (1 - (normY - 0.25) / 0.23) * 120;
+          if (drumFreq < 260) DrumSynth.triggerKick(LIVE_VOLUME, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
+          else if (drumFreq < 650) DrumSynth.triggerSnare(LIVE_VOLUME * 0.95, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
+          else if (drumFreq < 2200) {
+            const tomFreq = Math.max(100, Math.min(220, 100 + ((drumFreq - 650) / 1550) * 120));
             DrumSynth.triggerTom(tomFreq, LIVE_VOLUME * 0.9, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
           } else DrumSynth.triggerHiHat(true, LIVE_VOLUME * 0.9, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
           this.lastLivePoint = { x: screenX, y: screenY };
@@ -543,11 +560,9 @@ export class InputHandler {
     // ========================================================
     // B. DRAW MODE: Normal pointer move
     // ========================================================
-    // 1. If dragging an existing selected stroke to reposition it
+    // 1. If dragging an existing selected stroke to reposition it (moves all selected strokes together)
     if (this.draggedStrokeId) {
-      const draggedStroke = this.strokeManager.activeStrokes.find((s) => s.id === this.draggedStrokeId);
-      const isOnyx = draggedStroke?.instrumentId === 'onyx';
-      const rawPt = isOnyx ? screenPt : worldPt;
+      const rawPt = worldPt;
       const dist = this.dragStartPoint
         ? Math.hypot(rawPt.x - this.dragStartPoint.x, rawPt.y - this.dragStartPoint.y)
         : 0;
@@ -557,7 +572,13 @@ export class InputHandler {
         if (this.lastDragPoint) {
           const dx = rawPt.x - this.lastDragPoint.x;
           const dy = rawPt.y - this.lastDragPoint.y;
-          this.strokeManager.translateStroke(this.draggedStrokeId, dx, dy, false);
+          const targetIds = this.strokeManager.isStrokeSelected(this.draggedStrokeId)
+            ? this.strokeManager.selectedStrokeIds
+            : [this.draggedStrokeId];
+
+          for (const id of targetIds) {
+            this.strokeManager.translateStroke(id, dx, dy, false);
+          }
           this.dragAccumDx += dx;
           this.dragAccumDy += dy;
           this.lastDragPoint = rawPt;
@@ -624,7 +645,7 @@ export class InputHandler {
     }
   };
 
-  private handlePointerUp = (): void => {
+  private handlePointerUp = (e?: PointerEvent): void => {
     // Live Play mode: release live voice
     if (this.mode === 'live') {
       this.isLivePointerDown = false;
@@ -640,7 +661,15 @@ export class InputHandler {
     // 1. If dragging an existing stroke, finalize translation with undo entry
     if (this.isDragging && this.draggedStrokeId) {
       if (Math.abs(this.dragAccumDx) > 0.5 || Math.abs(this.dragAccumDy) > 0.5) {
-        this.strokeManager.translateStroke(this.draggedStrokeId, 0, 0, true);
+        const targetIds = this.strokeManager.isStrokeSelected(this.draggedStrokeId)
+          ? this.strokeManager.selectedStrokeIds
+          : [this.draggedStrokeId];
+
+        if (targetIds.length === 1) {
+          this.strokeManager.recordTranslateUndo(targetIds[0], this.dragAccumDx, this.dragAccumDy);
+        } else if (targetIds.length > 1) {
+          this.strokeManager.recordMultiTranslateUndo(targetIds, this.dragAccumDx, this.dragAccumDy);
+        }
       }
       this.isDragging = false;
       this.draggedStrokeId = null;
@@ -650,8 +679,14 @@ export class InputHandler {
       return;
     }
 
-    // 2. If clicked a stroke without dragging, it remains selected
+    // 2. If clicked a stroke without dragging:
     if (this.draggedStrokeId) {
+      // If user clicked an already selected stroke in a multi-selection without dragging and without Command/Ctrl,
+      // narrow selection to just that clicked stroke
+      if (!this.isDragging && e && !e.metaKey && !e.ctrlKey && this.strokeManager.selectedStrokeIds.length > 1) {
+        this.strokeManager.selectStroke(this.draggedStrokeId);
+        this.onSelectStroke?.(this.draggedStrokeId);
+      }
       this.draggedStrokeId = null;
       this.lastDragPoint = null;
       this.dragStartPoint = null;

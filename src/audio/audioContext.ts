@@ -36,10 +36,14 @@ export class SoundEngine {
   private widthSplitter: ChannelSplitterNode | null = null;
   private widthMerger: ChannelMergerNode | null = null;
 
+  /** Optional callback fired when AudioContext state changes (e.g. running, suspended) */
+  public onStateChange?: (state: AudioContextState | 'running') => void;
+
   public async init(existingCtx?: BaseAudioContext): Promise<void> {
     if (this.isInitialized && this.ctx && !existingCtx) {
       if (this.ctx instanceof AudioContext && this.ctx.state === 'suspended') {
         await this.ctx.resume();
+        this.onStateChange?.(this.ctx.state);
       }
       return;
     }
@@ -51,10 +55,21 @@ export class SoundEngine {
       this.ctx = new AudioContextClass();
     }
 
+    if (this.ctx instanceof AudioContext) {
+      this.ctx.onstatechange = () => {
+        if (this.ctx instanceof AudioContext) {
+          this.onStateChange?.(this.ctx.state);
+        }
+      };
+    }
+
     this.setupAudioGraph(this.ctx);
     this.isInitialized = true;
     if (this.ctx instanceof AudioContext && this.ctx.state === 'suspended') {
       await this.ctx.resume();
+    }
+    if (this.ctx instanceof AudioContext) {
+      this.onStateChange?.(this.ctx.state);
     }
   }
 
@@ -147,6 +162,7 @@ export class SoundEngine {
     this.widthSplitter.connect(midSum, 1);
     this.widthSplitter.connect(sideDiff, 0);
     this.widthSplitter.connect(sideInvert, 1);
+    sideInvert.connect(sideDiff);
 
     midSum.connect(this.widthMidGain);
     sideDiff.connect(this.widthSideGain);

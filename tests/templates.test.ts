@@ -90,5 +90,40 @@ describe('Starter Musical Groove Templates', () => {
       expect(stroke.playhead.lastEval?.point.x).toBeGreaterThan(0);
     }
   });
+
+  it('produces expected musical frequencies in non-linear scale when strokes are loaded', () => {
+    // Check Cathedral of Solitude pitches
+    const cath = TEMPLATES.cathedralSolitude;
+    const qCath = new ScaleQuantizer({ root: { name: 'C2', frequency: 65.406, baseMidi: 36 } });
+    qCath.setScrollEnabled(true);
+    const scrollCath = (cath.initialScrollRatio ?? 1.5) * height;
+    const cathStrokes = buildTemplateStrokes('cathedralSolitude', width, height, qCath);
+
+    // Organ foundation ~142 Hz
+    const organWorldY = cathStrokes[0].path.segments[0].p0.y + scrollCath;
+    const organPitch = qCath.quantizeContinuous(organWorldY, height);
+    expect(organPitch.frequency).toBeCloseTo(142.2, 0);
+
+    // Cello chant ~205 Hz (in Cathedral Lydian scale)
+    const celloWorldY = cathStrokes[1].path.segments[0].p0.y + scrollCath;
+    const celloPitch = qCath.quantizeContinuous(celloWorldY, height);
+    expect(celloPitch.frequency).toBeCloseTo(205, 0);
+
+    // Harp swell baseline ~281 Hz (end segment terminates at harpY)
+    const lastSeg = cathStrokes[2].path.segments[cathStrokes[2].path.segments.length - 1];
+    const harpWorldY = lastSeg.p3.y + scrollCath;
+    const harpPitch = qCath.quantizeContinuous(harpWorldY, height);
+    expect(harpPitch.frequency).toBeCloseTo(280.6, 0);
+
+    // Deep Cosmic Drone sub-bass ~122 Hz
+    const cosmic = TEMPLATES.deepCosmicDrone;
+    const qCosmic = new ScaleQuantizer();
+    qCosmic.setScrollEnabled(true);
+    const scrollCosmic = (cosmic.initialScrollRatio ?? 1.5) * height;
+    const cosmicStrokes = buildTemplateStrokes('deepCosmicDrone', width, height, qCosmic);
+    const subBassWorldY = cosmicStrokes[0].path.segments[0].p0.y + scrollCosmic;
+    const subBassPitch = qCosmic.quantizeContinuous(subBassWorldY, height);
+    expect(subBassPitch.frequency).toBeCloseTo(122.0, 0);
+  });
 });
 

@@ -158,11 +158,11 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     const marks = track?.querySelectorAll('.pitch-mark');
     expect(marks?.length).toBe(5);
     const markTexts = Array.from(marks || []).map((m) => m.textContent?.trim());
-    expect(markTexts).toContain('4.7 kHz');
-    expect(markTexts).toContain('1.2 kHz');
-    expect(markTexts).toContain('294 Hz');
-    expect(markTexts).toContain('73 Hz');
-    expect(markTexts).toContain('18 Hz');
+    expect(markTexts).toContain('8.0 kHz');
+    expect(markTexts).toContain('2.0 kHz');
+    expect(markTexts).toContain('630 Hz');
+    expect(markTexts).toContain('200 Hz');
+    expect(markTexts).toContain('100 Hz');
   });
 
   it('contains Live Wand & Performance Controls inside advanced drawer', () => {
@@ -486,14 +486,20 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     const studioMixerList = doc.getElementById('studioMixerList');
     expect(studioMixerList).toBeDefined();
 
-    const layerMixerList = doc.getElementById('layerMixerList');
-    expect(layerMixerList).toBeDefined();
+    // The separate floating layerMixerDrawer panel is removed
+    const layerMixerDrawer = doc.getElementById('layerMixerDrawer');
+    expect(layerMixerDrawer).toBeNull();
 
     const studioLayerCount = doc.getElementById('studioLayerCount');
     expect(studioLayerCount).toBeDefined();
 
     const layerCountBadge = doc.getElementById('layerCountBadge');
     expect(layerCountBadge).toBeDefined();
+
+    const layersStatusChip = doc.getElementById('layersStatusChip');
+    expect(layersStatusChip).toBeDefined();
+    expect(layersStatusChip?.tagName.toLowerCase()).toBe('span');
+    expect(layersStatusChip?.classList.contains('status-chip')).toBe(true);
   });
 
   it('contains dirtyIndicator element within top-template-group with zero layout shift structure', () => {
@@ -759,6 +765,87 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     expect((trackTraversalCell as HTMLElement)?.style.display).toBe('none');
     expect((trackWaveCell as HTMLElement)?.style.display).toBe('none');
     expect((zenContextTravBtn as HTMLElement)?.style.display).toBe('none');
+  });
+
+  it('contains statAudio element with initial unstarted state and updates properly', () => {
+    const statAudio = doc.getElementById('statAudio') as HTMLButtonElement;
+    expect(statAudio).toBeDefined();
+    expect(statAudio.classList.contains('status-chip')).toBe(true);
+    expect(statAudio.classList.contains('chip-unstarted')).toBe(true);
+    expect(statAudio.textContent).toBe('Click to Start Audio');
+
+    // Simulate transition when audio unlocks
+    statAudio.textContent = 'Audio: Active';
+    statAudio.classList.remove('chip-unstarted');
+    statAudio.classList.add('chip-ready');
+
+    expect(statAudio.textContent).toBe('Audio: Active');
+    expect(statAudio.classList.contains('chip-ready')).toBe(true);
+    expect(statAudio.classList.contains('chip-unstarted')).toBe(false);
+  });
+
+  it('contains Scenes Arranger Morph duration slider and Transition Blend segmented control with full labels', () => {
+    const morphSlider = doc.getElementById('sceneMorphSlider') as HTMLInputElement;
+    const morphVal = doc.getElementById('sceneMorphVal') as HTMLSpanElement;
+    const blendSwitch = doc.getElementById('sceneMorphBlendSwitch') as HTMLElement;
+    const blendSelect = doc.getElementById('sceneMorphCurveSelect') as HTMLSelectElement;
+
+    expect(morphSlider).toBeDefined();
+    expect(morphVal).toBeDefined();
+    expect(morphVal.textContent?.trim()).toBe('6s');
+    expect(blendSwitch).toBeDefined();
+    expect(blendSwitch.classList.contains('scene-blend-switch')).toBe(true);
+
+    const buttons = Array.from(blendSwitch.querySelectorAll<HTMLButtonElement>('.seg-btn'));
+    expect(buttons.length).toBe(3);
+
+    const modes = buttons.map(b => b.getAttribute('data-blend'));
+    expect(modes).toEqual(['equalPower', 'reverbWash', 'linear']);
+
+    const labels = buttons.map(b => b.textContent?.trim());
+    expect(labels).toEqual(['Lush', 'Wash', 'Linear']);
+
+    expect(buttons[0].classList.contains('active')).toBe(true);
+    expect(blendSelect).toBeDefined();
+  });
+
+  it('contains Top-Bar Preset Suite with quick open/save buttons, visible saved presets optgroup, and open file action', () => {
+    const topLoadBtn = doc.getElementById('topLoadPresetBtn') as HTMLButtonElement;
+    const topSaveBtn = doc.getElementById('topSavePresetBtn') as HTMLButtonElement;
+    const templateSelect = doc.getElementById('templateSelect') as HTMLSelectElement;
+    const savedGroup = doc.getElementById('savedTemplatesGroup') as HTMLOptGroupElement;
+    const loadFileInput = doc.getElementById('loadFileInput') as HTMLInputElement;
+
+    expect(topLoadBtn).toBeDefined();
+    expect(topSaveBtn).toBeDefined();
+    expect(templateSelect).toBeDefined();
+    expect(savedGroup).toBeDefined();
+    expect(loadFileInput).toBeDefined();
+
+    // Optgroup does not use display: none (preventing Safari/WebKit macOS menu caching bug)
+    expect(savedGroup.style.display).not.toBe('none');
+
+    // Contains Open File action
+    const openFileOpt = templateSelect.querySelector('option[value="__open_file__"]');
+    expect(openFileOpt).not.toBeNull();
+    expect(openFileOpt?.textContent).toContain('Open Preset File');
+
+    // Button attributes and tooltips
+    expect(topLoadBtn.getAttribute('aria-label')).toBe('Open Preset File');
+    expect(topSaveBtn.getAttribute('aria-label')).toBe('Save Preset');
+    expect(topLoadBtn.classList.contains('top-preset-icon-btn')).toBe(true);
+    expect(topSaveBtn.classList.contains('top-preset-icon-btn')).toBe(true);
+
+    // Delete preset button and saved preset list manager
+    const topDeleteBtn = doc.getElementById('topDeletePresetBtn') as HTMLButtonElement;
+    expect(topDeleteBtn).toBeDefined();
+    expect(topDeleteBtn.getAttribute('aria-label')).toBe('Delete Custom Preset');
+    expect(topDeleteBtn.classList.contains('top-preset-icon-btn')).toBe(true);
+    expect(topDeleteBtn.classList.contains('btn-delete')).toBe(true);
+    expect(topDeleteBtn.disabled).toBe(true);
+
+    const savedListContainer = doc.getElementById('savedPresetsListContainer');
+    expect(savedListContainer).not.toBeNull();
   });
 });
 

@@ -32,18 +32,35 @@
               <label class="top-row-label" for="templateSelect">Preset</label>
               <span id="dirtyIndicator" class="dirty-badge" title="Unsaved changes in current composition">Edited</span>
             </div>
-            <div class="select-wrapper">
-              <select id="templateSelect" class="minimal-select">
-                <option value="">Load Preset...</option>
-                <optgroup label="Ambient Starting Points">
-                  <option value="cathedralSolitude" selected>Cathedral of Solitude (30 BPM)</option>
-                  <option value="deepCosmicDrone">Deep Cosmic Drone (24 BPM)</option>
-                  <option value="warmTapeDrift">Warm Tape Drift (36 BPM)</option>
-                  <option value="zenGarden">Zen Garden (42 BPM)</option>
-                  <option value="midnightPulse">Midnight Pulse (52 BPM)</option>
-                </optgroup>
-                <optgroup label="My Saved Presets" id="savedTemplatesGroup" style="display:none"></optgroup>
-              </select>
+            <div class="top-preset-controls-row">
+              <div class="select-wrapper">
+                <select id="templateSelect" class="minimal-select">
+                  <optgroup label="Ambient Starting Points">
+                    <option value="cathedralSolitude" selected>Cathedral of Solitude (30 BPM)</option>
+                    <option value="deepCosmicDrone">Deep Cosmic Drone (24 BPM)</option>
+                    <option value="warmTapeDrift">Warm Tape Drift (36 BPM)</option>
+                    <option value="zenGarden">Zen Garden (42 BPM)</option>
+                    <option value="midnightPulse">Midnight Pulse (52 BPM)</option>
+                  </optgroup>
+                  <optgroup label="My Saved Presets" id="savedTemplatesGroup">
+                    <option value="" disabled>(No saved presets yet)</option>
+                  </optgroup>
+                  <optgroup label="Actions">
+                    <option value="__open_file__">Open Preset File (.json)...</option>
+                  </optgroup>
+                </select>
+              </div>
+              <div class="top-preset-btn-group">
+                <button type="button" id="topLoadPresetBtn" class="top-preset-icon-btn has-tooltip" data-tooltip="Open Preset File: Load a saved composition JSON file from your computer" aria-label="Open Preset File">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
+                </button>
+                <button type="button" id="topSavePresetBtn" class="top-preset-icon-btn has-tooltip" data-tooltip="Save Preset (⌘S): Save composition or export as .json" aria-label="Save Preset">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                </button>
+                <button type="button" id="topDeletePresetBtn" class="top-preset-icon-btn btn-delete has-tooltip" data-tooltip="Delete Custom Preset: Remove current saved preset from storage" aria-label="Delete Custom Preset" disabled>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -340,6 +357,7 @@
                   <label for="rootSelect">Root</label>
                   <div class="select-wrapper">
                     <select id="rootSelect" class="minimal-select">
+                      <option value="C2">C2 (65 Hz)</option>
                       <option value="D2">D2 (73 Hz)</option>
                       <option value="E2">E2 (82 Hz)</option>
                       <option value="F2">F2 (87 Hz)</option>
@@ -402,6 +420,16 @@
                     <option value="timer:120">120s Drone</option>
                   </select>
                 </div>
+              </div>
+
+              <div class="control-group has-tooltip" data-tooltip="Convert All Lines: Switches all existing score lines to speed timing (BPM-synced velocity) instead of fixed duration timers.">
+                <div class="slider-header">
+                  <label for="convertAllSpeedBtn">Score Timing</label>
+                  <span id="scoreTimingBadge" class="value-badge">All Speed</span>
+                </div>
+                <button type="button" id="convertAllSpeedBtn" class="action-btn action-btn-secondary" style="width: 100%;">
+                  Convert All Lines to Speed
+                </button>
               </div>
 
               <div class="control-group draw-only-control has-tooltip" data-tooltip="Default Line Voicing: Harmonic intervals produced by newly drawn lines (Single Unison, Octave Doubling, Sub-Octave, or Dual Octave).">
@@ -531,24 +559,6 @@
       <!-- Main Workspace Layout supporting Option A (Studio Deck) and Option B (Zen Canvas) -->
       <div class="workspace-layout" id="workspaceLayout">
         <main class="canvas-container" id="canvasContainer">
-        <!-- Persistent / Collapsible Layers Mixer Panel -->
-        <aside id="layerMixerDrawer" class="layer-mixer-drawer" style="display: none;">
-          <div class="mixer-header">
-            <div class="mixer-header-title">
-              <span>Layers Mixer</span>
-              <span id="mixerTrackCount" class="mixer-count-chip">0 Lines</span>
-            </div>
-            <div class="mixer-header-actions">
-              <button type="button" id="mixerMuteAllBtn" class="action-btn action-btn-xs has-tooltip" data-tooltip="Mute all lines">Mute All</button>
-              <button type="button" id="mixerUnmuteAllBtn" class="action-btn action-btn-xs has-tooltip" data-tooltip="Unmute all lines">Unmute</button>
-              <button type="button" id="mixerCloseBtn" class="drawer-close-btn" aria-label="Close Mixer" title="Close Mixer">Close</button>
-            </div>
-          </div>
-          <div id="layerMixerList" class="mixer-track-list">
-            <!-- Dynamically populated track cards -->
-          </div>
-        </aside>
-
         <!-- Floating Dedicated Selected Line Inspector (Two rows: Sound parameters & Motion/Shape) -->
         <section id="trackInspectorBar" class="track-inspector-bar" style="display: none;">
           <div class="track-inspector-inner">
@@ -735,11 +745,11 @@
         <!-- Interactive Frequency Range Navigator & Vertical Pitch Scrollbar -->
         <aside id="pitchNavigator" class="pitch-navigator" aria-label="Frequency Range Navigator">
           <div id="pitchTrack" class="pitch-track" title="Click or drag to scroll frequency spectrum">
-            <span class="pitch-mark pitch-mark-top">4.7 kHz</span>
-            <span class="pitch-mark pitch-mark-high">1.2 kHz</span>
-            <span class="pitch-mark pitch-mark-mid">294 Hz</span>
-            <span class="pitch-mark pitch-mark-bass">73 Hz</span>
-            <span class="pitch-mark pitch-mark-sub">18 Hz</span>
+            <span class="pitch-mark pitch-mark-top">8.0 kHz</span>
+            <span class="pitch-mark pitch-mark-high">2.0 kHz</span>
+            <span class="pitch-mark pitch-mark-mid">630 Hz</span>
+            <span class="pitch-mark pitch-mark-bass">200 Hz</span>
+            <span class="pitch-mark pitch-mark-sub">100 Hz</span>
             <div id="pitchThumb" class="pitch-thumb" title="Visible frequency window. Drag to scroll.">
               <span id="pitchThumbLabel" class="pitch-thumb-label">D2–D6</span>
             </div>
@@ -747,11 +757,14 @@
         </aside>
 
         <!-- Initial Gentle Invitation Banner -->
-        <div id="audioUnlockPrompt" class="welcome-banner">
+        <div id="audioUnlockPrompt" class="welcome-banner" style="cursor: pointer;">
           <div class="welcome-card">
             <h3>Draw on the canvas or load an ambient template</h3>
             <p>Y = Pitch • X = Stereo Pan & Tone • Arc = Rhythm • Ultra-slow 10–60 BPM & Drone modes</p>
             <span class="hint-small">Click any line to select & voice chords • Open Controls for Scale & Reverb</span>
+            <div style="margin-top: 10px; display: flex; justify-content: center;">
+              <button type="button" id="startAudioBannerBtn" class="action-btn action-btn-accent" style="padding: 6px 14px; font-weight: 600;">Start Audio</button>
+            </div>
           </div>
         </div>
 
@@ -829,16 +842,16 @@
         <!-- Bottom Status Bar with Contextual Help & Secondary Utility Actions -->
         <footer class="bottom-bar">
           <div class="status-left">
-            <button type="button" id="layersToggleBtn" class="status-chip status-chip-btn has-tooltip" data-tooltip="Composition Layers Mixer: Persistent track overview with Volume, Mute, Solo, and Reverb for all lines.">
+            <span id="layersStatusChip" class="status-chip has-tooltip" data-tooltip="Active Layers: Total count of active musical lines and rhythmic curves.">
               Layers <span id="layerCountBadge" class="layer-badge-count">0</span>
-            </button>
+            </span>
             <span id="statStrokes" class="status-chip" style="display:none">0 strokes</span>
             <span id="statMode" class="status-chip">Draw / Click to Select</span>
             <span id="statInstrument" class="status-chip">🎻 Bowed Cello</span>
             <span id="statTempo" class="status-chip">100 BPM</span>
             <span id="statLoopSync" class="status-chip">Default: 2 Bars</span>
             <span id="statPitchSnap" class="status-chip">Snap Off</span>
-            <span id="statAudio" class="status-chip chip-ready">Audio ready</span>
+            <button type="button" id="statAudio" class="status-chip chip-unstarted has-tooltip" data-tooltip="Click to Start Audio Engine">Click to Start Audio</button>
           </div>
           <div class="status-center">
             <span id="contextHelp" class="context-help">Hover over any setting for details</span>
@@ -1132,27 +1145,33 @@
               </div>
 
               <div class="studio-scenes-params">
-                <div class="studio-scenes-param-row">
-                  <div class="scene-morph-wrap has-tooltip" data-tooltip="Morph Duration: Crossfade seconds between scene movements (2s - 25s)">
-                    <label for="sceneMorphSlider">Morph</label>
-                    <input type="range" id="sceneMorphSlider" min="2" max="25" step="1" value="6" class="minimal-slider" />
+                <!-- Morph Duration Crossfade -->
+                <div class="control-group slider-group has-tooltip" data-tooltip="Morph Duration: Crossfade seconds between scene movements (2s - 25s)">
+                  <div class="slider-header">
+                    <label for="sceneMorphSlider">Morph Duration</label>
                     <span id="sceneMorphVal" class="value-badge">6s</span>
                   </div>
-                  <div class="scene-blend-wrap has-tooltip" data-tooltip="Transition Blend Style: Lush Overlap (equal-power energy), Reverb Wash, or Linear">
-                    <label class="scene-blend-label">Blend</label>
-                    <div class="segmented-switch mini-switch" id="sceneMorphBlendSwitch">
-                      <button type="button" class="seg-btn active" data-blend="equalPower" title="Lush Overlap">Lush</button>
-                      <button type="button" class="seg-btn" data-blend="reverbWash" title="Reverb Wash">Wash</button>
-                      <button type="button" class="seg-btn" data-blend="linear" title="Linear">Lin</button>
-                    </div>
-                    <select id="sceneMorphCurveSelect" class="hidden" title="Morph Blend Mode">
-                      <option value="equalPower" selected>Lush Overlap</option>
-                      <option value="reverbWash">Reverb Wash</option>
-                      <option value="linear">Linear Blend</option>
-                    </select>
-                  </div>
+                  <input type="range" id="sceneMorphSlider" min="2" max="25" step="1" value="6" class="minimal-slider" />
                 </div>
 
+                <!-- Transition Blend Style -->
+                <div class="control-group has-tooltip" data-tooltip="Transition Blend Style: Lush Overlap (equal-power energy), Reverb Wash, or Linear">
+                  <div class="slider-header">
+                    <label class="scene-blend-label">Transition Blend</label>
+                  </div>
+                  <div class="segmented-switch scene-blend-switch" id="sceneMorphBlendSwitch">
+                    <button type="button" class="seg-btn active" data-blend="equalPower" title="Lush Overlap (Equal Power Crossfade)">Lush</button>
+                    <button type="button" class="seg-btn" data-blend="reverbWash" title="Reverb Wash (Ambient Space Swell)">Wash</button>
+                    <button type="button" class="seg-btn" data-blend="linear" title="Linear Blend (Direct Crossfade)">Linear</button>
+                  </div>
+                  <select id="sceneMorphCurveSelect" class="hidden" title="Morph Blend Mode">
+                    <option value="equalPower" selected>Lush Overlap</option>
+                    <option value="reverbWash">Reverb Wash</option>
+                    <option value="linear">Linear Blend</option>
+                  </select>
+                </div>
+
+                <!-- Scene Actions Row -->
                 <div class="studio-scenes-actions-row">
                   <button type="button" id="sceneAddBtn" class="action-btn action-btn-xs" style="flex: 1.2;">+ New Scene</button>
                   <button type="button" id="sceneDupBtn" class="action-btn action-btn-xs" style="flex: 1;">Duplicate</button>
@@ -1194,6 +1213,8 @@
               <div class="shortcut-group">
                 <h3>Selection &amp; Sound Editing</h3>
                 <div class="shortcut-row"><kbd>Click Line</kbd> <span>Select line for editing</span></div>
+                <div class="shortcut-row"><kbd>⌘ Click</kbd> <span>Select multiple lines to move together</span></div>
+                <div class="shortcut-row"><kbd>⌘ A</kbd> <span>Select all lines</span></div>
                 <div class="shortcut-row"><kbd>1</kbd> &ndash; <kbd>7</kbd> <span>Select Sound Ink (or revoice line)</span></div>
                 <div class="shortcut-row"><kbd>T</kbd> <span>Toggle Traversal: Loop &circlearrowright; / Bounce &rlarr;</span></div>
                 <div class="shortcut-row"><kbd>M</kbd> / <kbd>S</kbd> <span>Mute / Solo selected line</span></div>
@@ -1308,6 +1329,17 @@
                 <input type="checkbox" id="saveExportJsonCheck" />
                 <span>Also download backup .json file</span>
               </label>
+            </div>
+
+            <!-- Manage Saved Presets List with Delete Actions -->
+            <div class="saved-presets-manager-section" id="savedPresetsManagerSection">
+              <div class="saved-presets-manager-header">
+                <span class="saved-presets-manager-title">Saved Presets</span>
+                <span id="savedPresetsCountBadge" class="value-badge">0</span>
+              </div>
+              <div id="savedPresetsListContainer" class="saved-presets-list-container">
+                <!-- Dynamically populated preset rows with delete actions -->
+              </div>
             </div>
           </div>
         </div>

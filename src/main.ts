@@ -18,6 +18,9 @@ const canvasEl = document.getElementById('musicCanvas') as HTMLCanvasElement;
 const templateSelect = document.getElementById('templateSelect') as HTMLSelectElement;
 const saveTemplateBtn = document.getElementById('saveTemplateBtn') as HTMLButtonElement;
 const loadTemplateFileBtn = document.getElementById('loadTemplateFileBtn') as HTMLButtonElement;
+const topLoadPresetBtn = document.getElementById('topLoadPresetBtn') as HTMLButtonElement | null;
+const topSavePresetBtn = document.getElementById('topSavePresetBtn') as HTMLButtonElement | null;
+const topDeletePresetBtn = document.getElementById('topDeletePresetBtn') as HTMLButtonElement | null;
 const loadFileInput = document.getElementById('loadFileInput') as HTMLInputElement;
 const savedTemplatesGroup = document.getElementById('savedTemplatesGroup') as HTMLOptGroupElement;
 const savePresetModal = document.getElementById('savePresetModal') as HTMLElement;
@@ -27,6 +30,8 @@ const overwritePresetBtn = document.getElementById('overwritePresetBtn') as HTML
 const saveNewVersionBtn = document.getElementById('saveNewVersionBtn') as HTMLButtonElement;
 const saveCustomNameBtn = document.getElementById('saveCustomNameBtn') as HTMLButtonElement;
 const saveExportJsonCheck = document.getElementById('saveExportJsonCheck') as HTMLInputElement;
+const savedPresetsCountBadge = document.getElementById('savedPresetsCountBadge') as HTMLElement | null;
+const savedPresetsListContainer = document.getElementById('savedPresetsListContainer') as HTMLElement | null;
 
 // Record & MP3 Export Controls
 const recordModalBtn = document.getElementById('recordModalBtn') as HTMLButtonElement | null;
@@ -61,6 +66,7 @@ const trackTraversalButtons = document.querySelectorAll<HTMLButtonElement>('#tra
 const scaleSelect = document.getElementById('scaleSelect') as HTMLSelectElement;
 const rootSelect = document.getElementById('rootSelect') as HTMLSelectElement;
 const generalSyncSelect = document.getElementById('generalSyncSelect') as HTMLSelectElement;
+const scoreTimingBadge = document.getElementById('scoreTimingBadge') as HTMLSpanElement | null;
 const appModeButtons = document.querySelectorAll<HTMLButtonElement>('[data-app-mode]');
 const strokeModeButtons = document.querySelectorAll<HTMLButtonElement>('#strokeModeControl .seg-btn');
 const bpmSlider = document.getElementById('bpmSlider') as HTMLInputElement;
@@ -129,6 +135,7 @@ const shortcutsModal = document.getElementById('shortcutsModal') as HTMLDivEleme
 const closeShortcutsModalBtn = document.getElementById('closeShortcutsModalBtn') as HTMLButtonElement | null;
 const shareLinkBtn = document.getElementById('shareLinkBtn') as HTMLButtonElement | null;
 const audioUnlockPrompt = document.getElementById('audioUnlockPrompt') as HTMLDivElement | null;
+const startAudioBannerBtn = document.getElementById('startAudioBannerBtn') as HTMLButtonElement | null;
 
 export function dismissWelcomePrompt(): void {
   if (audioUnlockPrompt) {
@@ -143,7 +150,61 @@ const statTempo = document.getElementById('statTempo') as HTMLSpanElement;
 const statInstrument = document.getElementById('statInstrument') as HTMLSpanElement;
 const statLoopSync = document.getElementById('statLoopSync') as HTMLSpanElement;
 const statPitchSnap = document.getElementById('statPitchSnap') as HTMLSpanElement;
-const statAudio = document.getElementById('statAudio') as HTMLSpanElement;
+const statAudio = document.getElementById('statAudio') as HTMLButtonElement | HTMLSpanElement | null;
+
+/**
+ * Synchronizes the bottom bar audio status chip (#statAudio) with Web Audio engine state.
+ */
+export function updateAudioStatusChip(): void {
+  if (!statAudio) return;
+  if (soundEngine.isReady) {
+    statAudio.textContent = 'Audio: Active';
+    statAudio.setAttribute('data-tooltip', 'Audio Engine Active: Web Audio synthesizer running');
+    statAudio.classList.remove('chip-unstarted');
+    statAudio.classList.add('chip-ready');
+  } else {
+    statAudio.textContent = 'Click to Start Audio';
+    statAudio.setAttribute('data-tooltip', 'Click to Start Audio Engine');
+    statAudio.classList.add('chip-unstarted');
+    statAudio.classList.remove('chip-ready');
+  }
+}
+
+// Reactively update audio status chip whenever AudioContext state changes (running/suspended)
+soundEngine.onStateChange = () => {
+  updateAudioStatusChip();
+};
+
+export async function ensureAudioUnlocked(): Promise<void> {
+  if (!soundEngine.isReady) {
+    try {
+      await soundEngine.init();
+      try {
+        LiveRecorder.preloadWorklet(soundEngine.context);
+      } catch {
+        // optional worklet preload
+      }
+      strokeManager.activateAudioVoices();
+    } catch (err) {
+      console.warn('Audio initialization deferred:', err);
+    }
+  } else {
+    strokeManager.activateAudioVoices();
+  }
+  updateAudioStatusChip();
+  dismissWelcomePrompt();
+}
+
+startAudioBannerBtn?.addEventListener('click', async (e) => {
+  e.stopPropagation();
+  await ensureAudioUnlocked();
+});
+audioUnlockPrompt?.addEventListener('click', async () => {
+  await ensureAudioUnlocked();
+});
+statAudio?.addEventListener('click', async () => {
+  await ensureAudioUnlocked();
+});
 const contextHelp = document.getElementById('contextHelp') as HTMLSpanElement;
 const trackDurationGroup = document.getElementById('trackDurationGroup') as HTMLElement;
 const trackDurationSlider = document.getElementById('trackDurationSlider') as HTMLInputElement;
@@ -154,14 +215,7 @@ const trackHarmonizerSelect = document.getElementById('trackHarmonizerSelect') a
 const breathingSelect = document.getElementById('breathingSelect') as HTMLSelectElement | null;
 
 // Layers Mixer & Presets Dirty State Controls
-const layersToggleBtn = document.getElementById('layersToggleBtn') as HTMLButtonElement | null;
 const layerCountBadge = document.getElementById('layerCountBadge') as HTMLSpanElement | null;
-const layerMixerDrawer = document.getElementById('layerMixerDrawer') as HTMLElement | null;
-const layerMixerList = document.getElementById('layerMixerList') as HTMLElement | null;
-const mixerTrackCount = document.getElementById('mixerTrackCount') as HTMLSpanElement | null;
-const mixerMuteAllBtn = document.getElementById('mixerMuteAllBtn') as HTMLButtonElement | null;
-const mixerUnmuteAllBtn = document.getElementById('mixerUnmuteAllBtn') as HTMLButtonElement | null;
-const mixerCloseBtn = document.getElementById('mixerCloseBtn') as HTMLButtonElement | null;
 const dirtyIndicator = document.getElementById('dirtyIndicator') as HTMLSpanElement | null;
 const quickSaveBtn = document.getElementById('quickSaveBtn') as HTMLButtonElement | null;
 
@@ -371,6 +425,7 @@ const inputHandler = new InputHandler(canvasEl, {
   getXAxisModulation: () => (xAxisSelect ? xAxisSelect.value : 'panAndTone'),
   onPointerDown: () => {
     dismissWelcomePrompt();
+    updateAudioStatusChip();
   },
   onStrokeComplete: (path: SplinePath, isPoint?: boolean) => {
     dismissWelcomePrompt();
@@ -646,9 +701,12 @@ function refreshSavedTemplatesDropdown(): void {
   const names = Object.keys(saved);
   savedTemplatesGroup.innerHTML = '';
   if (names.length === 0) {
-    savedTemplatesGroup.style.display = 'none';
+    const emptyOpt = document.createElement('option');
+    emptyOpt.value = '';
+    emptyOpt.disabled = true;
+    emptyOpt.textContent = '(No saved presets yet)';
+    savedTemplatesGroup.appendChild(emptyOpt);
   } else {
-    savedTemplatesGroup.style.display = '';
     names.forEach((name) => {
       const opt = document.createElement('option');
       opt.value = `custom:${name}`;
@@ -656,6 +714,122 @@ function refreshSavedTemplatesDropdown(): void {
       savedTemplatesGroup.appendChild(opt);
     });
   }
+  updatePresetDeleteButtons();
+}
+
+function updatePresetDeleteButtons(): void {
+  const store = getSavedCompositions();
+  const isCustomActive = !!(currentLoadedPresetName && store[currentLoadedPresetName]);
+
+  if (topDeletePresetBtn) {
+    topDeletePresetBtn.disabled = !isCustomActive;
+    if (isCustomActive && currentLoadedPresetName) {
+      topDeletePresetBtn.setAttribute('data-tooltip', `Delete Preset: Remove "${currentLoadedPresetName}" from saved presets`);
+    } else {
+      topDeletePresetBtn.setAttribute('data-tooltip', 'Delete Preset: Select or load a saved custom preset to delete');
+    }
+  }
+}
+
+function renderSavedPresetsManagerList(): void {
+  if (!savedPresetsListContainer) return;
+  const store = getSavedCompositions();
+  const names = Object.keys(store);
+
+  if (savedPresetsCountBadge) {
+    savedPresetsCountBadge.textContent = names.length.toString();
+  }
+
+  savedPresetsListContainer.innerHTML = '';
+
+  if (names.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'saved-presets-empty-msg';
+    empty.textContent = 'No custom presets saved yet.';
+    savedPresetsListContainer.appendChild(empty);
+    return;
+  }
+
+  names.forEach((name) => {
+    const row = document.createElement('div');
+    row.className = 'saved-preset-item-row';
+
+    const info = document.createElement('div');
+    info.className = 'saved-preset-item-info';
+
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'saved-preset-item-name';
+    nameSpan.textContent = name;
+    info.appendChild(nameSpan);
+
+    if (currentLoadedPresetName === name) {
+      const activePill = document.createElement('span');
+      activePill.className = 'saved-preset-item-active-pill';
+      activePill.textContent = 'Active';
+      info.appendChild(activePill);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'saved-preset-item-actions';
+
+    const loadBtn = document.createElement('button');
+    loadBtn.type = 'button';
+    loadBtn.className = 'saved-preset-item-load-btn has-tooltip';
+    loadBtn.setAttribute('data-tooltip', `Load preset "${name}"`);
+    loadBtn.textContent = 'Load';
+    loadBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const comp = store[name];
+      if (comp) {
+        await loadComposition(comp);
+        templateSelect.value = `custom:${name}`;
+        closeSavePresetModal();
+      }
+    });
+
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'saved-preset-item-del-btn has-tooltip';
+    delBtn.setAttribute('data-tooltip', `Delete preset "${name}"`);
+    delBtn.setAttribute('aria-label', `Delete preset ${name}`);
+    delBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
+    delBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteCustomPreset(name);
+    });
+
+    actions.appendChild(loadBtn);
+    actions.appendChild(delBtn);
+
+    row.appendChild(info);
+    row.appendChild(actions);
+    savedPresetsListContainer.appendChild(row);
+  });
+}
+
+function deleteCustomPreset(presetName: string): boolean {
+  const store = getSavedCompositions();
+  if (!store[presetName]) return false;
+
+  const ok = confirm(`Delete preset "${presetName}"? This cannot be undone.`);
+  if (!ok) return false;
+
+  delete store[presetName];
+  localStorage.setItem('harmonic_saved_presets', JSON.stringify(store));
+  localStorage.setItem('harmonic_saved_grooves', JSON.stringify(store));
+
+  refreshSavedTemplatesDropdown();
+  renderSavedPresetsManagerList();
+
+  if (currentLoadedPresetName === presetName) {
+    currentLoadedPresetName = 'cathedralSolitude';
+    templateSelect.value = 'cathedralSolitude';
+    loadTemplate('cathedralSolitude', false);
+  }
+
+  updatePresetDeleteButtons();
+  statMode.textContent = `Preset Deleted: ${presetName}`;
+  return true;
 }
 
 async function loadComposition(comp: SavedComposition): Promise<void> {
@@ -663,12 +837,7 @@ async function loadComposition(comp: SavedComposition): Promise<void> {
   prevCanvasWidth = renderer.width;
   prevCanvasHeight = renderer.height;
 
-  if (!soundEngine.isReady) {
-    await soundEngine.init();
-    statAudio.textContent = 'Audio: Active';
-    statAudio.classList.add('chip-ready');
-  }
-  dismissWelcomePrompt();
+  await ensureAudioUnlocked();
 
   if (comp.scaleId && SCALES[comp.scaleId]) {
     quantizer.updateConfig({ scale: SCALES[comp.scaleId] });
@@ -750,10 +919,12 @@ async function loadComposition(comp: SavedComposition): Promise<void> {
   updateStats();
   updateTrackActionsVisibility();
   renderLayerMixer();
+  updatePresetDeleteButtons();
 }
 
 // Initial populate of saved templates
 refreshSavedTemplatesDropdown();
+updatePresetDeleteButtons();
 
 function updateSaveModalButtonLabels(enteredName: string): void {
   const store = getSavedCompositions();
@@ -771,8 +942,8 @@ function updateSaveModalButtonLabels(enteredName: string): void {
   }
 }
 
-function openSavePresetModal(): void {
-  if (strokeManager.activeStrokes.length === 0) {
+function openSavePresetModal(forSaveOnly = true): void {
+  if (forSaveOnly && strokeManager.activeStrokes.length === 0) {
     alert('Draw or create some musical lines first before saving a preset.');
     return;
   }
@@ -781,6 +952,7 @@ function openSavePresetModal(): void {
     savePresetNameInput.value = activeName;
   }
   updateSaveModalButtonLabels(activeName);
+  renderSavedPresetsManagerList();
   if (savePresetModal) {
     savePresetModal.classList.remove('hidden');
     savePresetNameInput?.focus();
@@ -849,12 +1021,14 @@ function executeSavePreset(nameToSave: string, downloadJson: boolean): void {
   }
 
   closeSavePresetModal();
+  updatePresetDeleteButtons();
+  renderSavedPresetsManagerList();
   statMode.textContent = `Preset Saved: ${cleanName}`;
 }
 
 // Save Preset Button opens modal
 saveTemplateBtn?.addEventListener('click', () => {
-  openSavePresetModal();
+  openSavePresetModal(true);
 });
 
 overwritePresetBtn?.addEventListener('click', () => {
@@ -921,14 +1095,14 @@ let isInspectorCollapsed =
 
 /**
  * Synchronizes the visual selection state (.selected) across all layer cards
- * in both Studio Deck and floating Layers Drawer to match strokeManager.selectedStrokeId.
+ * in both Studio Deck and floating Layers Drawer to match strokeManager.selectedStrokeIds.
  */
 function updateMixerSelection(): void {
-  const selectedId = strokeManager.selectedStrokeId;
+  const selectedIds = new Set(strokeManager.selectedStrokeIds);
   const allCards = document.querySelectorAll('.layer-card');
   allCards.forEach((card) => {
     const cardStrokeId = card.getAttribute('data-stroke-id');
-    const isSelected = !!selectedId && cardStrokeId === selectedId;
+    const isSelected = !!cardStrokeId && selectedIds.has(cardStrokeId);
     card.classList.toggle('selected', isSelected);
   });
 }
@@ -939,7 +1113,7 @@ function createLayerCard(
   hasSolo: boolean
 ): HTMLElement {
   const card = document.createElement('div');
-  const isSelected = stroke.id === strokeManager.selectedStrokeId;
+  const isSelected = strokeManager.isStrokeSelected(stroke.id);
   const isDimmed = (hasSolo && !stroke.soloed) || !!stroke.muted;
 
   card.className = `layer-card${isSelected ? ' selected' : ''}${isDimmed ? ' dimmed' : ''}`;
@@ -987,28 +1161,17 @@ function createLayerCard(
   // Select this stroke when clicking anywhere on the card or touching controls
   card.addEventListener('pointerdown', (e) => {
     const target = e.target as HTMLElement;
-    if (target.closest('button')) return;
+    if (target.closest('button') || target.closest('input')) return;
     if (studioTabBtnMaster?.classList.contains('active')) {
       switchStudioDeckTab('mixer');
     }
-    if (strokeManager.selectedStrokeId !== stroke.id) {
+    if (e.metaKey || e.ctrlKey) {
+      strokeManager.toggleSelectStroke(stroke.id);
+    } else {
       strokeManager.selectStroke(stroke.id);
-      updateTrackActionsVisibility();
-      updateMixerSelection();
     }
-  });
-
-  card.addEventListener('click', (e) => {
-    const target = e.target as HTMLElement;
-    if (target.closest('button')) return;
-    if (studioTabBtnMaster?.classList.contains('active')) {
-      switchStudioDeckTab('mixer');
-    }
-    if (strokeManager.selectedStrokeId !== stroke.id) {
-      strokeManager.selectStroke(stroke.id);
-      updateTrackActionsVisibility();
-      updateMixerSelection();
-    }
+    updateTrackActionsVisibility();
+    updateMixerSelection();
   });
 
   // Mute button
@@ -1077,64 +1240,10 @@ function renderLayerMixer(): void {
   if (layerCountBadge) {
     layerCountBadge.textContent = strokes.length.toString();
   }
-  if (mixerTrackCount) {
-    mixerTrackCount.textContent = `${strokes.length} ${strokes.length === 1 ? 'Line' : 'Lines'}`;
-  }
   if (typeof renderStudioMixer === 'function') {
     renderStudioMixer();
   }
-  if (!layerMixerList) return;
-
-  if (strokes.length === 0) {
-    layerMixerList.innerHTML = '<div class="mixer-empty-state">No lines yet. Draw on the canvas to add ambient sound layers.</div>';
-    return;
-  }
-
-  const hasSolo = strokeManager.hasSoloedStrokes;
-  layerMixerList.innerHTML = '';
-
-  strokes.forEach((stroke, idx) => {
-    layerMixerList!.appendChild(createLayerCard(stroke, idx, hasSolo));
-  });
-  updateMixerSelection();
 }
-
-layersToggleBtn?.addEventListener('click', () => {
-  if (!layerMixerDrawer) return;
-  const isShown = layerMixerDrawer.style.display !== 'none';
-  layerMixerDrawer.style.display = isShown ? 'none' : 'flex';
-  layersToggleBtn.classList.toggle('active', !isShown);
-  if (!isShown) {
-    renderLayerMixer();
-  }
-});
-
-mixerCloseBtn?.addEventListener('click', () => {
-  if (layerMixerDrawer) {
-    layerMixerDrawer.style.display = 'none';
-    layersToggleBtn?.classList.remove('active');
-  }
-});
-
-mixerMuteAllBtn?.addEventListener('click', () => {
-  strokeManager.activeStrokes.forEach((s) => {
-    strokeManager.setStrokeMuted(s.id, true);
-  });
-  setCompositionDirty(true);
-  updateStats();
-  updateTrackActionsVisibility();
-  renderLayerMixer();
-});
-
-mixerUnmuteAllBtn?.addEventListener('click', () => {
-  strokeManager.activeStrokes.forEach((s) => {
-    strokeManager.setStrokeMuted(s.id, false);
-  });
-  setCompositionDirty(true);
-  updateStats();
-  updateTrackActionsVisibility();
-  renderLayerMixer();
-});
 
 // ==========================================================================
 // View Architecture Implementations (Studio Deck, Zen Canvas, Scene Arranger)
@@ -1393,9 +1502,14 @@ function updateStudioDockedInspector(): void {
     studioDockedInspector.classList.remove('has-selection', 'is-collapsed');
     if (dockedInspectorToggleBtn) dockedInspectorToggleBtn.style.display = 'none';
     if (studioInspectorContent) studioInspectorContent.style.display = 'none';
-    if (studioInspectorSub) studioInspectorSub.textContent = 'Select a line to inspect';
     if (studioBadgeDot) studioBadgeDot.style.background = 'transparent';
-    if (studioInspectorLabel) studioInspectorLabel.textContent = 'Line Inspector';
+    if (strokeManager.selectedStrokeIds.length > 1) {
+      if (studioInspectorSub) studioInspectorSub.textContent = `${strokeManager.selectedStrokeIds.length} lines selected (Drag to move)`;
+      if (studioInspectorLabel) studioInspectorLabel.textContent = 'Multi-Selection';
+    } else {
+      if (studioInspectorSub) studioInspectorSub.textContent = 'Select a line to inspect';
+      if (studioInspectorLabel) studioInspectorLabel.textContent = 'Line Inspector';
+    }
     return;
   }
 
@@ -2366,13 +2480,7 @@ startSimulateBtn?.addEventListener('click', async () => {
 
 // Start Live Recording
 startLiveRecBtn?.addEventListener('click', async () => {
-  if (!soundEngine.isReady) {
-    await soundEngine.init();
-    strokeManager.activateAudioVoices();
-    statAudio.textContent = 'Audio: Active';
-    statAudio.classList.add('chip-ready');
-    dismissWelcomePrompt();
-  }
+  await ensureAudioUnlocked();
 
   closeRecordModal();
 
@@ -2443,6 +2551,27 @@ loadTemplateFileBtn?.addEventListener('click', () => {
   loadFileInput?.click();
 });
 
+topLoadPresetBtn?.addEventListener('click', () => {
+  loadFileInput?.click();
+});
+
+topSavePresetBtn?.addEventListener('click', () => {
+  if (strokeManager.activeStrokes.length === 0) {
+    alert('Draw or create some musical lines first before saving a preset.');
+    return;
+  }
+  openSavePresetModal(true);
+});
+
+topDeletePresetBtn?.addEventListener('click', () => {
+  if (currentLoadedPresetName) {
+    const store = getSavedCompositions();
+    if (store[currentLoadedPresetName]) {
+      deleteCustomPreset(currentLoadedPresetName);
+    }
+  }
+});
+
 loadFileInput?.addEventListener('change', async () => {
   const file = loadFileInput.files?.[0];
   if (!file) return;
@@ -2462,7 +2591,9 @@ loadFileInput?.addEventListener('change', async () => {
     localStorage.setItem('harmonic_saved_grooves', JSON.stringify(saved));
     refreshSavedTemplatesDropdown();
     templateSelect.value = `custom:${compName}`;
+    currentLoadedPresetName = compName;
     await loadComposition(comp);
+    statMode.textContent = `Preset Loaded: ${compName}`;
   } catch (err) {
     console.error('Failed to parse groove template file:', err);
     alert('Could not parse template JSON file.');
@@ -2483,11 +2614,8 @@ async function loadTemplate(tId: string, initAudio = true): Promise<void> {
   currentLoadedPresetName = template.name;
   templateSelect.value = tId;
 
-  if (initAudio && !soundEngine.isReady) {
-    await soundEngine.init();
-    statAudio.textContent = 'Audio: Active';
-    statAudio.classList.add('chip-ready');
-    dismissWelcomePrompt();
+  if (initAudio) {
+    await ensureAudioUnlocked();
   }
 
   // Update scale, root, and tempo to template recommendations
@@ -2528,21 +2656,23 @@ async function loadTemplate(tId: string, initAudio = true): Promise<void> {
     strokeManager.setBreathingMode('gentle');
   }
 
-  // Clear existing and reset scroll to default middle register
+  // Clear existing and set scroll to template's view register
   strokeManager.clearAll();
-  const defaultScroll = quantizer.resetScrollToDefault(renderer.height);
+  const templateScroll = template.initialScrollRatio !== undefined
+    ? quantizer.clampScrollY(template.initialScrollRatio * renderer.height, renderer.height)
+    : quantizer.getMaxScrollY(renderer.height);
+  quantizer.setScrollY(templateScroll);
+  targetScrollY = templateScroll;
   updatePitchNavigator();
 
   const strokes = buildTemplateStrokes(tId, renderer.width, renderer.height, quantizer);
 
   for (const s of strokes) {
-    if (s.instrumentId !== 'onyx') {
-      for (const seg of s.path.segments) {
-        seg.p0.y += defaultScroll;
-        seg.p1.y += defaultScroll;
-        seg.p2.y += defaultScroll;
-        seg.p3.y += defaultScroll;
-      }
+    for (const seg of s.path.segments) {
+      seg.p0.y += templateScroll;
+      seg.p1.y += templateScroll;
+      seg.p2.y += templateScroll;
+      seg.p3.y += templateScroll;
     }
     strokeManager.addStroke(
       s.path,
@@ -2585,16 +2715,28 @@ async function loadTemplate(tId: string, initAudio = true): Promise<void> {
     xAxisModulationMode: template.xAxisModulation || 'panAndTone',
   });
   renderSceneCards();
+  updatePresetDeleteButtons();
 }
 
 templateSelect.addEventListener('change', async () => {
   const tId = templateSelect.value;
   if (!tId) return;
 
+  // Handle Action item: Open Preset File (.json)
+  if (tId === '__open_file__') {
+    templateSelect.value = currentLoadedPresetName
+      ? (getSavedCompositions()[currentLoadedPresetName] ? `custom:${currentLoadedPresetName}` : (TEMPLATES[currentLoadedPresetName] ? currentLoadedPresetName : 'cathedralSolitude'))
+      : 'cathedralSolitude';
+    loadFileInput?.click();
+    return;
+  }
+
   if (isCompositionDirty && strokeManager.activeStrokes.length > 0) {
     const ok = confirm(`You have unsaved changes in "${currentLoadedPresetName || 'current composition'}". Discard changes and load new preset?`);
     if (!ok) {
-      templateSelect.value = currentLoadedPresetName ? `custom:${currentLoadedPresetName}` : '';
+      templateSelect.value = currentLoadedPresetName
+        ? (getSavedCompositions()[currentLoadedPresetName] ? `custom:${currentLoadedPresetName}` : (TEMPLATES[currentLoadedPresetName] ? currentLoadedPresetName : 'cathedralSolitude'))
+        : 'cathedralSolitude';
       return;
     }
   }
@@ -2606,13 +2748,16 @@ templateSelect.addEventListener('change', async () => {
     const saved = getSavedCompositions();
     if (saved[name]) {
       await loadComposition(saved[name]);
+      templateSelect.value = `custom:${name}`;
     }
+    updatePresetDeleteButtons();
     return;
   }
 
   await loadTemplate(tId, true);
   setCompositionDirty(false);
   renderLayerMixer();
+  updatePresetDeleteButtons();
 });
 
 // Color-Sound Instrument Swatch Selection
@@ -2909,35 +3054,40 @@ duckingSlider?.addEventListener('input', () => {
   setCompositionDirty(true);
 });
 
-// Canvas Pitch Octaves Range Slider (Rescaling melodic strokes so musical pitch and sound remain unchanged)
+// Canvas Pitch Octaves Range Slider (Zooms pitch field resolution while preserving 100% pitch invariance)
 octavesSlider?.addEventListener('input', () => {
   const newOct = parseInt(octavesSlider.value, 10);
   const oldOct = quantizer.getConfig().octaveSpan;
   if (!newOct || !oldOct || newOct === oldOct) return;
   octavesVal.textContent = `${newOct} Oct`;
 
-  const scaleFactor = oldOct / newOct;
+  const viewportH = renderer.height;
+  const oldWorldH = quantizer.getWorldHeight(viewportH);
+  const oldActiveH = Math.max(1, oldWorldH - 2 * ScaleQuantizer.MARGIN_Y);
 
-  // 1. Rescale all melodic strokes Y coordinates so musical pitch stays identical
-  strokeManager.scaleMelodicStrokesY(scaleFactor);
+  // Update quantizer config to new octaveSpan
+  quantizer.updateConfig({ octaveSpan: newOct });
+
+  const newWorldH = quantizer.getWorldHeight(viewportH);
+  const newActiveH = Math.max(1, newWorldH - 2 * ScaleQuantizer.MARGIN_Y);
+  const scaleFactor = newActiveH / oldActiveH;
+
+  // 1. Rescale all melodic strokes Y coordinates relative to MARGIN_Y
+  strokeManager.scaleMelodicStrokesY(scaleFactor, ScaleQuantizer.MARGIN_Y);
 
   // 2. Adjust active in-flight gesture points if any
   if (activeDrawingPoints.length > 0 && currentInstrumentId !== 'onyx') {
     for (const pt of activeDrawingPoints) {
-      pt.y *= scaleFactor;
+      pt.y = ScaleQuantizer.MARGIN_Y + (pt.y - ScaleQuantizer.MARGIN_Y) * scaleFactor;
     }
   }
 
-  // 3. Anchor viewport scroll around the screen center
-  const viewportH = renderer.height;
+  // 3. Anchor viewport scroll smoothly around current screen center
   const centerScreenY = viewportH * 0.5;
   const oldWorldCenterY = quantizer.scrollY + centerScreenY;
-  const newWorldCenterY = oldWorldCenterY * scaleFactor;
+  const newWorldCenterY = ScaleQuantizer.MARGIN_Y + (oldWorldCenterY - ScaleQuantizer.MARGIN_Y) * scaleFactor;
 
-  // 4. Update quantizer octaveSpan
-  quantizer.updateConfig({ octaveSpan: newOct });
-
-  // 5. Update quantizer scrollY clamped to valid bounds
+  // 4. Update quantizer scrollY clamped to valid bounds
   quantizer.scrollY = quantizer.clampScrollY(newWorldCenterY - centerScreenY, viewportH);
   targetScrollY = quantizer.scrollY;
 
@@ -2946,11 +3096,34 @@ octavesSlider?.addEventListener('input', () => {
   if (strokeManager.selectedStrokeId) {
     updateTrackActionsVisibility();
   }
+  setCompositionDirty(true);
 });
+
+function updateScoreTimingStatus(): void {
+  if (!scoreTimingBadge) return;
+  const strokes = strokeManager.activeStrokes;
+  if (strokes.length === 0) {
+    scoreTimingBadge.textContent = 'Empty';
+    scoreTimingBadge.style.color = '';
+    return;
+  }
+  const timerCount = strokes.filter((s) => s.timingMode === 'timer' || s.speedMode === 'timer').length;
+  if (timerCount === 0) {
+    scoreTimingBadge.textContent = 'All Speed';
+    scoreTimingBadge.style.color = '#10b981';
+  } else if (timerCount === strokes.length) {
+    scoreTimingBadge.textContent = `${timerCount} ${timerCount === 1 ? 'Timer Line' : 'Timer Lines'}`;
+    scoreTimingBadge.style.color = '';
+  } else {
+    scoreTimingBadge.textContent = `${timerCount} Timer / ${strokes.length - timerCount} Speed`;
+    scoreTimingBadge.style.color = '';
+  }
+}
 
 // Track Inspector Volume / Timing / Traversal / Wave Reshape / Mute / Solo / Delete Controls
 function updateTrackActionsVisibility(): void {
   updateMixerSelection();
+  updateScoreTimingStatus();
   const selectedId = strokeManager.selectedStrokeId;
   const currentView = typeof viewModeManager !== 'undefined' ? viewModeManager.getMode() : 'studio';
 
@@ -2979,7 +3152,7 @@ function updateTrackActionsVisibility(): void {
       for (const seg of stroke.path.segments) {
         minY = Math.min(minY, seg.p0.y, seg.p1.y, seg.p2.y, seg.p3.y);
       }
-      const screenMinY = stroke.instrumentId === 'onyx' ? minY : quantizer.worldToScreenY(minY, renderer.height);
+      const screenMinY = quantizer.worldToScreenY(minY, renderer.height);
 
       // Always clear inline top/bottom so CSS handles smooth positioning
       trackInspectorBar.style.top = '';
@@ -3145,7 +3318,12 @@ function updateTrackActionsVisibility(): void {
       soloBtn.textContent = stroke.soloed ? 'Unsolo' : 'Solo';
     }
   } else {
-    statMode.textContent = inputHandler.appMode === 'live' ? 'Live Play' : 'Draw / Click to Select';
+    const selectedCount = strokeManager.selectedStrokeIds.length;
+    if (selectedCount > 1) {
+      statMode.textContent = `${selectedCount} Lines Selected (Drag to Move)`;
+    } else {
+      statMode.textContent = inputHandler.appMode === 'live' ? 'Live Play' : 'Draw / Click to Select';
+    }
     trackInspectorBar.style.display = 'none';
     trackInspectorBar.classList.remove('inspector-bottom');
     trackInspectorBar.classList.remove('inspector-with-drawer');
@@ -3260,6 +3438,27 @@ durationPills.forEach((pill) => {
 generalSyncSelect?.addEventListener('change', () => {
   applyGeneralSync(generalSyncSelect.value);
   setCompositionDirty(true);
+});
+
+// Convert All Lines to Speed Timing Action in Controls Panel
+const convertAllSpeedBtn = document.getElementById('convertAllSpeedBtn') as HTMLButtonElement | null;
+convertAllSpeedBtn?.addEventListener('click', () => {
+  strokeManager.convertAllStrokesToSpeedTiming(renderer.width);
+  if (generalSyncSelect) {
+    generalSyncSelect.value = 'speed:1.0';
+  }
+  setCompositionDirty(true);
+  updateStats();
+  updateTrackActionsVisibility();
+  renderLayerMixer();
+  renderStudioMixer();
+  updateScoreTimingStatus();
+
+  // Subtle tactile pulse animation on button
+  convertAllSpeedBtn.classList.add('active');
+  setTimeout(() => {
+    convertAllSpeedBtn.classList.remove('active');
+  }, 400);
 });
 
 // Track Inspector Loop Sync Event Listener
@@ -3527,7 +3726,8 @@ duplicateTrackBtn?.addEventListener('click', () => {
 });
 
 // Play / Pause Toggle
-function togglePlayPause(): void {
+async function togglePlayPause(): Promise<void> {
+  await ensureAudioUnlocked();
   const isPaused = !strokeManager.paused;
   strokeManager.setPaused(isPaused);
 
@@ -3540,7 +3740,9 @@ function togglePlayPause(): void {
   }
 }
 
-playPauseBtn.addEventListener('click', togglePlayPause);
+playPauseBtn.addEventListener('click', () => {
+  togglePlayPause();
+});
 
 // Undo Action
 undoBtn.addEventListener('click', () => {
@@ -3905,10 +4107,11 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     return;
   }
 
-  // Toggle Layers Mixer: M key when no stroke is selected
+  // Layers Mixer: M key switches Studio Deck to mixer tab
   if (e.key.toLowerCase() === 'm' && !e.metaKey && !e.ctrlKey && !strokeManager.selectedStrokeId) {
     e.preventDefault();
-    layersToggleBtn?.click();
+    viewModeManager.setMode('studio');
+    switchStudioDeckTab('mixer');
     return;
   }
 
@@ -3965,6 +4168,19 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     }
   }
 
+  // Select All: Cmd+A, Ctrl+A
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
+    const activeEl = document.activeElement;
+    if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || (activeEl as HTMLElement).isContentEditable)) {
+      return;
+    }
+    e.preventDefault();
+    strokeManager.selectAllStrokes();
+    updateTrackActionsVisibility();
+    updateMixerSelection();
+    return;
+  }
+
   // Duplicate: Cmd+D, Ctrl+D
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'd') {
     if (strokeManager.selectedStrokeId) {
@@ -3980,9 +4196,9 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     }
   }
 
-  // 3. Delete / Backspace: delete selected stroke
+  // 3. Delete / Backspace: delete selected stroke(s)
   if (e.key === 'Backspace' || e.key === 'Delete') {
-    if (strokeManager.selectedStrokeId) {
+    if (strokeManager.selectedStrokeIds.length > 0) {
       e.preventDefault();
       strokeManager.deleteSelected();
       syncCompositionState();
@@ -3990,7 +4206,7 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     }
   }
 
-  // 4. Escape: Close modals, close controls drawer, or deselect active stroke
+  // 4. Escape: Close modals, close controls drawer, or deselect active stroke(s)
   if (e.key === 'Escape') {
     if (shortcutsModal && !shortcutsModal.classList.contains('hidden')) {
       closeShortcutsModal();
@@ -4004,7 +4220,7 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
       setDrawerOpen(false);
       return;
     }
-    if (strokeManager.selectedStrokeId) {
+    if (strokeManager.selectedStrokeIds.length > 0) {
       strokeManager.selectStroke(null);
       updateTrackActionsVisibility();
       return;
@@ -4180,21 +4396,14 @@ window.addEventListener('blur', () => {
 });
 
 // Audio Unlock & Welcome Banner Dismissal on First Interaction
-window.addEventListener('pointerdown', async () => {
-  dismissWelcomePrompt();
-  if (!soundEngine.isReady) {
-    await soundEngine.init();
-    LiveRecorder.preloadWorklet(soundEngine.context);
-    strokeManager.activateAudioVoices();
-    statAudio.textContent = 'Audio: Active';
-    statAudio.classList.add('chip-ready');
-  }
+const unlockAudioOnGesture = async () => {
+  await ensureAudioUnlocked();
   setTimeout(updateTrackActionsVisibility, 50);
-}, { once: false });
-
-window.addEventListener('click', () => {
-  dismissWelcomePrompt();
-}, { once: false });
+};
+window.addEventListener('pointerdown', unlockAudioOnGesture, { passive: true });
+window.addEventListener('click', unlockAudioOnGesture, { passive: true });
+window.addEventListener('keydown', unlockAudioOnGesture, { passive: true });
+window.addEventListener('touchstart', unlockAudioOnGesture, { passive: true });
 
 window.addEventListener('pointerup', () => {
   if (strokeManager.selectedStrokeId) {
@@ -4222,6 +4431,7 @@ window.addEventListener('resize', handleResize);
 function updateStats(): void {
   const count = strokeManager.activeStrokes.length;
   statStrokes.textContent = `${count} ${count === 1 ? 'stroke' : 'strokes'}`;
+  updateAudioStatusChip();
 }
 
 // Animation & Sequencer Loop with Smooth Frame-Delta Filtering
@@ -4401,7 +4611,7 @@ function animationLoop(nowMs: number): void {
 
   // 3b. Render drum tier zone guides when Onyx is active or selected
   const showDrumZones = currentInstrumentId === 'onyx' || strokeManager.activeStrokes.some((s) => s.instrumentId === 'onyx' && (s.selected || s.hovered));
-  renderer.drawDrumZones(showDrumZones);
+  renderer.drawDrumZones(showDrumZones, quantizer);
 
   // 4. Render 4-beat visual measure tracker along the top
   renderer.drawBeatTracker(strokeManager.measureProgress, strokeManager.measureBeatIndex);
@@ -4409,35 +4619,20 @@ function animationLoop(nowMs: number): void {
   // 5. Render active strokes & playheads
   const hasSolo = strokeManager.hasSoloedStrokes;
 
-  // 5a. Melodic strokes in world coordinate layer (scrolls with frequency pitch field)
+  // 5. Render active strokes & playheads in world coordinate layer (scrolls smoothly with frequency field)
   renderer.drawWorldLayer(quantizer.scrollY, () => {
+    const isMultiSelection = strokeManager.selectedStrokeIds.length > 1;
     for (const stroke of strokeManager.activeStrokes) {
-      if (stroke.instrumentId !== 'onyx') {
-        renderer.drawStroke(stroke, hasSolo);
-        renderer.drawPlayhead(stroke, nowMs, hasSolo);
-      }
+      renderer.drawStroke(stroke, hasSolo, isMultiSelection);
+      renderer.drawPlayhead(stroke, nowMs, hasSolo);
     }
 
-    // Active in-flight gesture for melodic instruments
-    if (activeDrawingPoints.length > 1 && currentInstrumentId !== 'onyx') {
+    // Active in-flight gesture
+    if (activeDrawingPoints.length > 1) {
       const gestureColor = getInstrumentColor(currentInstrumentId, renderer.isDarkMode);
       renderer.drawActiveGesture(activeDrawingPoints, gestureColor);
     }
   });
-
-  // 5b. Drum strokes in fixed screen layer (locked to drum boundaries)
-  for (const stroke of strokeManager.activeStrokes) {
-    if (stroke.instrumentId === 'onyx') {
-      renderer.drawStroke(stroke, hasSolo);
-      renderer.drawPlayhead(stroke, nowMs, hasSolo);
-    }
-  }
-
-  // Active in-flight gesture for drum machine (fixed to screen coordinates)
-  if (activeDrawingPoints.length > 1 && currentInstrumentId === 'onyx') {
-    const gestureColor = getInstrumentColor(currentInstrumentId, renderer.isDarkMode);
-    renderer.drawActiveGesture(activeDrawingPoints, gestureColor);
-  }
 
   // 5c. Disappearing live trail (Live Play mode with dynamic reverb, release & trail lifetime)
   if (inputHandler.liveTrail.length > 0) {
@@ -4468,9 +4663,8 @@ function animationLoop(nowMs: number): void {
 }
 
 // Wire Spark Emitter to StrokeManager Trigger Hits
-strokeManager.onTriggerSpark = (x: number, y: number, color: string, count = 6, instrumentId?: string) => {
-  // If instrument is melodic, convert world coordinate y to viewport screen y
-  const screenY = instrumentId === 'onyx' ? y : quantizer.worldToScreenY(y, renderer.height);
+strokeManager.onTriggerSpark = (x: number, y: number, color: string, count = 6, _instrumentId?: string) => {
+  const screenY = quantizer.worldToScreenY(y, renderer.height);
   renderer.spawnSparks(x, screenY, color, count);
 };
 
