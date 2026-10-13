@@ -847,6 +847,93 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     const savedListContainer = doc.getElementById('savedPresetsListContainer');
     expect(savedListContainer).not.toBeNull();
   });
+
+  it('optimizes GPU rendering pipeline with gradient caching and DPR capping', async () => {
+    const { CanvasRenderer } = await import('../src/canvas/renderer');
+    let createGradientCount = 0;
+    const mockCtx = {
+      save: () => {},
+      restore: () => {},
+      beginPath: () => {},
+      fillRect: () => {},
+      setTransform: () => {},
+      createRadialGradient: () => {
+        createGradientCount++;
+        return { addColorStop: () => {} };
+      },
+    };
+
+    const canvas = doc.createElement('canvas');
+    canvas.getBoundingClientRect = () => ({ width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600, x: 0, y: 0, toJSON: () => {} });
+    canvas.getContext = () => mockCtx as any;
+
+    (global as any).window.devicePixelRatio = 2.5; // Simulate high-DPI display
+    const renderer = new CanvasRenderer(canvas);
+
+    // DPR capped at 1.75 max to reduce GPU fill-rate on high-DPI screens
+    expect((renderer as any).dpr).toBe(1.75);
+
+    // First clear allocates gradient once
+    renderer.clear();
+    expect(createGradientCount).toBe(1);
+
+    // Subsequent clear frames reuse cached gradient (zero allocations)
+    renderer.clear();
+    renderer.clear();
+    expect(createGradientCount).toBe(1);
+
+    // Switching theme invalidates cache cleanly
+    renderer.setDarkMode(true);
+    renderer.clear();
+    expect(createGradientCount).toBe(2);
+  });
+
+  it('provides general user-friendly sonic descriptions for timbral breathing and sound controls', () => {
+    const breathingGroup = doc.getElementById('breathingControlGroup');
+    expect(breathingGroup).not.toBeNull();
+    expect(breathingGroup?.classList.contains('has-tooltip')).toBe(true);
+    expect(breathingGroup?.getAttribute('data-tooltip')).toContain('Timbral Breathing: Adds natural breathing movement');
+    expect(breathingGroup?.getAttribute('data-tooltip')).toContain('Gentle Swell');
+    expect(breathingGroup?.getAttribute('data-tooltip')).toContain('Deep Ocean');
+
+    const select = doc.getElementById('breathingSelect') as HTMLSelectElement;
+    expect(select).not.toBeNull();
+
+    const options = Array.from(select.querySelectorAll('option'));
+    expect(options.length).toBe(4);
+
+    const gentleOpt = select.querySelector('option[value="gentle"]');
+    const deepOpt = select.querySelector('option[value="deep"]');
+    const driftOpt = select.querySelector('option[value="drift"]');
+    const offOpt = select.querySelector('option[value="off"]');
+
+    expect(gentleOpt?.getAttribute('title')).toContain('Gentle Swell: Soft, breathing warmth');
+    expect(deepOpt?.getAttribute('title')).toContain('Deep Ocean: Slow, immersive waves');
+    expect(driftOpt?.getAttribute('title')).toContain('Tape Drift: Dreamy, floating texture');
+    expect(offOpt?.getAttribute('title')).toContain('Off: Steady, unchanging tones');
+  });
+
+  it('streamlines bottom bar left chips and maximizes space for contextual description', () => {
+    const statusLeft = doc.querySelector('.bottom-bar .status-left');
+    expect(statusLeft).not.toBeNull();
+
+    // Essential items exist
+    expect(doc.getElementById('layersStatusChip')).not.toBeNull();
+    expect(doc.getElementById('statMode')).not.toBeNull();
+    expect(doc.getElementById('statAudio')).not.toBeNull();
+
+    // Redundant items are removed from DOM to free up width
+    expect(doc.getElementById('statInstrument')).toBeNull();
+    expect(doc.getElementById('statTempo')).toBeNull();
+    expect(doc.getElementById('statLoopSync')).toBeNull();
+    expect(doc.getElementById('statPitchSnap')).toBeNull();
+
+    // Context help container has flexible width and exists in bottom bar
+    const statusCenter = doc.querySelector('.bottom-bar .status-center');
+    expect(statusCenter).not.toBeNull();
+    const contextHelp = doc.getElementById('contextHelp');
+    expect(contextHelp).not.toBeNull();
+  });
 });
 
 

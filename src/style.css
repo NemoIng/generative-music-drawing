@@ -1320,23 +1320,23 @@ button.status-chip {
 .status-center {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: 0 8px;
+  padding: 0 12px;
 }
 
 .context-help {
-  font-size: 0.72rem;
+  font-size: 0.76rem;
   color: var(--text-muted);
   font-weight: 450;
+  letter-spacing: -0.01em;
   transition: color 0.15s ease;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 100%;
 }
 
 .bottom-bar-actions {

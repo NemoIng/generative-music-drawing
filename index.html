@@ -338,7 +338,7 @@
             <div class="drawer-card">
               <span class="drawer-card-label">Scale & Tuning</span>
               <div class="drawer-two-col">
-                <div class="control-group has-tooltip" data-tooltip="Modal Scale: Sets musical intervals. Dorian and Lydian evoke ambient warmth; Pentatonics guarantee consonance.">
+                <div class="control-group has-tooltip" data-tooltip="Musical Mood (Scale): Sets the emotional feel — Dorian and Lydian create dreamy ambient warmth, Major feels bright and hopeful, and Pentatonic scales always stay harmoniously in tune.">
                   <label for="scaleSelect">Scale</label>
                   <div class="select-wrapper">
                     <select id="scaleSelect" class="minimal-select">
@@ -353,7 +353,7 @@
                   </div>
                 </div>
 
-                <div class="control-group has-tooltip" data-tooltip="Root Pitch: Fundamental base frequency aligned with bottom of canvas (D2 ≈ 73.4 Hz).">
+                <div class="control-group has-tooltip" data-tooltip="Base Key (Root Note): Anchors the primary drone pitch at the bottom of the canvas so everything harmonizes naturally.">
                   <label for="rootSelect">Root</label>
                   <div class="select-wrapper">
                     <select id="rootSelect" class="minimal-select">
@@ -374,7 +374,7 @@
                 </div>
               </div>
 
-              <div class="control-group has-tooltip" data-tooltip="X-Axis Modulation: Controls how horizontal position shapes sound (Stereo Panning across soundstage + Timbral Brightness).">
+              <div class="control-group has-tooltip" data-tooltip="Canvas Position Effect: Shapes how notes sound as they travel left to right — Stereo Pan (moves sound left to right), Tone Brightness (gets brighter across the canvas), or Reverb (adds deeper room echo to the right).">
                 <label for="xAxisSelect">X-Axis Modulation</label>
                 <div class="select-wrapper">
                   <select id="xAxisSelect" class="minimal-select">
@@ -459,7 +459,7 @@
               </div>
 
               <!-- Master Reverb Space Depth & Type Selection -->
-              <div class="control-group slider-group has-tooltip" data-tooltip="Space (Reverb): Adjusts room acoustics from intimate & dry (0%) to vast cathedral ambient (100%).">
+              <div class="control-group slider-group has-tooltip" data-tooltip="Space (Master Reverb): Adjusts room acoustics, from dry and up-close (0%) to vast cathedral ambient echo (100%).">
                 <div class="slider-header">
                   <label for="spaceSlider">Space (Master Reverb)</label>
                   <span id="spaceVal" class="value-badge">35%</span>
@@ -468,7 +468,7 @@
               </div>
 
               <!-- Reverb Acoustic Model -->
-              <div class="control-group has-tooltip" data-tooltip="Acoustic Space Type: Cathedral (grand 4.2s ambient decay), Shimmer (pitch-shifted octave sparkle), Ambient Hall (natural concert hall), Warm Plate (silky steel reflections), or Intimate Chamber (tight dry space).">
+              <div class="control-group has-tooltip" data-tooltip="Acoustic Space Type: Cathedral (grand ambient echo), Shimmer (magical sparkling glow), Ambient Hall (natural warm concert hall), Warm Plate (silky vintage reverb), or Intimate Chamber (cozy dry room).">
                 <label for="reverbTypeSelect">Acoustic Space Model</label>
                 <div class="select-wrapper">
                   <select id="reverbTypeSelect" class="minimal-select">
@@ -482,20 +482,20 @@
               </div>
 
               <!-- Organic Timbral Breathing (Option 3) -->
-              <div class="control-group has-tooltip" data-tooltip="Timbral Breathing: Generates slow, evolving acoustic movement with filter sweeps, volume swells, and analog tape drift without changing pitch.">
+              <div class="control-group has-tooltip" id="breathingControlGroup" data-tooltip="Timbral Breathing: Adds natural breathing movement — Gentle Swell (soft warm rise and fall), Deep Ocean (slow immersive waves), Tape Drift (dreamy floating texture), or Off (steady, unchanging tones).">
                 <label for="breathingSelect">Timbral Breathing</label>
                 <div class="select-wrapper">
                   <select id="breathingSelect" class="minimal-select">
-                    <option value="gentle" selected>Gentle Swell (~22s)</option>
-                    <option value="deep">Deep Ocean (~34s)</option>
-                    <option value="drift">Tape Drift (Phasing)</option>
-                    <option value="off">Off (Static)</option>
+                    <option value="gentle" selected title="Gentle Swell: Soft, breathing warmth with smooth swells that gently rise and fall like a calm breath.">Gentle Swell (~22s)</option>
+                    <option value="deep" title="Deep Ocean: Slow, immersive waves that build and recede for a cinematic, expansive feel.">Deep Ocean (~34s)</option>
+                    <option value="drift" title="Tape Drift: Dreamy, floating texture inspired by vintage ambient tapes where layers slowly drift past each other.">Tape Drift (Phasing)</option>
+                    <option value="off" title="Off: Steady, unchanging tones with constant brightness and volume.">Off (Static)</option>
                   </select>
                 </div>
               </div>
 
               <!-- Sound Dynamics: Stereo Width -->
-              <div class="control-group slider-group has-tooltip" data-tooltip="Stereo Width: Expands master stereo field from mono focus (0%) through natural stereo (100%) to ultra-wide immersive dimension (200%).">
+              <div class="control-group slider-group has-tooltip" data-tooltip="Stereo Width: Controls how wide the music feels — centered in the middle (0%), natural stereo (100%), or wrapping all around you in wide room immersion (200%).">
                 <div class="slider-header">
                   <label for="stereoWidthSlider">Stereo Field Dimension</label>
                   <span id="stereoWidthVal" class="value-badge">100% (Stereo)</span>
@@ -504,7 +504,7 @@
               </div>
 
               <!-- Sound Dynamics: Tape Warmth & Flutter -->
-              <div class="control-group slider-group has-tooltip" data-tooltip="Tape Warmth: Analog harmonic saturation and low-end warmth that rounds off digital harshness and provides vintage warmth.">
+              <div class="control-group slider-group has-tooltip" data-tooltip="Tape Warmth: Adds cozy vintage tape character that softens harsh notes and makes instruments feel rich, warm, and full.">
                 <div class="slider-header">
                   <label for="tapeWarmthSlider">Tape Warmth &amp; Saturation</label>
                   <span id="tapeWarmthVal" class="value-badge">0% (Clean)</span>
@@ -513,7 +513,7 @@
               </div>
 
               <!-- Sound Dynamics: Sidechain Ducking -->
-              <div class="control-group slider-group has-tooltip" data-tooltip="Sidechain Ducking: Rhythmic breathing pulse that dips the ambient bed on kick drum beats and playhead impacts for dramatic breathing pump.">
+              <div class="control-group slider-group has-tooltip" data-tooltip="Sidechain Ducking: Gently dips the background echo when drums or strong notes hit, creating a hypnotic breathing pulse in your music.">
                 <div class="slider-header">
                   <label for="duckingSlider">Sidechain Ducking (Pump)</label>
                   <span id="duckingVal" class="value-badge">0% (Off)</span>
@@ -522,7 +522,7 @@
               </div>
 
               <!-- Canvas Pitch Octave Span -->
-              <div class="control-group slider-group has-tooltip" data-tooltip="Octave Range: Pitch span across canvas height (2 = detailed melodic focus, 5 = full symphonic range).">
+              <div class="control-group slider-group has-tooltip" data-tooltip="Octave Range: Vertical pitch span across the canvas (2 Oct = close melodic lines, 5 Oct = full deep-bass to sparkling-high range).">
                 <div class="slider-header">
                   <label for="octavesSlider">Octaves View</label>
                   <span id="octavesVal" class="value-badge">4 Oct</span>
@@ -594,7 +594,7 @@
               </div>
 
               <!-- Individual Line Tone Fluctuation -->
-              <div class="inspector-cell has-tooltip" data-tooltip="Tone Fluctuation: Controls slight randomness / organic pitch drift from the drawn line (0.00 = strict line tracking, 1.00 = maximum subtle pitch and tone wander).">
+              <div class="inspector-cell has-tooltip" data-tooltip="Organic Drift: Adds subtle wandering pitch and acoustic imperfection so the line feels alive, from exact pitch (0.00) to gently drifting notes (1.00).">
                 <label for="trackFluctuationSlider">Fluct</label>
                 <div class="track-slider-wrap">
                   <input type="range" id="trackFluctuationSlider" min="0" max="1" step="0.01" value="0.00" class="track-vol-slider" />
@@ -603,7 +603,7 @@
               </div>
 
               <!-- Individual Line Distortion Overdrive -->
-              <div class="inspector-cell has-tooltip" data-tooltip="Line Distortion: Warm saturation & harmonic overdrive drive (0% clean to 100% saturated bite).">
+              <div class="inspector-cell has-tooltip" data-tooltip="Line Distortion: Warm analog grit and drive, from pure and clean (0%) to crunchy overdrive (100%).">
                 <label for="trackDistortionSlider">Dist</label>
                 <div class="track-slider-wrap">
                   <input type="range" id="trackDistortionSlider" min="0" max="100" step="1" value="0" class="track-vol-slider" />
@@ -612,7 +612,7 @@
               </div>
 
               <!-- Individual Line Tone Filter -->
-              <div class="inspector-cell has-tooltip" data-tooltip="Line Tone Filter: Warm analog lowpass cutoff (0% warm/dark to 100% open/bright).">
+              <div class="inspector-cell has-tooltip" data-tooltip="Line Tone Filter: Tone brightness, from dark and mellow (0%) to crisp, open, and bright (100%).">
                 <label for="trackFilterSlider">Tone</label>
                 <div class="track-slider-wrap">
                   <input type="range" id="trackFilterSlider" min="0" max="100" step="1" value="100" class="track-vol-slider" />
@@ -621,7 +621,7 @@
               </div>
 
               <!-- Individual Line Lo-Fi Crunch -->
-              <div class="inspector-cell has-tooltip" data-tooltip="Line Lo-Fi Crunch: Bit-depth reduction and digital sampler grit (0% clean hi-fi to 100% vintage crunchy bite).">
+              <div class="inspector-cell has-tooltip" data-tooltip="Line Lo-Fi Crunch: Retro sampler texture, from clean modern audio (0%) to gritty vintage crunch (100%).">
                 <label for="trackLofiSlider">Lo-Fi</label>
                 <div class="track-slider-wrap">
                   <input type="range" id="trackLofiSlider" min="0" max="100" step="1" value="0" class="track-vol-slider" />
@@ -642,7 +642,7 @@
             <!-- Row 2: Timing (Speed vs Timer), Traversal (Restart vs Bounce), and Shape Restructuring -->
             <div class="track-inspector-row track-inspector-row-bottom">
               <!-- Individual Line Timing: Speed vs Timer (Free default, timer for drones) -->
-              <div class="inspector-cell inspector-speed-cell has-tooltip" data-tooltip="Line Timing (← / →): Control pacing with Speed (multiplier) or Timer (duration in seconds). Left/Right arrows modify by 0.1x or 5s.">
+              <div class="inspector-cell inspector-speed-cell has-tooltip" data-tooltip="Line Timing (← / →): Controls pacing with Speed (multiplier) or Timer (loop duration in seconds). Left/Right arrows adjust speed.">
                 <div class="inspector-speed-header">
                   <label>Timing</label>
                   <div class="speed-mode-toggle" id="speedModeToggle">
@@ -681,7 +681,7 @@
               </div>
 
               <!-- Individual Line Traversal: Restart vs Bounce -->
-              <div class="inspector-cell has-tooltip" data-tooltip="Line Traversal (T): Restart (straight) from line start, or Bounce back and forth.">
+              <div class="inspector-cell has-tooltip" data-tooltip="Line Traversal (T): Sets how the sound travels — Restart from the beginning, or Bounce smoothly back and forth.">
                 <label>Traversal</label>
                 <div class="segmented-switch mini-switch" id="trackTraversalControl">
                   <button type="button" class="seg-btn active" data-track-traversal="restart">Restart</button>
@@ -690,7 +690,7 @@
               </div>
 
               <!-- Individual Line Voicing (Harmonizer) -->
-              <div class="inspector-cell has-tooltip" id="trackHarmonizerControl" data-tooltip="Line Voicing: Single unison, Upper Octave stack (+8va), Sub-Octave bass (-8vb), or Dual Octave (±8va).">
+              <div class="inspector-cell has-tooltip" id="trackHarmonizerControl" data-tooltip="Line Voicing: Harmony layers — Single note, Upper Octave higher (+8va), Deep Bass lower (-8vb), or Dual Octaves in both directions (±8va).">
                 <label for="trackHarmonizerSelect">Voicing</label>
                 <div class="select-wrapper mini-select-wrapper">
                   <select id="trackHarmonizerSelect" class="minimal-select track-mini-select">
@@ -845,12 +845,7 @@
             <span id="layersStatusChip" class="status-chip has-tooltip" data-tooltip="Active Layers: Total count of active musical lines and rhythmic curves.">
               Layers <span id="layerCountBadge" class="layer-badge-count">0</span>
             </span>
-            <span id="statStrokes" class="status-chip" style="display:none">0 strokes</span>
             <span id="statMode" class="status-chip">Draw / Click to Select</span>
-            <span id="statInstrument" class="status-chip">🎻 Bowed Cello</span>
-            <span id="statTempo" class="status-chip">100 BPM</span>
-            <span id="statLoopSync" class="status-chip">Default: 2 Bars</span>
-            <span id="statPitchSnap" class="status-chip">Snap Off</span>
             <button type="button" id="statAudio" class="status-chip chip-unstarted has-tooltip" data-tooltip="Click to Start Audio Engine">Click to Start Audio</button>
           </div>
           <div class="status-center">
@@ -993,17 +988,17 @@
                   <div class="docked-row">
                     <label class="docked-label">Tone &amp; Grit</label>
                   </div>
-                  <div class="docked-slider-row has-tooltip" data-tooltip="Line Distortion: Warm saturation &amp; harmonic overdrive (0% clean to 100% saturated bite).">
+                  <div class="docked-slider-row has-tooltip" data-tooltip="Line Distortion: Warm saturation and drive, from pure and clean (0%) to crunchy overdrive (100%).">
                     <span class="docked-sublabel">Dist</span>
                     <input type="range" id="studioDistortionSlider" min="0" max="100" step="1" value="0" class="docked-range-slider" />
                     <span id="studioDistortionVal" class="docked-val-badge">0%</span>
                   </div>
-                  <div class="docked-slider-row has-tooltip" data-tooltip="Line Tone Filter: Warm analog lowpass cutoff (0% warm/dark to 100% open/bright).">
+                  <div class="docked-slider-row has-tooltip" data-tooltip="Line Tone Filter: Tone brightness, from dark and mellow (0%) to crisp, open, and bright (100%).">
                     <span class="docked-sublabel">Tone</span>
                     <input type="range" id="studioFilterSlider" min="0" max="100" step="1" value="100" class="docked-range-slider" />
                     <span id="studioFilterVal" class="docked-val-badge">100%</span>
                   </div>
-                  <div class="docked-slider-row has-tooltip" data-tooltip="Line Lo-Fi Crunch: Bit-depth reduction and digital sampler crunch (0% clean hi-fi to 100% vintage grit).">
+                  <div class="docked-slider-row has-tooltip" data-tooltip="Line Lo-Fi Crunch: Retro sampler texture, from clean hi-fi (0%) to gritty vintage crunch (100%).">
                     <span class="docked-sublabel">Lo-Fi</span>
                     <input type="range" id="studioLofiSlider" min="0" max="100" step="1" value="0" class="docked-range-slider" />
                     <span id="studioLofiVal" class="docked-val-badge">0%</span>
@@ -1025,7 +1020,7 @@
             <div class="studio-master-card">
               <div class="studio-card-title">Acoustic Atmosphere & Master Controls</div>
               
-              <div class="control-group slider-group has-tooltip" data-tooltip="Global Tempo (BPM): Master speed clock (10–180 BPM). Ambient compositions thrive at slow tempos (15–40 BPM).">
+              <div class="control-group slider-group has-tooltip" data-tooltip="Global Tempo (BPM): Master speed clock (10–180 BPM). Ambient music thrives at calm, slow tempos (15–40 BPM).">
                 <div class="slider-header">
                   <label for="studioMasterBpmSlider">Tempo</label>
                   <span id="studioMasterBpmVal" class="value-badge">32 BPM</span>
@@ -1033,7 +1028,7 @@
                 <input type="range" id="studioMasterBpmSlider" min="10" max="180" step="1" value="32" class="minimal-slider" />
               </div>
 
-              <div class="control-group slider-group has-tooltip" data-tooltip="Master Reverb Mix: Balances dry acoustic signal (0%) with vast ambient convolution space (up to 100%).">
+              <div class="control-group slider-group has-tooltip" data-tooltip="Master Reverb Mix: Controls how much room echo surrounds your music, from dry and up-close (0%) to vast atmospheric space (100%).">
                 <div class="slider-header">
                   <label for="studioMasterReverbSlider">Reverb Mix</label>
                   <span id="studioMasterReverbVal" class="value-badge">65%</span>
@@ -1041,7 +1036,7 @@
                 <input type="range" id="studioMasterReverbSlider" min="0" max="100" step="1" value="65" class="minimal-slider" />
               </div>
 
-              <div class="control-group has-tooltip" data-tooltip="Acoustic Space Model: Convolution impulse responses — Cathedral (4.2s lush tail), Shimmer (ethereal harmonic sparkle), Ambient Hall (2.4s warm concert acoustic), Warm Plate (1.8s silky steel), or Intimate Chamber (0.9s tight space).">
+              <div class="control-group has-tooltip" data-tooltip="Acoustic Space Model: Room and hall acoustics — Cathedral (grand ambient echo), Shimmer (magical sparkling glow), Ambient Hall (natural warm concert hall), Warm Plate (silky vintage reverb), or Intimate Chamber (cozy dry room).">
                 <label for="studioReverbTypeSelect">Acoustic Space Model</label>
                 <div class="select-wrapper">
                   <select id="studioReverbTypeSelect" class="minimal-select">
@@ -1054,7 +1049,7 @@
                 </div>
               </div>
 
-              <div class="control-group slider-group has-tooltip" data-tooltip="Stereo Field Dimension: Adjusts master stereo imaging from mono focus (0%) to natural stereo (100%) and hyper-wide panoramic immersion (200%).">
+              <div class="control-group slider-group has-tooltip" data-tooltip="Stereo Field Dimension: Controls how wide the music feels — centered in the middle (0%), natural stereo (100%), or wrapping all around you in wide room immersion (200%).">
                 <div class="slider-header">
                   <label for="studioStereoWidthSlider">Stereo Width</label>
                   <span id="studioStereoWidthVal" class="value-badge">100% (Stereo)</span>
@@ -1063,7 +1058,7 @@
               </div>
 
               <div class="drawer-two-col">
-                <div class="control-group slider-group has-tooltip" data-tooltip="Tape Warmth: Soft-clipping analog saturation and tape head resonance that softens digital transients and adds gentle harmonic color.">
+                <div class="control-group slider-group has-tooltip" data-tooltip="Tape Warmth: Adds cozy vintage tape character that softens harsh notes and gives instruments rich, analog warmth.">
                   <div class="slider-header">
                     <label for="studioTapeWarmthSlider">Tape Warmth</label>
                     <span id="studioTapeWarmthVal" class="value-badge">0%</span>
@@ -1071,7 +1066,7 @@
                   <input type="range" id="studioTapeWarmthSlider" min="0" max="100" step="1" value="0" class="minimal-slider" />
                 </div>
 
-                <div class="control-group slider-group has-tooltip" data-tooltip="Sidechain Ducking: Rhythmic acoustic compression pump that dips the ambient reverberant tail during drum transients and line accents.">
+                <div class="control-group slider-group has-tooltip" data-tooltip="Sidechain Ducking: Gently dips the background echo when drums or strong notes hit, creating a hypnotic breathing pulse.">
                   <div class="slider-header">
                     <label for="studioDuckingSlider">Ducking (Pump)</label>
                     <span id="studioDuckingVal" class="value-badge">0%</span>
@@ -1081,7 +1076,7 @@
               </div>
 
               <div class="drawer-two-col">
-                <div class="control-group has-tooltip" data-tooltip="Modal Scale: Master harmonic quantization framework. Dorian and Lydian create atmospheric modal landscapes; Pentatonics provide pure consonance.">
+                <div class="control-group has-tooltip" data-tooltip="Modal Scale: Sets the musical mood — Dorian and Lydian create dreamy ambient warmth, Major feels bright and uplifting, and Pentatonic scales always stay in tune.">
                   <label for="studioScaleSelect">Modal Scale</label>
                   <div class="select-wrapper">
                     <select id="studioScaleSelect" class="minimal-select">
@@ -1096,7 +1091,7 @@
                   </div>
                 </div>
 
-                <div class="control-group has-tooltip" data-tooltip="Root Pitch: Fundamental keynote frequency anchoring the musical scale and tonic drone center.">
+                <div class="control-group has-tooltip" data-tooltip="Root Pitch: Sets the base keynote that anchors the musical scale and tunes the ambient drones.">
                   <label for="studioRootSelect">Root Pitch</label>
                   <div class="select-wrapper">
                     <select id="studioRootSelect" class="minimal-select">
@@ -1112,7 +1107,7 @@
                 </div>
               </div>
 
-              <div class="control-group has-tooltip" data-tooltip="X-Axis Modulation: Determines how horizontal positioning along the canvas dynamically shapes each note (Stereo Pan, Brightness Filter, or Reverb Space Depth).">
+              <div class="control-group has-tooltip" data-tooltip="X-Axis Modulation: Shapes how notes sound as they travel left to right across the canvas (Stereo Pan, Tone Brightness, or Reverb Space Depth).">
                 <label for="studioXAxisSelect">X-Axis Modulation</label>
                 <div class="select-wrapper">
                   <select id="studioXAxisSelect" class="minimal-select">

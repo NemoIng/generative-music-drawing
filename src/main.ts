@@ -144,12 +144,12 @@ export function dismissWelcomePrompt(): void {
     audioUnlockPrompt.style.pointerEvents = 'none';
   }
 }
-const statStrokes = document.getElementById('statStrokes') as HTMLSpanElement;
-const statMode = document.getElementById('statMode') as HTMLSpanElement;
-const statTempo = document.getElementById('statTempo') as HTMLSpanElement;
-const statInstrument = document.getElementById('statInstrument') as HTMLSpanElement;
-const statLoopSync = document.getElementById('statLoopSync') as HTMLSpanElement;
-const statPitchSnap = document.getElementById('statPitchSnap') as HTMLSpanElement;
+const statStrokes = document.getElementById('statStrokes') as HTMLSpanElement | null;
+const statMode = document.getElementById('statMode') as HTMLSpanElement | null;
+const statTempo = document.getElementById('statTempo') as HTMLSpanElement | null;
+const statInstrument = document.getElementById('statInstrument') as HTMLSpanElement | null;
+const statLoopSync = document.getElementById('statLoopSync') as HTMLSpanElement | null;
+const statPitchSnap = document.getElementById('statPitchSnap') as HTMLSpanElement | null;
 const statAudio = document.getElementById('statAudio') as HTMLButtonElement | HTMLSpanElement | null;
 
 /**
@@ -212,7 +212,17 @@ const trackDurationVal = document.getElementById('trackDurationVal') as HTMLSpan
 const defaultHarmonizerSelect = document.getElementById('defaultHarmonizerSelect') as HTMLSelectElement | null;
 const trackHarmonizerControl = document.getElementById('trackHarmonizerControl') as HTMLElement | null;
 const trackHarmonizerSelect = document.getElementById('trackHarmonizerSelect') as HTMLSelectElement | null;
+const breathingControlGroup = document.getElementById('breathingControlGroup') as HTMLElement | null;
 const breathingSelect = document.getElementById('breathingSelect') as HTMLSelectElement | null;
+
+const BREATHING_GENERAL_TOOLTIP =
+  'Timbral Breathing: Adds natural breathing movement — Gentle Swell (soft warm rise and fall), Deep Ocean (slow immersive waves), Tape Drift (dreamy floating texture), or Off (steady, unchanging tones).';
+
+function updateBreathingTooltip(_mode?: BreathingMode): void {
+  if (breathingControlGroup) {
+    breathingControlGroup.setAttribute('data-tooltip', BREATHING_GENERAL_TOOLTIP);
+  }
+}
 
 // Layers Mixer & Presets Dirty State Controls
 const layerCountBadge = document.getElementById('layerCountBadge') as HTMLSpanElement | null;
@@ -245,21 +255,21 @@ function applyGeneralSync(val: string): void {
     const mult = parseFloat(val.replace('speed:', ''));
     strokeManager.setDefaultSpeedMode('speed');
     strokeManager.setDefaultSpeedMultiplier(mult);
-    if (!strokeManager.selectedStrokeId) {
+    if (statLoopSync && !strokeManager.selectedStrokeId) {
       statLoopSync.textContent = `Default: ${mult}x Speed`;
     }
   } else if (val.startsWith('timer:')) {
     const dur = parseInt(val.replace('timer:', ''), 10);
     strokeManager.setDefaultSpeedMode('timer');
     strokeManager.setDefaultDuration(dur);
-    if (!strokeManager.selectedStrokeId) {
+    if (statLoopSync && !strokeManager.selectedStrokeId) {
       statLoopSync.textContent = `Default: ${formatDurationSec(dur)} Timer`;
     }
   } else if (val.startsWith('bars:')) {
     const mode = val.replace('bars:', '') as LoopQuantizeMode;
     strokeManager.setDefaultSpeedMode('bars');
     strokeManager.setLoopQuantizeMode(mode);
-    if (!strokeManager.selectedStrokeId) {
+    if (statLoopSync && !strokeManager.selectedStrokeId) {
       const defSyncLabel = mode === '1bar' ? '1 Bar'
         : (mode === '2bars' ? '2 Bars'
         : (mode === '4bars' ? '4 Bars'
@@ -558,8 +568,10 @@ snapPitchBtn.addEventListener('click', () => {
   inputHandler.setSnapPitch(willSnap);
   snapPitchBtn.classList.toggle('active', willSnap);
   snapPitchBtn.textContent = willSnap ? 'Snap ON' : 'Snap Off';
-  statPitchSnap.textContent = willSnap ? 'Snap ON' : 'Snap Off';
-  statPitchSnap.style.color = willSnap ? '#2563eb' : 'inherit';
+  if (statPitchSnap) {
+    statPitchSnap.textContent = willSnap ? 'Snap ON' : 'Snap Off';
+    statPitchSnap.style.color = willSnap ? '#2563eb' : 'inherit';
+  }
 });
 
 // Interactive Frequency Range Navigator (8-octave vertical scroll)
@@ -828,7 +840,7 @@ function deleteCustomPreset(presetName: string): boolean {
   }
 
   updatePresetDeleteButtons();
-  statMode.textContent = `Preset Deleted: ${presetName}`;
+  if (statMode) statMode.textContent = `Preset Deleted: ${presetName}`;
   return true;
 }
 
@@ -851,7 +863,7 @@ async function loadComposition(comp: SavedComposition): Promise<void> {
     strokeManager.setBpm(comp.bpm);
     bpmSlider.value = comp.bpm.toString();
     bpmVal.textContent = `${comp.bpm} BPM`;
-    statTempo.textContent = `${comp.bpm} BPM`;
+    if (statTempo) statTempo.textContent = `${comp.bpm} BPM`;
   }
   if (comp.spaceReverb !== undefined) {
     const spacePct = Math.round(comp.spaceReverb * 100);
@@ -867,6 +879,7 @@ async function loadComposition(comp: SavedComposition): Promise<void> {
   if (comp.breathingMode && breathingSelect) {
     breathingSelect.value = comp.breathingMode;
     strokeManager.setBreathingMode(comp.breathingMode);
+    updateBreathingTooltip(comp.breathingMode);
   }
   if (comp.xAxisModulationMode) {
     if (xAxisSelect) {
@@ -895,8 +908,10 @@ async function loadComposition(comp: SavedComposition): Promise<void> {
     inputHandler.setSnapPitch(comp.snapPitch);
     snapPitchBtn.classList.toggle('active', comp.snapPitch);
     snapPitchBtn.textContent = comp.snapPitch ? 'Snap ON' : 'Snap Off';
-    statPitchSnap.textContent = comp.snapPitch ? 'Snap ON' : 'Snap Off';
-    statPitchSnap.style.color = comp.snapPitch ? '#2563eb' : 'inherit';
+    if (statPitchSnap) {
+      statPitchSnap.textContent = comp.snapPitch ? 'Snap ON' : 'Snap Off';
+      statPitchSnap.style.color = comp.snapPitch ? '#2563eb' : 'inherit';
+    }
   }
   if (comp.theme) {
     setTheme(comp.theme === 'dark');
@@ -1023,7 +1038,7 @@ function executeSavePreset(nameToSave: string, downloadJson: boolean): void {
   closeSavePresetModal();
   updatePresetDeleteButtons();
   renderSavedPresetsManagerList();
-  statMode.textContent = `Preset Saved: ${cleanName}`;
+  if (statMode) statMode.textContent = `Preset Saved: ${cleanName}`;
 }
 
 // Save Preset Button opens modal
@@ -1358,7 +1373,7 @@ studioMasterBpmSlider?.addEventListener('input', () => {
   strokeManager.setBpm(bpm);
   bpmSlider.value = bpm.toString();
   bpmVal.textContent = `${bpm} BPM`;
-  statTempo.textContent = `${bpm} BPM`;
+  if (statTempo) statTempo.textContent = `${bpm} BPM`;
   setCompositionDirty(true);
 });
 
@@ -2024,7 +2039,7 @@ function renderSceneCards(): void {
           strokeManager.setBpm(val);
           bpmSlider.value = val.toString();
           bpmVal.textContent = `${val} BPM`;
-          statTempo.textContent = `${val} BPM`;
+          if (statTempo) statTempo.textContent = `${val} BPM`;
         }
         setCompositionDirty(true);
       };
@@ -2222,7 +2237,7 @@ function loadScene(scene: SceneData): void {
     strokeManager.setBpm(comp.bpm);
     bpmSlider.value = comp.bpm.toString();
     bpmVal.textContent = `${comp.bpm} BPM`;
-    statTempo.textContent = `${comp.bpm} BPM`;
+    if (statTempo) statTempo.textContent = `${comp.bpm} BPM`;
   }
   if (comp.spaceReverb !== undefined) {
     soundEngine.setReverbMix(comp.spaceReverb);
@@ -2593,7 +2608,7 @@ loadFileInput?.addEventListener('change', async () => {
     templateSelect.value = `custom:${compName}`;
     currentLoadedPresetName = compName;
     await loadComposition(comp);
-    statMode.textContent = `Preset Loaded: ${compName}`;
+    if (statMode) statMode.textContent = `Preset Loaded: ${compName}`;
   } catch (err) {
     console.error('Failed to parse groove template file:', err);
     alert('Could not parse template JSON file.');
@@ -2630,7 +2645,7 @@ async function loadTemplate(tId: string, initAudio = true): Promise<void> {
   strokeManager.setBpm(template.bpm);
   bpmSlider.value = template.bpm.toString();
   bpmVal.textContent = `${template.bpm} BPM`;
-  statTempo.textContent = `${template.bpm} BPM`;
+  if (statTempo) statTempo.textContent = `${template.bpm} BPM`;
 
   // Apply template effect settings
   if (template.spaceReverb !== undefined) {
@@ -2651,9 +2666,11 @@ async function loadTemplate(tId: string, initAudio = true): Promise<void> {
   if (template.breathingMode && breathingSelect) {
     breathingSelect.value = template.breathingMode;
     strokeManager.setBreathingMode(template.breathingMode);
+    updateBreathingTooltip(template.breathingMode);
   } else if (breathingSelect) {
     breathingSelect.value = 'gentle';
     strokeManager.setBreathingMode('gentle');
+    updateBreathingTooltip('gentle');
   }
 
   // Clear existing and set scroll to template's view register
@@ -2769,7 +2786,9 @@ function selectInstrument(instrumentId: string): void {
     btn.classList.toggle('active', btn.getAttribute('data-instrument') === inst.id);
   });
 
-  statInstrument.textContent = `${inst.icon} ${inst.name}`;
+  if (statInstrument) {
+    statInstrument.textContent = `${inst.icon} ${inst.name}`;
+  }
 
   // When selecting drums, automatically switch to dotted texture
   if (inst.id === 'onyx') {
@@ -2820,8 +2839,8 @@ function updateTooltipsToggleUI(): void {
   toggleTooltipsBtn.setAttribute(
     'data-tooltip',
     areTooltipsEnabled
-      ? 'Toggle Tooltips: Turn hover descriptions and popups OFF for an experienced distraction-free view.'
-      : 'Toggle Tooltips: Turn hover descriptions and popups back ON.'
+      ? 'Toggle Tooltips: Turn floating popup bubbles OFF (bottom-bar descriptions remain active).'
+      : 'Toggle Tooltips: Turn floating popup bubbles back ON.'
   );
 }
 
@@ -2831,8 +2850,8 @@ toggleTooltipsBtn?.addEventListener('click', () => {
     localStorage.setItem('harmonic_tooltips_enabled', areTooltipsEnabled.toString());
   }
   updateTooltipsToggleUI();
-  if (!areTooltipsEnabled) {
-    hideTooltip();
+  if (!areTooltipsEnabled && floatingTooltip) {
+    floatingTooltip.classList.remove('visible');
   }
 });
 
@@ -2840,16 +2859,17 @@ toggleTooltipsBtn?.addEventListener('click', () => {
 updateTooltipsToggleUI();
 
 function showTooltip(el: HTMLElement) {
-  if (!areTooltipsEnabled) return;
   const text = el.getAttribute('data-tooltip');
   if (!text) return;
 
+  // Always update bottom-bar context help regardless of floating bubble setting
   if (contextHelp) {
     contextHelp.textContent = text;
     contextHelp.style.color = 'var(--text-primary)';
   }
 
-  if (floatingTooltip) {
+  // Floating popup bubble only displays when areTooltipsEnabled is true
+  if (areTooltipsEnabled && floatingTooltip) {
     floatingTooltip.textContent = text;
     floatingTooltip.classList.add('visible');
 
@@ -2885,7 +2905,6 @@ function hideTooltip() {
 
 // Delegated hover listener to seamlessly support all elements (including dynamically created ones)
 document.addEventListener('mouseover', (e) => {
-  if (!areTooltipsEnabled) return;
   const target = (e.target as HTMLElement)?.closest?.('[data-tooltip]') as HTMLElement | null;
   if (target) {
     showTooltip(target);
@@ -2995,7 +3014,7 @@ bpmSlider.addEventListener('input', () => {
   const bpm = parseInt(bpmSlider.value, 10);
   bpmVal.textContent = `${bpm} BPM`;
   strokeManager.setBpm(bpm);
-  statTempo.textContent = `${bpm} BPM`;
+  if (statTempo) statTempo.textContent = `${bpm} BPM`;
   setCompositionDirty(true);
 });
 
@@ -3128,7 +3147,7 @@ function updateTrackActionsVisibility(): void {
   const currentView = typeof viewModeManager !== 'undefined' ? viewModeManager.getMode() : 'studio';
 
   if (selectedId) {
-    statMode.textContent = 'Line Selected';
+    if (statMode) statMode.textContent = 'Line Selected';
     const stroke = strokeManager.activeStrokes.find((s) => s.id === selectedId);
 
     if (currentView === 'studio') {
@@ -3308,9 +3327,11 @@ function updateTrackActionsVisibility(): void {
         ? `Timer ${formatDurationSec(strokeDur)}`
         : `${strokeSpeed.toFixed(2)}x Speed`;
       const travName = currentTrav === 'bounce' ? 'Bounce ⇄' : 'Restart ↻';
-      statLoopSync.textContent = stroke.isPoint
-        ? `${timingLabel} • Dot Note`
-        : `${timingLabel} • ${travName}`;
+      if (statLoopSync) {
+        statLoopSync.textContent = stroke.isPoint
+          ? `${timingLabel} • Dot Note`
+          : `${timingLabel} • ${travName}`;
+      }
 
       muteBtn.classList.toggle('active-mute', !!stroke.muted);
       muteBtn.textContent = stroke.muted ? 'Unmute' : 'Mute';
@@ -3320,9 +3341,9 @@ function updateTrackActionsVisibility(): void {
   } else {
     const selectedCount = strokeManager.selectedStrokeIds.length;
     if (selectedCount > 1) {
-      statMode.textContent = `${selectedCount} Lines Selected (Drag to Move)`;
+      if (statMode) statMode.textContent = `${selectedCount} Lines Selected (Drag to Move)`;
     } else {
-      statMode.textContent = inputHandler.appMode === 'live' ? 'Live Play' : 'Draw / Click to Select';
+      if (statMode) statMode.textContent = inputHandler.appMode === 'live' ? 'Live Play' : 'Draw / Click to Select';
     }
     trackInspectorBar.style.display = 'none';
     trackInspectorBar.classList.remove('inspector-bottom');
@@ -3343,9 +3364,9 @@ function updateTrackActionsVisibility(): void {
         : (defSync === '2bars' ? '2 Bars'
         : (defSync === '4bars' ? '4 Bars'
         : (defSync === '8bars' ? '8 Bars' : 'Freeform')));
-      statLoopSync.textContent = `Default: ${defSyncLabel}`;
+      if (statLoopSync) statLoopSync.textContent = `Default: ${defSyncLabel}`;
     } else {
-      statLoopSync.textContent = `Default: ${strokeManager.defaultSpeed.toFixed(2)}x Speed`;
+      if (statLoopSync) statLoopSync.textContent = `Default: ${strokeManager.defaultSpeed.toFixed(2)}x Speed`;
     }
   }
 }
@@ -3734,9 +3755,15 @@ async function togglePlayPause(): Promise<void> {
   if (isPaused) {
     if (playPauseIcon) playPauseIcon.textContent = '';
     playPauseText.textContent = 'Play';
+    if (typeof document !== 'undefined' && document.hidden) {
+      stopBackgroundAudioTicker();
+    }
   } else {
     if (playPauseIcon) playPauseIcon.textContent = '';
     playPauseText.textContent = 'Pause';
+    if (typeof document !== 'undefined' && document.hidden) {
+      startBackgroundAudioTicker();
+    }
   }
 }
 
@@ -4023,6 +4050,7 @@ breathingSelect?.addEventListener('change', () => {
   if (!breathingSelect) return;
   const mode = breathingSelect.value as BreathingMode;
   strokeManager.setBreathingMode(mode);
+  updateBreathingTooltip(mode);
   setCompositionDirty(true);
 });
 
@@ -4430,15 +4458,87 @@ window.addEventListener('resize', handleResize);
 
 function updateStats(): void {
   const count = strokeManager.activeStrokes.length;
-  statStrokes.textContent = `${count} ${count === 1 ? 'stroke' : 'strokes'}`;
+  if (statStrokes) statStrokes.textContent = `${count} ${count === 1 ? 'stroke' : 'strokes'}`;
   updateAudioStatusChip();
 }
 
 // Animation & Sequencer Loop with Smooth Frame-Delta Filtering
 let lastTimeMs = 0;
 let smoothedDt = 1 / 60;
+let animFrameId: number | null = null;
+let bgAudioTimer: ReturnType<typeof setInterval> | null = null;
+
+function startBackgroundAudioTicker(): void {
+  stopBackgroundAudioTicker();
+  if (strokeManager.paused || strokeManager.activeStrokes.length === 0) {
+    return;
+  }
+  let bgLastTime = performance.now();
+  bgAudioTimer = setInterval(() => {
+    if ((typeof document !== 'undefined' && !document.hidden) || strokeManager.paused) {
+      stopBackgroundAudioTicker();
+      return;
+    }
+    const now = performance.now();
+    const dt = Math.max(0.005, Math.min(0.06, (now - bgLastTime) / 1000));
+    bgLastTime = now;
+
+    // Advance strokes and audio playheads with ZERO canvas/GPU operations
+    strokeManager.update(dt, renderer.width, renderer.height, quantizer);
+
+    // Advance scene sequencer if active
+    if (typeof sceneManager !== 'undefined' && sceneManager.isSequencing() && !strokeManager.paused) {
+      const seq = sceneManager.tickSequence(dt);
+      if (seq.sceneChanged) {
+        if (strokeManager.isCrossfadingMorph) {
+          strokeManager.updateSceneCrossfade(1.0);
+          strokeManager.completeSceneCrossfade();
+        } else {
+          loadScene(seq.currentScene);
+        }
+      }
+    }
+  }, 25); // 40Hz audio clock tick rate (Web Audio schedules sample-accurate events internally)
+}
+
+function stopBackgroundAudioTicker(): void {
+  if (bgAudioTimer !== null) {
+    clearInterval(bgAudioTimer);
+    bgAudioTimer = null;
+  }
+}
+
+function handleVisibilityChange(): void {
+  if (typeof document === 'undefined') return;
+  if (document.hidden) {
+    if (animFrameId !== null) {
+      cancelAnimationFrame(animFrameId);
+      animFrameId = null;
+    }
+    startBackgroundAudioTicker();
+  } else {
+    stopBackgroundAudioTicker();
+    lastTimeMs = performance.now();
+    smoothedDt = 1 / 60;
+    if (animFrameId === null) {
+      animFrameId = requestAnimationFrame(animationLoop);
+    }
+  }
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+}
 
 function animationLoop(nowMs: number): void {
+  // If tab is in background, bypass all GPU canvas operations and run background audio ticker
+  if (typeof document !== 'undefined' && document.hidden) {
+    animFrameId = null;
+    startBackgroundAudioTicker();
+    return;
+  }
+  animFrameId = null;
+
   if (lastTimeMs === 0) {
     lastTimeMs = nowMs;
   }
@@ -4510,7 +4610,7 @@ function animationLoop(nowMs: number): void {
         strokeManager.setBpm(seq.currentScene.bpm || 32);
         bpmSlider.value = (seq.currentScene.bpm || 32).toString();
         bpmVal.textContent = `${seq.currentScene.bpm || 32} BPM`;
-        statTempo.textContent = `${seq.currentScene.bpm || 32} BPM`;
+        if (statTempo) statTempo.textContent = `${seq.currentScene.bpm || 32} BPM`;
 
         const targetRev = seq.currentScene.spaceReverb ?? 0.65;
         soundEngine.setReverbMix(targetRev);
@@ -4557,7 +4657,7 @@ function animationLoop(nowMs: number): void {
         if (strokeManager.currentBpm !== interpolatedBpm) {
           strokeManager.setBpm(interpolatedBpm);
           bpmVal.textContent = `${interpolatedBpm} BPM`;
-          statTempo.textContent = `${interpolatedBpm} BPM`;
+          if (statTempo) statTempo.textContent = `${interpolatedBpm} BPM`;
         }
 
         // 4. Smoothly interpolate Space Reverb + add reverbBoost if in reverbWash mode
@@ -4659,7 +4759,7 @@ function animationLoop(nowMs: number): void {
     renderer.drawAudioReactiveSpectrum(freqData, masterEnergy);
   }
 
-  requestAnimationFrame(animationLoop);
+  animFrameId = requestAnimationFrame(animationLoop);
 }
 
 // Wire Spark Emitter to StrokeManager Trigger Hits
@@ -4727,6 +4827,7 @@ prevCanvasHeight = renderer.height;
 quantizer.resetScrollToDefault(renderer.height);
 targetScrollY = quantizer.scrollY;
 updatePitchNavigator();
+updateBreathingTooltip();
 
 (async () => {
   const loadedFromUrl = await checkSharedCompositionUrl();
@@ -4736,5 +4837,9 @@ updatePitchNavigator();
   targetScrollY = quantizer.scrollY;
   updateStats();
   updateTrackActionsVisibility();
-  requestAnimationFrame(animationLoop);
+  if (typeof document === 'undefined' || !document.hidden) {
+    animFrameId = requestAnimationFrame(animationLoop);
+  } else {
+    startBackgroundAudioTicker();
+  }
 })();
