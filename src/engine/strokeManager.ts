@@ -64,6 +64,14 @@ type UndoAction =
       newPath: SplinePath;
       newLut: ArcLengthLUT;
       newWaveParams: WaveParams;
+    }
+  | {
+      type: 'redraw';
+      strokeId: string;
+      oldPath: SplinePath;
+      oldLut: ArcLengthLUT;
+      newPath: SplinePath;
+      newLut: ArcLengthLUT;
     };
 
 function distToSegment(p: Point2D, a: Point2D, b: Point2D): number {
@@ -242,6 +250,26 @@ export class StrokeManager {
 
   public get activeStrokes(): ReadonlyArray<DrawnStroke> {
     return this.strokes;
+  }
+
+  public getStroke(id: string): DrawnStroke | undefined {
+    return this.strokes.find((s) => s.id === id);
+  }
+
+  /**
+   * Returns active strokes sorted from up to down (ascending Y coordinate),
+   * matching their physical vertical positions in the canvas field.
+   * Top-most lines appear first, bottom-most lines appear last.
+   */
+  public getStrokesSortedByFieldY(): DrawnStroke[] {
+    return [...this.strokes].sort((a, b) => {
+      const yA = getStrokeVerticalCenter(a);
+      const yB = getStrokeVerticalCenter(b);
+      if (Math.abs(yA - yB) > 0.001) {
+        return yA - yB;
+      }
+      return this.strokes.indexOf(a) - this.strokes.indexOf(b);
+    });
   }
 
   public get currentBpm(): number {
@@ -540,6 +568,7 @@ export class StrokeManager {
         velocity: baseVelocity,
         direction: 1,
         lastTriggerDistance: 0,
+        triggerDistanceAccum: 0,
         lastEval: initialEval,
         lastPitch: initialPitch,
         trail: [],
@@ -1288,6 +1317,15 @@ export class StrokeManager {
             action.newWaveParams.amplitude *= scaleFactor;
           }
         }
+      } else if (action.type === 'redraw') {
+        if (!scaledPaths.has(action.oldPath)) {
+          scalePathSegments(action.oldPath);
+          action.oldLut = buildArcLengthLUT(action.oldPath);
+        }
+        if (!scaledPaths.has(action.newPath)) {
+          scalePathSegments(action.newPath);
+          action.newLut = buildArcLengthLUT(action.newPath);
+        }
       }
     };
 
@@ -1505,6 +1543,42 @@ export class StrokeManager {
   }
 
   /**
+   * Redraws an existing stroke by replacing its geometric trajectory and arc-length LUT,
+   * while completely preserving its musical instrument, style, volumes, traversal, and effects.
+   */
+  public redrawStroke(strokeId: string, newPath: SplinePath, recordUndo = true): boolean {
+    const stroke = this.strokes.find((s) => s.id === strokeId);
+    if (!stroke) return false;
+
+    const oldPath = stroke.path;
+    const oldLut = stroke.lut;
+    const newLut = buildArcLengthLUT(newPath, 64);
+
+    stroke.path = newPath;
+    stroke.lut = newLut;
+    stroke.waveParams = undefined;
+
+    // Safely wrap/clamp playhead position
+    if (stroke.playhead.currentDistance >= newLut.totalLength) {
+      stroke.playhead.currentDistance = newLut.totalLength > 1 ? stroke.playhead.currentDistance % newLut.totalLength : 0;
+    }
+
+    if (recordUndo) {
+      this.undoStack.push({
+        type: 'redraw',
+        strokeId,
+        oldPath,
+        oldLut,
+        newPath,
+        newLut,
+      });
+      this.redoStack = [];
+    }
+
+    return true;
+  }
+
+  /**
    * Continuous high-precision hit tests canvas coordinates against all strokes,
    * finding the closest stroke within tolerance across all segments.
    */
@@ -1630,6 +1704,11 @@ export class StrokeManager {
       const deltaDist = ph.direction * strokeSpeed * dt;
       const prevDist = ph.currentDistance;
       let nextDist = prevDist + deltaDist;
+
+      // Accumulate continuous physical travel distance along the curve for rhythmic triggers
+      if (!stroke.isPoint) {
+        ph.triggerDistanceAccum = (ph.triggerDistanceAccum ?? 0) + strokeSpeed * dt;
+      }
 
       // Handle curve boundary according to traversal mode (restart vs bounce)
       let didWrapOrBounce = false;
@@ -1814,9 +1893,10 @@ export class StrokeManager {
           isTriggerHit = prevBeat !== currBeat && audible;
         } else {
           const dotSpacing = Math.min(DOT_SPACING, Math.max(12, L / 2));
-          const prevIndex = Math.floor(prevDist / dotSpacing);
-          const nextIndex = Math.floor(nextDist / dotSpacing);
-          isTriggerHit = prevIndex !== nextIndex && audible;
+          if ((ph.triggerDistanceAccum ?? 0) >= dotSpacing) {
+            isTriggerHit = audible;
+            ph.triggerDistanceAccum = (ph.triggerDistanceAccum ?? 0) % dotSpacing;
+          }
         }
 
         const PITCH_FLUCTUATION_OFFSET = 52;
@@ -1892,9 +1972,10 @@ export class StrokeManager {
           isTriggerHit = prevBeat !== currBeat && audible;
         } else {
           const rollSpacing = Math.min(ROLL_SPACING, Math.max(12, L / 2));
-          const prevIndex = Math.floor(prevDist / rollSpacing);
-          const nextIndex = Math.floor(nextDist / rollSpacing);
-          isTriggerHit = prevIndex !== nextIndex && audible;
+          if ((ph.triggerDistanceAccum ?? 0) >= rollSpacing) {
+            isTriggerHit = audible;
+            ph.triggerDistanceAccum = (ph.triggerDistanceAccum ?? 0) % rollSpacing;
+          }
         }
 
         const PITCH_FLUCTUATION_OFFSET = 44;
@@ -2085,6 +2166,17 @@ export class StrokeManager {
         }
       }
       this.redoStack.push(action);
+    } else if (action.type === 'redraw') {
+      const stroke = this.strokes.find((s) => s.id === action.strokeId);
+      if (stroke) {
+        stroke.path = action.oldPath;
+        stroke.lut = action.oldLut;
+        stroke.waveParams = undefined;
+        if (stroke.playhead.currentDistance >= stroke.lut.totalLength) {
+          stroke.playhead.currentDistance = stroke.lut.totalLength > 1 ? stroke.playhead.currentDistance % stroke.lut.totalLength : 0;
+        }
+      }
+      this.redoStack.push(action);
     }
 
     return true;
@@ -2219,6 +2311,17 @@ export class StrokeManager {
         }
       }
       this.undoStack.push(action);
+    } else if (action.type === 'redraw') {
+      const stroke = this.strokes.find((s) => s.id === action.strokeId);
+      if (stroke) {
+        stroke.path = action.newPath;
+        stroke.lut = action.newLut;
+        stroke.waveParams = undefined;
+        if (stroke.playhead.currentDistance >= stroke.lut.totalLength) {
+          stroke.playhead.currentDistance = stroke.lut.totalLength > 1 ? stroke.playhead.currentDistance % stroke.lut.totalLength : 0;
+        }
+      }
+      this.undoStack.push(action);
     }
 
     return true;
@@ -2289,6 +2392,7 @@ export class StrokeManager {
       stroke.playhead.currentDistance = 0;
       stroke.playhead.direction = 1;
       stroke.playhead.lastTriggerDistance = 0;
+      stroke.playhead.triggerDistanceAccum = 0;
       stroke.playhead.finished = false;
       stroke.playhead.trail = [];
       if (stroke.style === 'solid' && !stroke.droneVoice && this.engine.isReady && stroke.playhead.lastPitch && this.isStrokeAudible(stroke) && !this.isPaused) {
@@ -2314,6 +2418,7 @@ export class StrokeManager {
       if (L > 1) {
         stroke.playhead.currentDistance = Math.random() * L;
         stroke.playhead.lastTriggerDistance = stroke.playhead.currentDistance;
+        stroke.playhead.triggerDistanceAccum = Math.random() * 40;
         stroke.playhead.finished = false;
         stroke.playhead.trail = [];
 
@@ -2848,3 +2953,24 @@ export class StrokeManager {
 }
 
 export const getNextVersionName = StrokeManager.getNextVersionName;
+
+/**
+ * Calculates the vertical center (midpoint between lowest and highest Y)
+ * of a stroke in canvas field coordinates.
+ */
+export function getStrokeVerticalCenter(stroke: DrawnStroke): number {
+  if (!stroke.path?.segments?.length) return 0;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const seg of stroke.path.segments) {
+    if (seg.p0.y < minY) minY = seg.p0.y;
+    if (seg.p0.y > maxY) maxY = seg.p0.y;
+    if (seg.p1.y < minY) minY = seg.p1.y;
+    if (seg.p1.y > maxY) maxY = seg.p1.y;
+    if (seg.p2.y < minY) minY = seg.p2.y;
+    if (seg.p2.y > maxY) maxY = seg.p2.y;
+    if (seg.p3.y < minY) minY = seg.p3.y;
+    if (seg.p3.y > maxY) maxY = seg.p3.y;
+  }
+  return isFinite(minY) && isFinite(maxY) ? (minY + maxY) / 2 : 0;
+}

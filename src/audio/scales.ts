@@ -15,6 +15,21 @@ export const SCALES: Record<string, MusicalScale> = {
     name: 'Lydian',
     intervals: [0, 2, 4, 6, 7, 9, 11],
   },
+  major: {
+    id: 'major',
+    name: 'Major (Ionian)',
+    intervals: [0, 2, 4, 5, 7, 9, 11],
+  },
+  ionian: {
+    id: 'ionian',
+    name: 'Major (Ionian)',
+    intervals: [0, 2, 4, 5, 7, 9, 11],
+  },
+  mixolydian: {
+    id: 'mixolydian',
+    name: 'Mixolydian',
+    intervals: [0, 2, 4, 5, 7, 9, 10],
+  },
   minorPentatonic: {
     id: 'minorPentatonic',
     name: 'Minor Pentatonic',

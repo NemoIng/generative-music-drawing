@@ -9,7 +9,7 @@ import { getInstrument } from '../audio/instruments';
 import { StrokeStyle } from '../engine/types';
 
 export type InteractionMode = 'draw' | 'edit';
-export type AppMode = 'draw' | 'live';
+export type AppMode = 'draw' | 'redraw' | 'live';
 export type DrawShape = 'curve' | 'straight' | 'point';
 
 export interface LiveTrailPoint {
@@ -24,8 +24,12 @@ export interface LiveTrailPoint {
 
 export interface InputHandlerOptions {
   onStrokeComplete: (path: SplinePath, isPoint?: boolean) => void;
+  onStrokeRedraw?: (strokeId: string, path: SplinePath) => void;
+  onRedrawStart?: (strokeId: string) => void;
+  onRedrawStateChange?: (isArmed: boolean) => void;
   onDrawChange?: (points: Point2D[]) => void;
   onSelectStroke?: (strokeId: string | null) => void;
+  onStrokeTranslateEnd?: () => void;
   onPointerDown?: () => void;
   strokeManager: StrokeManager;
   getQuantizer: () => ScaleQuantizer;
@@ -42,6 +46,7 @@ export class InputHandler {
   private getCurrentStyle?: () => StrokeStyle;
   private getXAxisModulation?: () => string;
   private onPointerDownCallback?: () => void;
+  private onStrokeTranslateEnd?: () => void;
   private shape: DrawShape = 'curve';
   private snapPitch = false;
   private autoSmooth = true;
@@ -74,9 +79,14 @@ export class InputHandler {
   private dragAccumDy = 0;
 
   private onStrokeComplete: (path: SplinePath, isPoint?: boolean) => void;
+  private onStrokeRedraw?: (strokeId: string, path: SplinePath) => void;
+  private onRedrawStart?: (strokeId: string) => void;
+  private onRedrawStateChange?: (isArmed: boolean) => void;
   private onDrawChange?: (points: Point2D[]) => void;
   private onSelectStroke?: (strokeId: string | null) => void;
   public onLiveTrigger?: (x: number, y: number, color: string) => void;
+  private isRedrawArmed = false;
+  private redrawingStrokeId: string | null = null;
 
   constructor(canvas: HTMLCanvasElement, options: InputHandlerOptions) {
     this.canvas = canvas;
@@ -86,11 +96,58 @@ export class InputHandler {
     this.getCurrentStyle = options.getCurrentStyle;
     this.getXAxisModulation = options.getXAxisModulation;
     this.onStrokeComplete = options.onStrokeComplete;
+    this.onStrokeRedraw = options.onStrokeRedraw;
+    this.onRedrawStart = options.onRedrawStart;
+    this.onRedrawStateChange = options.onRedrawStateChange;
     this.onDrawChange = options.onDrawChange;
     this.onSelectStroke = options.onSelectStroke;
+    this.onStrokeTranslateEnd = options.onStrokeTranslateEnd;
     this.onPointerDownCallback = options.onPointerDown;
 
     this.initEvents();
+  }
+
+  public get isRedrawing(): boolean {
+    return this.mode === 'redraw' || this.isRedrawArmed || this.redrawingStrokeId !== null;
+  }
+
+  public get activeRedrawStrokeId(): string | null {
+    return this.redrawingStrokeId;
+  }
+
+  public armRedraw(strokeId?: string): void {
+    if (strokeId) {
+      this.strokeManager.selectStroke(strokeId);
+    }
+    if (!this.strokeManager.selectedStrokeId && this.strokeManager.activeStrokes.length > 0) {
+      const last = this.strokeManager.activeStrokes[this.strokeManager.activeStrokes.length - 1];
+      this.strokeManager.selectStroke(last.id);
+      this.onSelectStroke?.(last.id);
+    }
+    if (!this.strokeManager.selectedStrokeId) return;
+    this.isRedrawArmed = true;
+    this.onRedrawStateChange?.(true);
+  }
+
+  public cancelRedraw(): void {
+    const wasRedrawing = this.isRedrawArmed || this.redrawingStrokeId !== null || this.mode === 'redraw';
+    if (!wasRedrawing) return;
+    this.isRedrawArmed = false;
+    this.redrawingStrokeId = null;
+    if (this.mode === 'redraw') {
+      this.mode = 'draw';
+    }
+    this.onRedrawStateChange?.(false);
+  }
+
+  public toggleRedraw(strokeId?: string): boolean {
+    if (this.mode === 'redraw' || this.isRedrawArmed) {
+      this.cancelRedraw();
+      return false;
+    } else {
+      this.armRedraw(strokeId);
+      return this.isRedrawArmed;
+    }
   }
 
   public get currentMode(): InteractionMode {
@@ -112,6 +169,24 @@ export class InputHandler {
       this.currentPoints = [];
       this.onDrawChange?.(this.currentPoints);
       this.canvas.style.cursor = 'crosshair';
+      this.isRedrawArmed = false;
+      this.redrawingStrokeId = null;
+      this.onRedrawStateChange?.(false);
+    } else if (mode === 'redraw') {
+      if (this.liveDroneVoice) {
+        try { this.liveDroneVoice.stop(0.2); } catch {}
+        this.liveDroneVoice = null;
+      }
+      this.isLivePointerDown = false;
+      this.lastLivePoint = null;
+      this.canvas.style.cursor = 'crosshair';
+      if (!this.strokeManager.selectedStrokeId && this.strokeManager.activeStrokes.length > 0) {
+        const last = this.strokeManager.activeStrokes[this.strokeManager.activeStrokes.length - 1];
+        this.strokeManager.selectStroke(last.id);
+        this.onSelectStroke?.(last.id);
+      }
+      this.isRedrawArmed = true;
+      this.onRedrawStateChange?.(true);
     } else {
       if (this.liveDroneVoice) {
         try { this.liveDroneVoice.stop(0.2); } catch {}
@@ -120,6 +195,9 @@ export class InputHandler {
       this.isLivePointerDown = false;
       this.lastLivePoint = null;
       this.canvas.style.cursor = 'crosshair';
+      this.isRedrawArmed = false;
+      this.redrawingStrokeId = null;
+      this.onRedrawStateChange?.(false);
     }
   }
 
@@ -361,8 +439,33 @@ export class InputHandler {
     }
 
     // ========================================================
-    // B. DRAW MODE: Normal score drawing and line selection
+    // B. DRAW & RE-DRAW MODE: Score drawing and line selection
     // ========================================================
+    const isRedrawAttempt = this.mode === 'redraw' || this.isRedrawArmed || e.altKey;
+    if (isRedrawAttempt) {
+      let targetId = this.strokeManager.selectedStrokeId;
+      if (!targetId && this.strokeManager.activeStrokes.length > 0) {
+        const hit = this.strokeManager.hitTest(screenPt, 80, worldPt);
+        const target = hit || this.strokeManager.activeStrokes[this.strokeManager.activeStrokes.length - 1];
+        this.strokeManager.selectStroke(target.id);
+        this.onSelectStroke?.(target.id);
+        targetId = target.id;
+      }
+      if (targetId) {
+        this.redrawingStrokeId = targetId;
+        this.onRedrawStart?.(targetId);
+        const drawPt = this.getCanvasPoint(e, true);
+        this.isDrawing = true;
+        this.startPoint = drawPt;
+        this.currentPoints = [drawPt];
+        this.draggedStrokeId = null;
+        this.isDragging = false;
+        this.onDrawChange?.(this.currentPoints);
+        this.canvas.style.cursor = 'crosshair';
+        return;
+      }
+    }
+
     // Hit test lines across world score coordinates (both melodic and drum strokes)
     const hit = this.strokeManager.hitTest(screenPt, 22, worldPt);
 
@@ -595,8 +698,8 @@ export class InputHandler {
         return;
       }
 
-      // If a previous stroke was selected, deselect it as the user starts drawing
-      if (this.strokeManager.selectedStrokeId) {
+      // If a previous stroke was selected, deselect it as the user starts drawing (only in normal draw mode, never during redraw)
+      if (!this.redrawingStrokeId && !this.isRedrawArmed && this.mode !== 'redraw' && this.strokeManager.selectedStrokeId) {
         this.strokeManager.selectStroke(null);
         this.onSelectStroke?.(null);
       }
@@ -670,6 +773,7 @@ export class InputHandler {
         } else if (targetIds.length > 1) {
           this.strokeManager.recordMultiTranslateUndo(targetIds, this.dragAccumDx, this.dragAccumDy);
         }
+        this.onStrokeTranslateEnd?.();
       }
       this.isDragging = false;
       this.draggedStrokeId = null;
@@ -700,6 +804,12 @@ export class InputHandler {
       const last = this.currentPoints[this.currentPoints.length - 1];
       const dist = this.startPoint && last ? Math.hypot(last.x - this.startPoint.x, last.y - this.startPoint.y) : 0;
 
+      const redrawTargetId = this.redrawingStrokeId;
+      this.redrawingStrokeId = null;
+      if (this.isRedrawArmed && this.mode !== 'redraw') {
+        this.cancelRedraw();
+      }
+
       if (this.shape === 'point' && this.startPoint) {
         // Point / Dot mode: place a single stationary note dot
         const pt = this.startPoint;
@@ -714,16 +824,36 @@ export class InputHandler {
           ],
           isClosed: false,
         };
-        this.onStrokeComplete(microSeg, true);
+        if (redrawTargetId) {
+          this.onStrokeRedraw?.(redrawTargetId, microSeg);
+        } else {
+          this.onStrokeComplete(microSeg, true);
+        }
       } else if (this.currentPoints.length >= 2 && dist >= 8) {
         // Real stroke was drawn!
         const spline = fitSplineFromPoints(this.currentPoints, 45, this.autoSmooth);
         if (spline && spline.segments.length > 0) {
-          this.onStrokeComplete(spline, false);
+          if (redrawTargetId) {
+            this.onStrokeRedraw?.(redrawTargetId, spline);
+          } else {
+            this.onStrokeComplete(spline, false);
+          }
         }
       } else {
-        // Tap on empty canvas without dragging: deselect any active stroke
-        if (this.strokeManager.selectedStrokeId) {
+        // Tap on canvas without dragging:
+        if (redrawTargetId) {
+          const rect = this.canvas.getBoundingClientRect();
+          const screenX = e ? e.clientX - rect.left : (this.startPoint ? this.startPoint.x : 0);
+          const screenY = e ? e.clientY - rect.top : (this.startPoint ? this.startPoint.y : 0);
+          const quantizer = this.getQuantizer();
+          const screenPt: Point2D = { x: screenX, y: screenY };
+          const worldPt: Point2D = { x: screenX, y: quantizer.screenToWorldY(screenY, rect.height) };
+          const hit = this.strokeManager.hitTest(screenPt, 22, worldPt);
+          if (hit) {
+            this.strokeManager.selectStroke(hit.id);
+            this.onSelectStroke?.(hit.id);
+          }
+        } else if (this.strokeManager.selectedStrokeId) {
           this.strokeManager.selectStroke(null);
           this.onSelectStroke?.(null);
         }

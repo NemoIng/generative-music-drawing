@@ -563,6 +563,12 @@ body, html {
   box-shadow: 0 0 10px rgba(37, 99, 235, 0.35);
 }
 
+.action-btn.active {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+
 /* Tooltip Hover System - Fixed Global Floating Popover */
 .has-tooltip {
   position: relative;
@@ -2783,6 +2789,13 @@ body.dark-mode .layer-card.selected {
   color: #d97706;
 }
 
+.layer-btn.active-redraw,
+.layer-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
 .layer-controls-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -3306,6 +3319,12 @@ body.dark-mode .studio-tab-btn.active {
   color: var(--text-primary);
 }
 
+.docked-btn.active {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+
 .studio-master-card {
   display: flex;
   flex-direction: column;
@@ -3498,6 +3517,12 @@ body.dark-mode .studio-tab-btn.active {
 .zen-pill-btn:hover {
   color: var(--text-primary);
   background: var(--bg-hover);
+}
+
+.zen-pill-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
 }
 
 .zen-pill-close {

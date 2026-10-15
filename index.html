@@ -142,15 +142,23 @@
                 type="button"
                 class="seg-btn active has-tooltip"
                 data-app-mode="draw"
-                data-tooltip="Draw Score Mode (P): Draw permanent looping musical score curves."
+                data-tooltip="Draw Score Mode: Draw permanent looping musical score curves."
               >
                 Draw
               </button>
               <button
                 type="button"
                 class="seg-btn has-tooltip"
+                data-app-mode="redraw"
+                data-tooltip="Re-draw Mode (R): Draw on canvas to replace the path of the selected line while keeping its sounds."
+              >
+                Re-draw
+              </button>
+              <button
+                type="button"
+                class="seg-btn has-tooltip"
                 data-app-mode="live"
-                data-tooltip="Live Play Mode (L): Click to play notes instantly, drag to leave disappearing trails with 50% reverb."
+                data-tooltip="Live Play Mode: Click to play notes instantly, drag to leave disappearing trails with 50% reverb."
               >
                 Live Play
               </button>
@@ -629,10 +637,11 @@
                 </div>
               </div>
 
-              <!-- Actions: Mute / Solo / Duplicate / Delete / Done -->
+              <!-- Actions: Mute / Solo / Re-draw / Duplicate / Delete / Done -->
               <div class="inspector-actions">
                 <button id="muteBtn" class="action-btn has-tooltip" data-tooltip="Mute selected line (M)">Mute</button>
                 <button id="soloBtn" class="action-btn has-tooltip" data-tooltip="Solo selected line (S)">Solo</button>
+                <button id="redrawTrackBtn" class="action-btn has-tooltip" data-tooltip="Re-draw line (R or hold Option while drawing): Replaces this line's path while keeping all its sounds and settings">Re-draw</button>
                 <button id="duplicateTrackBtn" class="action-btn has-tooltip" data-tooltip="Duplicate / Copy selected line with all settings (⌘D or ⌘C then ⌘V)">Duplicate</button>
                 <button id="deleteTrackBtn" class="action-btn text-danger has-tooltip" data-tooltip="Delete selected line (Backspace / Delete)">Delete</button>
                 <button id="deselectTrackBtn" class="action-btn btn-subtle has-tooltip" data-tooltip="Deselect line (Esc)">Done</button>
@@ -780,10 +789,11 @@
 
             <div class="zen-dock-divider"></div>
 
-            <!-- Mode Switcher (Draw vs Live Play) -->
+            <!-- Mode Switcher (Draw vs Re-draw vs Live Play) -->
             <div class="segmented-switch mini-switch" id="zenAppModeControl">
-              <button type="button" class="seg-btn active" data-app-mode="draw" title="Draw Mode (P)">Draw</button>
-              <button type="button" class="seg-btn" data-app-mode="live" title="Live Play Mode (L)">Live</button>
+              <button type="button" class="seg-btn active" data-app-mode="draw" title="Draw Mode">Draw</button>
+              <button type="button" class="seg-btn" data-app-mode="redraw" title="Re-draw Mode (R)">Re-draw</button>
+              <button type="button" class="seg-btn" data-app-mode="live" title="Live Play Mode">Live</button>
             </div>
 
             <!-- Inks Palette inside Zen dock -->
@@ -820,6 +830,7 @@
           <div class="zen-pill-controls">
             <label for="zenContextVolSlider">Vol</label>
             <input type="range" id="zenContextVolSlider" min="0" max="100" step="1" value="100" class="mini-slider" />
+            <button type="button" id="zenContextRedrawBtn" class="zen-pill-btn" title="Re-draw line (R)">↻</button>
             <button type="button" id="zenContextMuteBtn" class="zen-pill-btn" title="Mute line">M</button>
             <button type="button" id="zenContextSoloBtn" class="zen-pill-btn" title="Solo line">S</button>
             <button type="button" id="zenContextTravBtn" class="zen-pill-btn" title="Toggle Traversal (T)">⇄</button>
@@ -1007,6 +1018,7 @@
 
                 <!-- Action buttons row -->
                 <div class="docked-actions">
+                  <button type="button" id="studioRedrawTrackBtn" class="docked-btn" title="Re-draw line path (R or hold Option while drawing)">Re-draw</button>
                   <button type="button" id="studioDupTrackBtn" class="docked-btn">Duplicate</button>
                   <button type="button" id="studioDelTrackBtn" class="docked-btn btn-danger">Delete</button>
                   <button type="button" id="studioDeselectTrackBtn" class="docked-btn btn-subtle">Done</button>
@@ -1197,7 +1209,7 @@
               <div class="shortcut-group">
                 <h3>Playback &amp; Navigation</h3>
                 <div class="shortcut-row"><kbd>Space</kbd> or <kbd>P</kbd> <span>Play / Pause sound</span></div>
-                <div class="shortcut-row"><kbd>R</kbd> <span>Sync all playheads to line starts</span></div>
+                <div class="shortcut-row"><kbd>R</kbd> <span>Sync all playheads (when no line selected)</span></div>
                 <div class="shortcut-row"><kbd>Shift + R</kbd> <span>Randomize playheads (polyrhythms)</span></div>
                 <div class="shortcut-row"><kbd>+</kbd> / <kbd>-</kbd> <span>Hold to Fast-Forward / Rewind (4x)</span></div>
                 <div class="shortcut-row"><kbd>V</kbd> <span>Toggle View: Studio &rlarr; Zen</span></div>
@@ -1210,6 +1222,7 @@
                 <div class="shortcut-row"><kbd>Click Line</kbd> <span>Select line for editing</span></div>
                 <div class="shortcut-row"><kbd>⌘ Click</kbd> <span>Select multiple lines to move together</span></div>
                 <div class="shortcut-row"><kbd>⌘ A</kbd> <span>Select all lines</span></div>
+                <div class="shortcut-row"><kbd>R</kbd> / <kbd>⌥ Option + Drag</kbd> <span>Re-draw line (replaces path, keeps sound)</span></div>
                 <div class="shortcut-row"><kbd>1</kbd> &ndash; <kbd>7</kbd> <span>Select Sound Ink (or revoice line)</span></div>
                 <div class="shortcut-row"><kbd>T</kbd> <span>Toggle Traversal: Loop &circlearrowright; / Bounce &rlarr;</span></div>
                 <div class="shortcut-row"><kbd>M</kbd> / <kbd>S</kbd> <span>Mute / Solo selected line</span></div>

@@ -824,6 +824,234 @@ describe('Unified InputHandler Interaction Model', () => {
       listeners['pointerdown'][0]({ clientX: 500, clientY: 500, pointerId: 1, button: 0, metaKey: false });
       expect(sm.selectedStrokeIds).toEqual([]);
     });
+
+    it('triggers onStrokeTranslateEnd callback when dragging strokes completes', () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+      const onTranslateEnd = vi.fn();
+
+      new InputHandler(mockCanvas, {
+        strokeManager: sm,
+        getQuantizer: () => quantizer,
+        onStrokeComplete: () => {},
+        onStrokeTranslateEnd: onTranslateEnd,
+      });
+
+      const path: SplinePath = {
+        segments: [{ p0: { x: 50, y: 100 }, p1: { x: 100, y: 100 }, p2: { x: 150, y: 100 }, p3: { x: 200, y: 100 } }],
+        isClosed: false,
+      };
+      sm.addStroke(path, 'solid', 'indigo', 120);
+
+      // Start drag
+      listeners['pointerdown'][0]({ clientX: 100, clientY: 100, pointerId: 1, button: 0, metaKey: false });
+      // Move drag
+      windowListeners['pointermove'][0]({ clientX: 100, clientY: 150, pointerId: 1 });
+      expect(onTranslateEnd).not.toHaveBeenCalled();
+
+      // Release drag
+      windowListeners['pointerup'][0]({ clientX: 100, clientY: 150, pointerId: 1 });
+      expect(onTranslateEnd).toHaveBeenCalledTimes(1);
+    });
+
+    it('dispatches onStrokeRedraw instead of onStrokeComplete when redraw mode is armed', () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+      const onStrokeComplete = vi.fn();
+      const onStrokeRedraw = vi.fn();
+      const onRedrawStateChange = vi.fn();
+
+      const path: SplinePath = {
+        segments: [{ p0: { x: 50, y: 100 }, p1: { x: 100, y: 100 }, p2: { x: 150, y: 100 }, p3: { x: 200, y: 100 } }],
+        isClosed: false,
+      };
+      const stroke = sm.addStroke(path, 'solid', 'indigo', 120);
+      sm.selectStroke(stroke.id);
+
+      const handler = new InputHandler(mockCanvas, {
+        strokeManager: sm,
+        getQuantizer: () => quantizer,
+        onStrokeComplete,
+        onStrokeRedraw,
+        onRedrawStateChange,
+      });
+
+      // Arm redraw
+      handler.armRedraw(stroke.id);
+      expect(handler.isRedrawing).toBe(true);
+      expect(onRedrawStateChange).toHaveBeenCalledWith(true);
+
+      // Draw a new line
+      listeners['pointerdown'][0]({ clientX: 300, clientY: 300, pointerId: 1, button: 0 });
+      windowListeners['pointermove'][0]({ clientX: 350, clientY: 350, pointerId: 1 });
+      windowListeners['pointermove'][0]({ clientX: 400, clientY: 400, pointerId: 1 });
+      windowListeners['pointerup'][0]({ clientX: 400, clientY: 400, pointerId: 1 });
+
+      expect(onStrokeRedraw).toHaveBeenCalledTimes(1);
+      expect(onStrokeRedraw).toHaveBeenCalledWith(stroke.id, expect.any(Object));
+      expect(onStrokeComplete).not.toHaveBeenCalled();
+      expect(handler.isRedrawing).toBe(false);
+
+      handler.destroy();
+    });
+
+    it('dispatches onStrokeRedraw when user draws while holding Option/Alt with a stroke selected', () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+      const onStrokeComplete = vi.fn();
+      const onStrokeRedraw = vi.fn();
+
+      const path: SplinePath = {
+        segments: [{ p0: { x: 50, y: 100 }, p1: { x: 100, y: 100 }, p2: { x: 150, y: 100 }, p3: { x: 200, y: 100 } }],
+        isClosed: false,
+      };
+      const stroke = sm.addStroke(path, 'solid', 'indigo', 120);
+      sm.selectStroke(stroke.id);
+
+      const handler = new InputHandler(mockCanvas, {
+        strokeManager: sm,
+        getQuantizer: () => quantizer,
+        onStrokeComplete,
+        onStrokeRedraw,
+      });
+
+      // Pointerdown with altKey: true
+      listeners['pointerdown'][0]({ clientX: 200, clientY: 200, pointerId: 1, button: 0, altKey: true });
+      expect(handler.isRedrawing).toBe(true);
+
+      // Move and release
+      windowListeners['pointermove'][0]({ clientX: 250, clientY: 250, pointerId: 1 });
+      windowListeners['pointermove'][0]({ clientX: 300, clientY: 300, pointerId: 1 });
+      windowListeners['pointerup'][0]({ clientX: 300, clientY: 300, pointerId: 1 });
+
+      expect(onStrokeRedraw).toHaveBeenCalledTimes(1);
+      expect(onStrokeRedraw).toHaveBeenCalledWith(stroke.id, expect.any(Object));
+      expect(onStrokeComplete).not.toHaveBeenCalled();
+      expect(handler.isRedrawing).toBe(false);
+
+      handler.destroy();
+    });
+
+    it('reliably executes redraw when onSelectStroke callback is active (prevents pointermove deselection)', () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+      const onStrokeComplete = vi.fn();
+      const onStrokeRedraw = vi.fn((strokeId: string, path: SplinePath) => {
+        sm.redrawStroke(strokeId, path);
+      });
+      const onSelectStroke = vi.fn((strokeId: string | null) => {
+        if (!strokeId && handler.appMode !== 'redraw' && handler.isRedrawing) {
+          handler.cancelRedraw();
+        }
+      });
+
+      const initialPath: SplinePath = {
+        segments: [{ p0: { x: 50, y: 100 }, p1: { x: 100, y: 100 }, p2: { x: 150, y: 100 }, p3: { x: 200, y: 100 } }],
+        isClosed: false,
+      };
+      const stroke = sm.addStroke(initialPath, 'dotted', 'amber', 130);
+      sm.selectStroke(stroke.id);
+
+      const handler = new InputHandler(mockCanvas, {
+        strokeManager: sm,
+        getQuantizer: () => quantizer,
+        onStrokeComplete,
+        onStrokeRedraw,
+        onSelectStroke,
+      });
+
+      // Switch to redraw mode
+      handler.setAppMode('redraw');
+      expect(handler.appMode).toBe('redraw');
+      expect(handler.isRedrawing).toBe(true);
+
+      // User draws a replacement curve across canvas
+      listeners['pointerdown'][0]({ clientX: 100, clientY: 200, pointerId: 1, button: 0 });
+      windowListeners['pointermove'][0]({ clientX: 150, clientY: 220, pointerId: 1 });
+      windowListeners['pointermove'][0]({ clientX: 200, clientY: 250, pointerId: 1 });
+      windowListeners['pointermove'][0]({ clientX: 280, clientY: 300, pointerId: 1 });
+      windowListeners['pointerup'][0]({ clientX: 280, clientY: 300, pointerId: 1 });
+
+      // Must call onStrokeRedraw and NEVER create a new stroke
+      expect(onStrokeRedraw).toHaveBeenCalledTimes(1);
+      expect(onStrokeRedraw).toHaveBeenCalledWith(stroke.id, expect.any(Object));
+      expect(onStrokeComplete).not.toHaveBeenCalled();
+
+      // Stroke path must be replaced while preserving musical instrument and parameters
+      expect(stroke.instrumentId).toBe('amber');
+      expect(stroke.style).toBe('dotted');
+      expect(stroke.path.segments[0].p0.x).toBe(100);
+
+      handler.destroy();
+    });
+
+    it('auto-selects the latest stroke if none is selected when drawing in redraw mode', () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+      const onStrokeComplete = vi.fn();
+      const onStrokeRedraw = vi.fn();
+      const onSelectStroke = vi.fn();
+
+      sm.addStroke(dummyPath, 'solid', 'indigo', 120);
+      const stroke2 = sm.addStroke(dummyPath, 'striped', 'rose', 140);
+      sm.selectStroke(null); // No stroke selected initially
+
+      const handler = new InputHandler(mockCanvas, {
+        strokeManager: sm,
+        getQuantizer: () => quantizer,
+        onStrokeComplete,
+        onStrokeRedraw,
+        onSelectStroke,
+      });
+
+      handler.setAppMode('redraw');
+      // Pointerdown on canvas to draw replacement
+      listeners['pointerdown'][0]({ clientX: 100, clientY: 200, pointerId: 1, button: 0 });
+      windowListeners['pointermove'][0]({ clientX: 150, clientY: 250, pointerId: 1 });
+      windowListeners['pointermove'][0]({ clientX: 200, clientY: 300, pointerId: 1 });
+      windowListeners['pointerup'][0]({ clientX: 200, clientY: 300, pointerId: 1 });
+
+      // Must have targeted stroke2 (latest stroke) and redrawn it
+      expect(onStrokeRedraw).toHaveBeenCalledTimes(1);
+      expect(onStrokeRedraw).toHaveBeenCalledWith(stroke2.id, expect.any(Object));
+      expect(onStrokeComplete).not.toHaveBeenCalled();
+
+      handler.destroy();
+    });
+
+    it('triggers onRedrawStart and exposes activeRedrawStrokeId during redraw gesture', () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+      const onRedrawStart = vi.fn();
+      const onStrokeRedraw = vi.fn();
+
+      const stroke = sm.addStroke(dummyPath, 'solid', 'rose', 140);
+      sm.selectStroke(stroke.id);
+
+      const handler = new InputHandler(mockCanvas, {
+        strokeManager: sm,
+        getQuantizer: () => quantizer,
+        onStrokeComplete: vi.fn(),
+        onStrokeRedraw,
+        onRedrawStart,
+      });
+
+      handler.setAppMode('redraw');
+      expect(handler.activeRedrawStrokeId).toBeNull();
+
+      // Begin redraw gesture
+      listeners['pointerdown'][0]({ clientX: 100, clientY: 200, pointerId: 1, button: 0 });
+      expect(onRedrawStart).toHaveBeenCalledWith(stroke.id);
+      expect(handler.activeRedrawStrokeId).toBe(stroke.id);
+
+      // Complete gesture
+      windowListeners['pointermove'][0]({ clientX: 150, clientY: 250, pointerId: 1 });
+      windowListeners['pointerup'][0]({ clientX: 150, clientY: 250, pointerId: 1 });
+      expect(onStrokeRedraw).toHaveBeenCalledWith(stroke.id, expect.any(Object));
+      expect(handler.activeRedrawStrokeId).toBeNull();
+
+      handler.destroy();
+    });
   });
 });
 

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { JSDOM } from 'jsdom';
 import * as fs from 'fs';
 import * as path from 'path';
+import { SCALES } from '../src/audio/scales';
 
 describe('Browser DOM Structure & Speed Traversal Interface', () => {
   const htmlPath = path.resolve(__dirname, '../index.html');
@@ -933,6 +934,69 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     expect(statusCenter).not.toBeNull();
     const contextHelp = doc.getElementById('contextHelp');
     expect(contextHelp).not.toBeNull();
+  });
+
+  it('guarantees that all scale dropdown options (including Major and Mixolydian) resolve in the SCALES dictionary', () => {
+    const scaleSelect = doc.getElementById('scaleSelect') as HTMLSelectElement;
+    expect(scaleSelect).not.toBeNull();
+    const scaleOptions = Array.from(scaleSelect.querySelectorAll('option')).map((opt) => opt.value);
+
+    const studioScaleSelect = doc.getElementById('studioScaleSelect') as HTMLSelectElement;
+    expect(studioScaleSelect).not.toBeNull();
+    const studioScaleOptions = Array.from(studioScaleSelect.querySelectorAll('option')).map((opt) => opt.value);
+
+    // Verify both dropdowns contain major and mixolydian
+    expect(scaleOptions).toContain('major');
+    expect(scaleOptions).toContain('mixolydian');
+    expect(studioScaleOptions).toContain('major');
+    expect(studioScaleOptions).toContain('mixolydian');
+
+    // Verify every option maps to a valid configured scale
+    for (const val of scaleOptions) {
+      expect(SCALES[val], `Scale '${val}' must be defined in SCALES dictionary`).toBeDefined();
+      expect(SCALES[val].intervals.length).toBeGreaterThan(0);
+    }
+
+    for (const val of studioScaleOptions) {
+      expect(SCALES[val], `Studio scale '${val}' must be defined in SCALES dictionary`).toBeDefined();
+      expect(SCALES[val].intervals.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('contains Re-draw action buttons in both floating and studio docked inspectors with zero emojis', () => {
+    const redrawBtn = doc.getElementById('redrawTrackBtn') as HTMLButtonElement;
+    expect(redrawBtn).not.toBeNull();
+    expect(redrawBtn.textContent?.trim()).toBe('Re-draw');
+    // Ensure no emojis in text
+    expect(redrawBtn.textContent).not.toMatch(/[\u{1F300}-\u{1F9FF}]/u);
+
+    const studioRedrawBtn = doc.getElementById('studioRedrawTrackBtn') as HTMLButtonElement;
+    expect(studioRedrawBtn).not.toBeNull();
+    expect(studioRedrawBtn.textContent?.trim()).toBe('Re-draw');
+    expect(studioRedrawBtn.textContent).not.toMatch(/[\u{1F300}-\u{1F9FF}]/u);
+
+    // Verify Top-Bar Mode Switcher has dedicated Re-draw mode
+    const topBarRedrawBtn = doc.querySelector('#appModeControl button[data-app-mode="redraw"]') as HTMLButtonElement;
+    expect(topBarRedrawBtn).not.toBeNull();
+    expect(topBarRedrawBtn.textContent?.trim()).toBe('Re-draw');
+    expect(topBarRedrawBtn.textContent).not.toMatch(/[\u{1F300}-\u{1F9FF}]/u);
+
+    // Verify Zen Dock Mode Switcher has dedicated Re-draw mode
+    const zenDockRedrawBtn = doc.querySelector('#zenAppModeControl button[data-app-mode="redraw"]') as HTMLButtonElement;
+    expect(zenDockRedrawBtn).not.toBeNull();
+    expect(zenDockRedrawBtn.textContent?.trim()).toBe('Re-draw');
+    expect(zenDockRedrawBtn.textContent).not.toMatch(/[\u{1F300}-\u{1F9FF}]/u);
+
+    // Verify Zen Context Pill has Re-draw button
+    const zenContextRedrawBtn = doc.getElementById('zenContextRedrawBtn') as HTMLButtonElement;
+    expect(zenContextRedrawBtn).not.toBeNull();
+    expect(zenContextRedrawBtn.textContent?.trim()).toBe('↻');
+    expect(zenContextRedrawBtn.textContent).not.toMatch(/[\u{1F300}-\u{1F9FF}]/u);
+
+    // Verify shortcuts modal includes re-draw description
+    const shortcutsModal = doc.getElementById('shortcutsModal');
+    expect(shortcutsModal).not.toBeNull();
+    expect(shortcutsModal?.textContent).toContain('Re-draw');
   });
 });
 

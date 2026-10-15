@@ -237,5 +237,45 @@ describe('Coordinate-to-Pitch Scale Quantizer (Non-linear 110 Hz to 8000 Hz)', (
     expect(ScaleQuantizer.normalizedUToFrequency(0.22)).toBeCloseTo(300, 1);
     expect(ScaleQuantizer.normalizedUToFrequency(0.92)).toBeCloseTo(2500, 1);
   });
+
+  it('supports Major (Ionian) and Mixolydian modal scales and updates quantizer configuration correctly', () => {
+    // 1. Verify SCALES has both major and mixolydian definitions
+    expect(SCALES.major).toBeDefined();
+    expect(SCALES.major.intervals).toEqual([0, 2, 4, 5, 7, 9, 11]);
+    expect(SCALES.major.name).toBe('Major (Ionian)');
+
+    expect(SCALES.mixolydian).toBeDefined();
+    expect(SCALES.mixolydian.intervals).toEqual([0, 2, 4, 5, 7, 9, 10]);
+    expect(SCALES.mixolydian.name).toBe('Mixolydian');
+
+    // 2. Test quantizer with Major scale
+    const quantizer = new ScaleQuantizer({
+      scale: SCALES.major,
+      root: ROOT_NOTES.C2,
+    });
+    expect(quantizer.getConfig().scale.id).toBe('major');
+
+    // Root note is C2 (baseMidi 36)
+    // Major 3rd (interval 4) should be E, Perfect 4th (interval 5) should be F, Major 7th (interval 11) should be B
+    const guidelinesMajor = quantizer.getAllGuidelines(600);
+    const noteNamesMajor = guidelinesMajor.map((p) => p.noteName);
+    expect(noteNamesMajor).toContain('C3');
+    expect(noteNamesMajor).toContain('E3');
+    expect(noteNamesMajor).toContain('F3');
+    expect(noteNamesMajor).toContain('B3');
+
+    // 3. Switch to Mixolydian scale
+    quantizer.updateConfig({ scale: SCALES.mixolydian });
+    expect(quantizer.getConfig().scale.id).toBe('mixolydian');
+
+    const guidelinesMixo = quantizer.getAllGuidelines(600);
+    const noteNamesMixo = guidelinesMixo.map((p) => p.noteName);
+    // Mixolydian has minor 7th (interval 10, Bb/A#) instead of Major 7th (B)
+    expect(noteNamesMixo).toContain('C3');
+    expect(noteNamesMixo).toContain('E3');
+    expect(noteNamesMixo).toContain('F3');
+    expect(noteNamesMixo).toContain('A#3'); // or Bb
+    expect(noteNamesMixo).not.toContain('B3');
+  });
 });
 

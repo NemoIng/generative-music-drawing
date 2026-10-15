@@ -360,7 +360,12 @@ export class CanvasRenderer {
   /**
    * Renders completed strokes with ink-on-paper aesthetics and mute/solo awareness.
    */
-  public drawStroke(stroke: DrawnStroke, hasSolo: boolean = false, isMultiSelection: boolean = false): void {
+  public drawStroke(
+    stroke: DrawnStroke,
+    hasSolo: boolean = false,
+    isMultiSelection: boolean = false,
+    isBeingRedrawn: boolean = false
+  ): void {
     const { path, style } = stroke;
     const ctx = this.ctx;
     ctx.save();
@@ -375,6 +380,9 @@ export class CanvasRenderer {
       // Greyed out because another line is soloed
       ctx.globalAlpha = 0.20 * morphMultiplier;
     } else if (stroke.muted) {
+      ctx.globalAlpha = 0.25 * morphMultiplier;
+    } else if (isBeingRedrawn) {
+      // Dim stroke being replaced while active redraw gesture is taking place
       ctx.globalAlpha = 0.25 * morphMultiplier;
     } else {
       ctx.globalAlpha = (0.35 + 0.65 * vol) * Math.max(0.04, morphMultiplier);
@@ -701,22 +709,24 @@ export class CanvasRenderer {
    * Draws active drawing gesture while user drags pointer.
    */
   public drawActiveGesture(points: Point2D[], color: string): void {
-    if (points.length < 2) return;
+    if (points.length === 0) return;
     const ctx = this.ctx;
     ctx.save();
 
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (let i = 1; i < points.length; i++) {
-      ctx.lineTo(points[i].x, points[i].y);
-    }
+    if (points.length >= 2) {
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) {
+        ctx.lineTo(points[i].x, points[i].y);
+      }
 
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2.0;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.setLineDash([4, 4]);
-    ctx.stroke();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.setLineDash([4, 4]);
+      ctx.stroke();
+    }
 
     ctx.beginPath();
     ctx.arc(points[0].x, points[0].y, 3.5, 0, Math.PI * 2);
