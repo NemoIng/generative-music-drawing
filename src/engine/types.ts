@@ -19,6 +19,7 @@ export interface StrokePlayhead {
   velocity: number; // pixels / second
   direction: number; // 1 or -1
   lastTriggerDistance: number;
+  triggerDistanceAccum?: number;
   lastEval: CurveEvaluation | null;
   lastPitch: PitchResult | null;
   trail: Point2D[];

@@ -98,6 +98,7 @@ const wavePeriodSlider = document.getElementById('wavePeriodSlider') as HTMLInpu
 const wavePeriodVal = document.getElementById('wavePeriodVal') as HTMLSpanElement;
 const muteBtn = document.getElementById('muteBtn') as HTMLButtonElement;
 const soloBtn = document.getElementById('soloBtn') as HTMLButtonElement;
+const redrawTrackBtn = document.getElementById('redrawTrackBtn') as HTMLButtonElement | null;
 const duplicateTrackBtn = document.getElementById('duplicateTrackBtn') as HTMLButtonElement | null;
 const deleteTrackBtn = document.getElementById('deleteTrackBtn') as HTMLButtonElement;
 const deselectTrackBtn = document.getElementById('deselectTrackBtn') as HTMLButtonElement;
@@ -334,6 +335,7 @@ const studioWaveShapeSelect = document.getElementById('studioWaveShapeSelect') a
 const studioWaveSineBtn = document.getElementById('studioWaveSineBtn') as HTMLButtonElement | null;
 const studioWaveAmpSlider = document.getElementById('studioWaveAmpSlider') as HTMLInputElement | null;
 const studioWaveAmpVal = document.getElementById('studioWaveAmpVal') as HTMLSpanElement | null;
+const studioRedrawTrackBtn = document.getElementById('studioRedrawTrackBtn') as HTMLButtonElement | null;
 const studioDupTrackBtn = document.getElementById('studioDupTrackBtn') as HTMLButtonElement | null;
 const studioDelTrackBtn = document.getElementById('studioDelTrackBtn') as HTMLButtonElement | null;
 const studioDeselectTrackBtn = document.getElementById('studioDeselectTrackBtn') as HTMLButtonElement | null;
@@ -391,6 +393,7 @@ const zenClearBtn = document.getElementById('zenClearBtn') as HTMLButtonElement 
 const zenContextDot = document.getElementById('zenContextDot') as HTMLElement | null;
 const zenContextName = document.getElementById('zenContextName') as HTMLElement | null;
 const zenContextVolSlider = document.getElementById('zenContextVolSlider') as HTMLInputElement | null;
+const zenContextRedrawBtn = document.getElementById('zenContextRedrawBtn') as HTMLButtonElement | null;
 const zenContextMuteBtn = document.getElementById('zenContextMuteBtn') as HTMLButtonElement | null;
 const zenContextSoloBtn = document.getElementById('zenContextSoloBtn') as HTMLButtonElement | null;
 const zenContextTravBtn = document.getElementById('zenContextTravBtn') as HTMLButtonElement | null;
@@ -437,10 +440,33 @@ const inputHandler = new InputHandler(canvasEl, {
     dismissWelcomePrompt();
     updateAudioStatusChip();
   },
+  onStrokeRedraw: (strokeId: string, path: SplinePath) => {
+    strokeManager.redrawStroke(strokeId, path);
+    strokeManager.selectStroke(strokeId);
+    updateTrackActionsVisibility();
+    updateMixerSelection();
+    syncCompositionState();
+    if (statMode && inputHandler.appMode === 'redraw') {
+      const s = strokeManager.getStroke(strokeId);
+      const instName = s ? getInstrument(s.instrumentId)?.name || 'Line' : 'Line';
+      const color = s ? renderer.getStrokeColor(s) : '#2563eb';
+      statMode.textContent = `Re-drawn '${instName}'. Draw again to reshape, or click Draw (or press R).`;
+      statMode.style.color = color;
+    }
+  },
+  onRedrawStart: (strokeId: string) => {
+    const stroke = strokeManager.getStroke(strokeId);
+    if (stroke) {
+      syncInstrumentToStroke(stroke);
+    }
+  },
+  onRedrawStateChange: (isArmed: boolean) => {
+    updateRedrawButtonsUI(isArmed);
+  },
   onStrokeComplete: (path: SplinePath, isPoint?: boolean) => {
     dismissWelcomePrompt();
 
-    strokeManager.addStroke(
+    const newStroke = strokeManager.addStroke(
       path,
       currentStyle,
       currentInstrumentId,
@@ -462,31 +488,139 @@ const inputHandler = new InputHandler(canvasEl, {
     );
 
     strokeManager.activateAudioVoices();
+    // Automatically select the newly drawn line
+    strokeManager.selectStroke(newStroke.id);
+    updateTrackActionsVisibility();
+    updateMixerSelection();
+    if (inputHandler.appMode === 'draw' && statMode) {
+      statMode.textContent = 'Line Selected (Edit)';
+      statMode.style.color = '#2563eb';
+    }
     syncCompositionState();
   },
   onDrawChange: (points: Point2D[]) => {
     activeDrawingPoints = points;
   },
+  onStrokeTranslateEnd: () => {
+    syncCompositionState();
+  },
   onSelectStroke: (strokeId: string | null) => {
+    if (!strokeId && inputHandler.appMode !== 'redraw' && inputHandler.isRedrawing) {
+      inputHandler.cancelRedraw();
+    }
+    const stroke = strokeId ? strokeManager.getStroke(strokeId) : null;
+    if (stroke && (inputHandler.appMode === 'redraw' || inputHandler.isRedrawing)) {
+      syncInstrumentToStroke(stroke);
+    }
     updateTrackActionsVisibility();
     updateMixerSelection();
-    if (inputHandler.appMode === 'draw' && statMode) {
-      statMode.textContent = strokeId ? 'Line Selected (Edit)' : 'Draw / Click to Select';
-      statMode.style.color = strokeId ? '#2563eb' : 'inherit';
+    if (statMode) {
+      if (inputHandler.appMode === 'draw') {
+        statMode.textContent = strokeId ? 'Line Selected (Edit)' : 'Draw / Click to Select';
+        statMode.style.color = strokeId ? '#2563eb' : 'inherit';
+      } else if (inputHandler.appMode === 'redraw') {
+        const instName = stroke ? getInstrument(stroke.instrumentId)?.name || 'Line' : 'Line';
+        const color = stroke ? renderer.getStrokeColor(stroke) : '#2563eb';
+        statMode.textContent = `Re-draw: Draw curve on canvas to replace '${instName}'`;
+        statMode.style.color = color;
+      }
     }
   },
 });
 
-// Interaction Mode Switching (Draw Score vs Live Play with Dynamic Reverb & Controls)
-function setAppMode(mode: 'draw' | 'live'): void {
+function syncInstrumentToStroke(stroke: DrawnStroke): void {
+  currentInstrumentId = stroke.instrumentId;
+  currentStyle = stroke.style;
+  swatchButtons.forEach((btn) => {
+    btn.classList.toggle('active', btn.getAttribute('data-instrument') === stroke.instrumentId);
+  });
+  document.querySelectorAll<HTMLElement>('#zenSwatches .zen-swatch').forEach((btn) => {
+    btn.classList.toggle('active', btn.getAttribute('data-instrument') === stroke.instrumentId);
+  });
+  strokeModeButtons.forEach((b) => {
+    b.classList.toggle('active', b.getAttribute('data-style') === stroke.style);
+  });
+  document.querySelectorAll<HTMLElement>('#zenStyleControl .seg-btn').forEach((b) => {
+    b.classList.toggle('active', b.getAttribute('data-zen-style') === stroke.style);
+  });
+  if (statInstrument) {
+    const inst = getInstrument(stroke.instrumentId);
+    statInstrument.textContent = `${inst.icon} ${inst.name}`;
+  }
+}
+
+function updateRedrawButtonsUI(isArmed: boolean): void {
+  const isRedrawActive = isArmed || inputHandler.appMode === 'redraw';
+  redrawTrackBtn?.classList.toggle('active', isRedrawActive);
+  studioRedrawTrackBtn?.classList.toggle('active', isRedrawActive);
+  zenContextRedrawBtn?.classList.toggle('active', isRedrawActive);
+  appModeButtons.forEach((btn) => {
+    if (btn.getAttribute('data-app-mode') === 'redraw') {
+      btn.classList.toggle('active', isRedrawActive);
+    }
+  });
+  const allRedrawBtns = document.querySelectorAll('.layer-btn[data-action="redraw"]');
+  allRedrawBtns.forEach((btn) => {
+    const card = btn.closest('.layer-card');
+    const cardStrokeId = card?.getAttribute('data-stroke-id');
+    const isThisCardRedrawing = isRedrawActive && cardStrokeId === strokeManager.selectedStrokeId;
+    btn.classList.toggle('active', isThisCardRedrawing);
+  });
+  if (statMode && inputHandler.appMode === 'draw') {
+    if (isArmed) {
+      const s = strokeManager.selectedStrokeId ? strokeManager.getStroke(strokeManager.selectedStrokeId) : null;
+      const color = s ? renderer.getStrokeColor(s) : '#2563eb';
+      statMode.textContent = 'Re-drawing line... Draw new path on canvas';
+      statMode.style.color = color;
+    } else if (strokeManager.selectedStrokeId) {
+      statMode.textContent = 'Line Selected (Edit)';
+      statMode.style.color = '#2563eb';
+    }
+  }
+}
+
+// Interaction Mode Switching (Draw Score vs Re-draw vs Live Play)
+function setAppMode(mode: 'draw' | 'redraw' | 'live'): void {
   inputHandler.setAppMode(mode);
   appModeButtons.forEach((btn) => {
     btn.classList.toggle('active', btn.getAttribute('data-app-mode') === mode);
   });
+
+  if (mode === 'redraw') {
+    if (!strokeManager.selectedStrokeId && strokeManager.activeStrokes.length > 0) {
+      const last = strokeManager.activeStrokes[strokeManager.activeStrokes.length - 1];
+      strokeManager.selectStroke(last.id);
+      updateTrackActionsVisibility();
+      updateMixerSelection();
+    }
+    const targetStroke = strokeManager.selectedStrokeId ? strokeManager.getStroke(strokeManager.selectedStrokeId) : null;
+    if (targetStroke) {
+      syncInstrumentToStroke(targetStroke);
+    }
+  }
+
+  updateRedrawButtonsUI(mode === 'redraw' || inputHandler.isRedrawing);
+
   if (statMode) {
-    const revPct = Math.round(inputHandler.liveReverbSend * 100);
-    statMode.textContent = mode === 'live' ? `Live Play (${revPct}% Reverb)` : 'Draw / Click to Select';
-    statMode.style.color = mode === 'live' ? '#2563eb' : 'inherit';
+    if (mode === 'live') {
+      const revPct = Math.round(inputHandler.liveReverbSend * 100);
+      statMode.textContent = `Live Play (${revPct}% Reverb)`;
+      statMode.style.color = '#2563eb';
+    } else if (mode === 'redraw') {
+      const s = strokeManager.selectedStrokeId ? strokeManager.getStroke(strokeManager.selectedStrokeId) : null;
+      const instName = s ? getInstrument(s.instrumentId)?.name || 'Line' : 'Line';
+      const color = s ? renderer.getStrokeColor(s) : '#2563eb';
+      statMode.textContent = `Re-draw: Draw curve on canvas to replace '${instName}'`;
+      statMode.style.color = color;
+    } else {
+      if (strokeManager.selectedStrokeId) {
+        statMode.textContent = 'Line Selected (Edit)';
+        statMode.style.color = '#2563eb';
+      } else {
+        statMode.textContent = 'Draw / Click to Select';
+        statMode.style.color = 'inherit';
+      }
+    }
   }
 
   // In Live mode, highlight live performance controls
@@ -502,7 +636,7 @@ function setAppMode(mode: 'draw' | 'live'): void {
 
 appModeButtons.forEach((btn) => {
   btn.addEventListener('click', () => {
-    const mode = btn.getAttribute('data-app-mode') as 'draw' | 'live';
+    const mode = btn.getAttribute('data-app-mode') as 'draw' | 'redraw' | 'live';
     if (mode) setAppMode(mode);
   });
 });
@@ -1153,6 +1287,7 @@ function createLayerCard(
         <span class="layer-tag">${timingTag}</span>
       </div>
       <div class="layer-actions">
+        <button type="button" class="layer-btn${inputHandler.isRedrawing && strokeManager.selectedStrokeId === stroke.id ? ' active' : ''}" data-action="redraw" title="Re-draw line path (R)">↻</button>
         <button type="button" class="layer-btn${stroke.muted ? ' active-mute' : ''}" data-action="mute" title="Mute line (M)">M</button>
         <button type="button" class="layer-btn${stroke.soloed ? ' active-solo' : ''}" data-action="solo" title="Solo line (S)">S</button>
         <button type="button" class="layer-btn" data-action="duplicate" title="Duplicate line (⌘D)">⧉</button>
@@ -1187,6 +1322,17 @@ function createLayerCard(
     }
     updateTrackActionsVisibility();
     updateMixerSelection();
+  });
+
+  // Re-draw button
+  card.querySelector<HTMLButtonElement>('[data-action="redraw"]')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    strokeManager.selectStroke(stroke.id);
+    if (inputHandler.appMode === 'redraw') {
+      setAppMode('draw');
+    } else {
+      setAppMode('redraw');
+    }
   });
 
   // Mute button
@@ -1434,6 +1580,7 @@ studioScaleSelect?.addEventListener('change', () => {
   scaleSelect.value = scaleKey;
   if (SCALES[scaleKey]) {
     quantizer.updateConfig({ scale: SCALES[scaleKey] });
+    updatePitchNavigator();
     setCompositionDirty(true);
   }
 });
@@ -1444,6 +1591,7 @@ studioRootSelect?.addEventListener('change', () => {
   rootSelect.value = rootKey;
   if (ROOT_NOTES[rootKey]) {
     quantizer.updateConfig({ root: ROOT_NOTES[rootKey] });
+    updatePitchNavigator();
     setCompositionDirty(true);
   }
 });
@@ -1499,7 +1647,8 @@ function renderStudioMixer(): void {
   const hasSolo = strokeManager.hasSoloedStrokes;
   studioMixerList.innerHTML = '';
 
-  strokes.forEach((stroke, idx) => {
+  const sortedStrokes = strokeManager.getStrokesSortedByFieldY();
+  sortedStrokes.forEach((stroke, idx) => {
     studioMixerList!.appendChild(createLayerCard(stroke, idx, hasSolo));
   });
 
@@ -1550,7 +1699,8 @@ function updateStudioDockedInspector(): void {
     if (studioInspectorContent) studioInspectorContent.style.display = 'flex';
   }
 
-  const idx = strokeManager.activeStrokes.indexOf(stroke);
+  const sortedStrokes = strokeManager.getStrokesSortedByFieldY();
+  const idx = sortedStrokes.indexOf(stroke);
   const inst = getInstrument(stroke.instrumentId);
   const color = renderer.getStrokeColor(stroke);
 
@@ -1625,6 +1775,10 @@ function updateStudioDockedInspector(): void {
   if (studioLofiSlider && studioLofiVal) {
     studioLofiSlider.value = Math.round(lofi * 100).toString();
     studioLofiVal.textContent = `${Math.round(lofi * 100)}%`;
+  }
+
+  if (studioRedrawTrackBtn) {
+    studioRedrawTrackBtn.classList.toggle('active', inputHandler.isRedrawing);
   }
 }
 
@@ -1775,6 +1929,16 @@ studioLofiSlider?.addEventListener('change', () => {
   }
 });
 
+studioRedrawTrackBtn?.addEventListener('click', () => {
+  if (strokeManager.selectedStrokeId) {
+    if (inputHandler.appMode === 'redraw') {
+      setAppMode('draw');
+    } else {
+      setAppMode('redraw');
+    }
+  }
+});
+
 studioDupTrackBtn?.addEventListener('click', () => {
   if (strokeManager.selectedStrokeId) {
     strokeManager.duplicateSelected(quantizer, renderer.height);
@@ -1862,7 +2026,7 @@ function initZenMode(): void {
 
   document.querySelectorAll<HTMLElement>('#zenAppModeControl .seg-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const mode = btn.getAttribute('data-app-mode') as 'draw' | 'live';
+      const mode = btn.getAttribute('data-app-mode') as 'draw' | 'redraw' | 'live';
       if (mode) {
         setAppMode(mode);
       }
@@ -1888,6 +2052,15 @@ function initZenMode(): void {
   zenContextCloseBtn?.addEventListener('click', () => {
     strokeManager.selectStroke(null);
     updateTrackActionsVisibility();
+  });
+
+  zenContextRedrawBtn?.addEventListener('click', () => {
+    if (!strokeManager.selectedStrokeId) return;
+    if (inputHandler.appMode === 'redraw') {
+      setAppMode('draw');
+    } else {
+      setAppMode('redraw');
+    }
   });
 
   zenContextVolSlider?.addEventListener('input', () => {
@@ -1957,6 +2130,10 @@ function updateZenContextPill(stroke?: DrawnStroke): void {
   if (zenContextDot) zenContextDot.style.background = color;
   if (zenContextName) zenContextName.textContent = stroke.isPoint ? `Dot #${idx + 1} ${inst.name}` : `#${idx + 1} ${inst.name}`;
   if (zenContextVolSlider) zenContextVolSlider.value = Math.round((stroke.volume ?? 1.0) * 100).toString();
+  if (zenContextRedrawBtn) {
+    zenContextRedrawBtn.classList.toggle('active', inputHandler.isRedrawing);
+    zenContextRedrawBtn.style.display = stroke.isPoint ? 'none' : '';
+  }
   if (zenContextMuteBtn) zenContextMuteBtn.classList.toggle('active-mute', !!stroke.muted);
   if (zenContextSoloBtn) zenContextSoloBtn.classList.toggle('active-solo', !!stroke.soloed);
   if (zenContextTravBtn) zenContextTravBtn.style.display = stroke.isPoint ? 'none' : '';
@@ -2974,7 +3151,9 @@ document.addEventListener('wheel', (e: WheelEvent) => {
 
 // Musical Scale and Root Listeners
 scaleSelect.addEventListener('change', () => {
-  const scale = SCALES[scaleSelect.value];
+  const scaleKey = scaleSelect.value;
+  if (studioScaleSelect) studioScaleSelect.value = scaleKey;
+  const scale = SCALES[scaleKey];
   if (scale) {
     quantizer.updateConfig({ scale });
     updatePitchNavigator();
@@ -2983,7 +3162,9 @@ scaleSelect.addEventListener('change', () => {
 });
 
 rootSelect.addEventListener('change', () => {
-  const root = ROOT_NOTES[rootSelect.value];
+  const rootKey = rootSelect.value;
+  if (studioRootSelect) studioRootSelect.value = rootKey;
+  const root = ROOT_NOTES[rootKey];
   if (root) {
     quantizer.updateConfig({ root });
     updatePitchNavigator();
@@ -3337,6 +3518,7 @@ function updateTrackActionsVisibility(): void {
       muteBtn.textContent = stroke.muted ? 'Unmute' : 'Mute';
       soloBtn.classList.toggle('active-solo', !!stroke.soloed);
       soloBtn.textContent = stroke.soloed ? 'Unsolo' : 'Solo';
+      redrawTrackBtn?.classList.toggle('active', inputHandler.isRedrawing);
     }
   } else {
     const selectedCount = strokeManager.selectedStrokeIds.length;
@@ -3734,6 +3916,16 @@ soloBtn.addEventListener('click', () => {
   }
 });
 
+redrawTrackBtn?.addEventListener('click', () => {
+  if (strokeManager.selectedStrokeId) {
+    if (inputHandler.appMode === 'redraw') {
+      setAppMode('draw');
+    } else {
+      setAppMode('redraw');
+    }
+  }
+});
+
 duplicateTrackBtn?.addEventListener('click', () => {
   if (strokeManager.selectedStrokeId) {
     const newStroke = strokeManager.duplicateSelected(quantizer, renderer.height);
@@ -4054,13 +4246,21 @@ breathingSelect?.addEventListener('change', () => {
   setCompositionDirty(true);
 });
 
-// Warn user if leaving with unsaved changes
-window.addEventListener('beforeunload', (e) => {
-  if (isCompositionDirty && strokeManager.activeStrokes.length > 0) {
-    e.preventDefault();
-    e.returnValue = '';
+// Warn user if leaving with unsaved changes (production only; disabled in development to prevent intrusive reload prompts during code edits)
+if (typeof window !== 'undefined') {
+  if (import.meta.hot) {
+    import.meta.hot.on('vite:beforeFullReload', () => {
+      isCompositionDirty = false;
+    });
   }
-});
+
+  window.addEventListener('beforeunload', (e) => {
+    if (!import.meta.env.DEV && isCompositionDirty && strokeManager.activeStrokes.length > 0) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
+}
 
 // Fast Forward & Rewind Scrubber State
 let isFastForwardHeld = false;
@@ -4234,7 +4434,7 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     }
   }
 
-  // 4. Escape: Close modals, close controls drawer, or deselect active stroke(s)
+  // 4. Escape: Close modals, cancel redraw, close controls drawer, or deselect active stroke(s)
   if (e.key === 'Escape') {
     if (shortcutsModal && !shortcutsModal.classList.contains('hidden')) {
       closeShortcutsModal();
@@ -4242,6 +4442,10 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     }
     if (recordModal && !recordModal.classList.contains('hidden')) {
       closeRecordModal();
+      return;
+    }
+    if (inputHandler.isRedrawing || inputHandler.appMode === 'redraw') {
+      setAppMode('draw');
       return;
     }
     if (advancedDrawer && advancedDrawer.style.display !== 'none') {
@@ -4262,11 +4466,21 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     return;
   }
 
-  // 5. Resync all playheads (R) / Randomize playheads (Shift+R)
+  // 5. Re-draw selected line / toggle Re-draw mode (R when lines exist) / Resync playheads (R when empty) / Randomize playheads (Shift+R)
   if (e.key.toLowerCase() === 'r') {
     e.preventDefault();
     if (e.shiftKey) {
       strokeManager.randomizeAllPlayheads();
+    } else if (strokeManager.activeStrokes.length > 0) {
+      if (inputHandler.appMode === 'redraw') {
+        setAppMode('draw');
+      } else {
+        if (!strokeManager.selectedStrokeId) {
+          const last = strokeManager.activeStrokes[strokeManager.activeStrokes.length - 1];
+          strokeManager.selectStroke(last.id);
+        }
+        setAppMode('redraw');
+      }
     } else {
       strokeManager.resyncAllPlayheads();
     }
@@ -4722,14 +4936,24 @@ function animationLoop(nowMs: number): void {
   // 5. Render active strokes & playheads in world coordinate layer (scrolls smoothly with frequency field)
   renderer.drawWorldLayer(quantizer.scrollY, () => {
     const isMultiSelection = strokeManager.selectedStrokeIds.length > 1;
+    const isRedraw = inputHandler.isRedrawing || inputHandler.appMode === 'redraw';
+    const redrawingId = inputHandler.activeRedrawStrokeId || (isRedraw ? strokeManager.selectedStrokeId : null);
+
     for (const stroke of strokeManager.activeStrokes) {
-      renderer.drawStroke(stroke, hasSolo, isMultiSelection);
+      const isBeingRedrawn = activeDrawingPoints.length > 0 && redrawingId === stroke.id;
+      renderer.drawStroke(stroke, hasSolo, isMultiSelection, isBeingRedrawn);
       renderer.drawPlayhead(stroke, nowMs, hasSolo);
     }
 
     // Active in-flight gesture
-    if (activeDrawingPoints.length > 1) {
-      const gestureColor = getInstrumentColor(currentInstrumentId, renderer.isDarkMode);
+    if (activeDrawingPoints.length > 0) {
+      let gestureColor = getInstrumentColor(currentInstrumentId, renderer.isDarkMode);
+      if (isRedraw && redrawingId) {
+        const targetStroke = strokeManager.getStroke(redrawingId);
+        if (targetStroke) {
+          gestureColor = renderer.getStrokeColor(targetStroke);
+        }
+      }
       renderer.drawActiveGesture(activeDrawingPoints, gestureColor);
     }
   });

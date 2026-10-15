@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { StrokeManager, getNextVersionName } from '../src/engine/strokeManager';
+import { StrokeManager, getNextVersionName, getStrokeVerticalCenter } from '../src/engine/strokeManager';
 import { SplinePath } from '../src/math/types';
 import { SavedComposition } from '../src/engine/types';
 import { ScaleQuantizer } from '../src/audio/scaleQuantizer';
@@ -2158,6 +2158,262 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
         expect(evalPitch.noteName).toBe(initialPitch.noteName);
         expect(evalPitch.scaleDegree).toBeCloseTo(initialPitch.scaleDegree, 4);
       }
+    });
+  });
+
+  describe('Field-Y Sorting & Vertical Center Calculation', () => {
+    it('accurately computes the vertical center (midpoint) of a drawn stroke', () => {
+      const path: SplinePath = {
+        segments: [
+          { p0: { x: 50, y: 100 }, p1: { x: 100, y: 150 }, p2: { x: 150, y: 250 }, p3: { x: 200, y: 300 } },
+        ],
+        isClosed: false,
+      };
+      const sm = new StrokeManager();
+      const stroke = sm.addStroke(path, 'solid', 'indigo', 120);
+
+      // minY = 100, maxY = 300 -> center = (100 + 300) / 2 = 200
+      expect(getStrokeVerticalCenter(stroke)).toBe(200);
+    });
+
+    it('returns strokes sorted top-to-bottom by vertical position in the canvas field', () => {
+      const sm = new StrokeManager();
+
+      // Top line near y = 100
+      const pathTop: SplinePath = {
+        segments: [{ p0: { x: 50, y: 100 }, p1: { x: 100, y: 100 }, p2: { x: 150, y: 100 }, p3: { x: 200, y: 100 } }],
+        isClosed: false,
+      };
+      // Middle line near y = 300
+      const pathMid: SplinePath = {
+        segments: [{ p0: { x: 50, y: 300 }, p1: { x: 100, y: 300 }, p2: { x: 150, y: 300 }, p3: { x: 200, y: 300 } }],
+        isClosed: false,
+      };
+      // Bottom line near y = 500
+      const pathBot: SplinePath = {
+        segments: [{ p0: { x: 50, y: 500 }, p1: { x: 100, y: 500 }, p2: { x: 150, y: 500 }, p3: { x: 200, y: 500 } }],
+        isClosed: false,
+      };
+
+      // Add in arbitrary order (Bottom, Top, Middle)
+      const strokeBot = sm.addStroke(pathBot, 'solid', 'indigo', 120);
+      const strokeTop = sm.addStroke(pathTop, 'solid', 'amber', 120);
+      const strokeMid = sm.addStroke(pathMid, 'solid', 'teal', 120);
+
+      const sorted = sm.getStrokesSortedByFieldY();
+      expect(sorted.length).toBe(3);
+      expect(sorted[0].id).toBe(strokeTop.id);
+      expect(sorted[1].id).toBe(strokeMid.id);
+      expect(sorted[2].id).toBe(strokeBot.id);
+    });
+
+    it('preserves creation order as tiebreaker when strokes have identical vertical centers', () => {
+      const sm = new StrokeManager();
+      const pathA: SplinePath = {
+        segments: [{ p0: { x: 10, y: 200 }, p1: { x: 50, y: 200 }, p2: { x: 100, y: 200 }, p3: { x: 150, y: 200 } }],
+        isClosed: false,
+      };
+      const pathB: SplinePath = {
+        segments: [{ p0: { x: 200, y: 200 }, p1: { x: 250, y: 200 }, p2: { x: 300, y: 200 }, p3: { x: 350, y: 200 } }],
+        isClosed: false,
+      };
+
+      const strokeA = sm.addStroke(pathA, 'solid', 'indigo', 120);
+      const strokeB = sm.addStroke(pathB, 'solid', 'amber', 120);
+
+      const sorted = sm.getStrokesSortedByFieldY();
+      expect(sorted[0].id).toBe(strokeA.id);
+      expect(sorted[1].id).toBe(strokeB.id);
+    });
+  });
+
+  describe('Rhythmic Tempo Consistency Across Bounce & Restart Boundaries', () => {
+    it('maintains perfectly steady tempo intervals on bounce traversal without double-hits', () => {
+      const triggerTimes: number[] = [];
+      let simTime = 0;
+      vi.spyOn(PulseVoice, 'trigger').mockImplementation(() => {
+        triggerTimes.push(simTime);
+      });
+
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+      sm.setBpm(120);
+
+      // Path length L = 85 (NOT a multiple of dotSpacing 40)
+      const path: SplinePath = {
+        segments: [{ p0: { x: 0, y: 100 }, p1: { x: 30, y: 100 }, p2: { x: 60, y: 100 }, p3: { x: 85, y: 100 } }],
+        isClosed: false,
+      };
+
+      const stroke = sm.addStroke(path, 'dotted', 'indigo', 120);
+      sm.setStrokeTraversal(stroke.id, 'bounce');
+
+      const dt = 0.005; // 5ms high-resolution simulation steps
+      // Run simulation for 2 seconds (spanning multiple forward & backward bounces)
+      for (let i = 0; i < 400; i++) {
+        simTime += dt;
+        sm.update(dt, 1200, 800, quantizer);
+      }
+
+      expect(triggerTimes.length).toBeGreaterThan(4);
+
+      // In 120 BPM, base speed = (120/60) * 80 * (1200/1200) = 160 px/s
+      // Expected time between 40px triggers = 40 / 160 = 0.25s (250ms = exact 8th note)
+      const expectedInterval = 40 / 160;
+
+      for (let i = 1; i < triggerTimes.length; i++) {
+        const interval = triggerTimes[i] - triggerTimes[i - 1];
+        // Must be within 1 simulation tick (5ms) of exact 0.25s
+        expect(interval).toBeCloseTo(expectedInterval, 2);
+        // Verify no double-hits (must not trigger < 150ms)
+        expect(interval).toBeGreaterThan(0.20);
+        // Verify no long gaps (must not skip > 300ms)
+        expect(interval).toBeLessThan(0.30);
+      }
+    });
+
+    it('maintains perfectly steady tempo intervals on restart traversal without wrap double-hits', () => {
+      const triggerTimes: number[] = [];
+      let simTime = 0;
+      vi.spyOn(PulseVoice, 'trigger').mockImplementation(() => {
+        triggerTimes.push(simTime);
+      });
+
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+      sm.setBpm(120);
+
+      // Path length L = 85 (wrap point occurs at 85)
+      const path: SplinePath = {
+        segments: [{ p0: { x: 0, y: 100 }, p1: { x: 30, y: 100 }, p2: { x: 60, y: 100 }, p3: { x: 85, y: 100 } }],
+        isClosed: false,
+      };
+
+      const stroke = sm.addStroke(path, 'dotted', 'indigo', 120);
+      sm.setStrokeTraversal(stroke.id, 'restart');
+
+      const dt = 0.005;
+      for (let i = 0; i < 400; i++) {
+        simTime += dt;
+        sm.update(dt, 1200, 800, quantizer);
+      }
+
+      expect(triggerTimes.length).toBeGreaterThan(4);
+
+      const expectedInterval = 40 / 160; // 0.25s
+      for (let i = 1; i < triggerTimes.length; i++) {
+        const interval = triggerTimes[i] - triggerTimes[i - 1];
+        expect(interval).toBeCloseTo(expectedInterval, 2);
+        expect(interval).toBeGreaterThan(0.20);
+        expect(interval).toBeLessThan(0.30);
+      }
+    });
+
+    it('maintains steady tempo in timer mode across bounce boundaries', () => {
+      const triggerTimes: number[] = [];
+      let simTime = 0;
+      vi.spyOn(PulseVoice, 'trigger').mockImplementation(() => {
+        triggerTimes.push(simTime);
+      });
+
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+
+      const path: SplinePath = {
+        segments: [{ p0: { x: 0, y: 100 }, p1: { x: 30, y: 100 }, p2: { x: 60, y: 100 }, p3: { x: 100, y: 100 } }],
+        isClosed: false,
+      };
+
+      // 100px line in 10s duration -> speed = 10 px/s
+      // dotSpacing = 40px -> interval = 40 / 10 = 4.0s
+      sm.addStroke(path, 'dotted', 'indigo', 120, quantizer, 800, 1.0, 'freeform', 'bounce', 10, 1.0, 'timer', 0.4, 0, 'timer');
+
+      const dt = 0.05; // 50ms ticks
+      for (let i = 0; i < 300; i++) {
+        simTime += dt;
+        sm.update(dt, 1200, 800, quantizer);
+      }
+
+      expect(triggerTimes.length).toBeGreaterThanOrEqual(3);
+      for (let i = 1; i < triggerTimes.length; i++) {
+        const interval = triggerTimes[i] - triggerTimes[i - 1];
+        expect(interval).toBeCloseTo(4.0, 1);
+      }
+    });
+  });
+
+  describe('redrawStroke method', () => {
+    it('replaces path and LUT while preserving instrument, sound effects, timing, and voicing', () => {
+      const sm = new StrokeManager();
+      const initialPath: SplinePath = {
+        segments: [{ p0: { x: 10, y: 100 }, p1: { x: 30, y: 100 }, p2: { x: 60, y: 100 }, p3: { x: 100, y: 100 } }],
+        isClosed: false,
+      };
+
+      const stroke = sm.addStroke(
+        initialPath,
+        'striped',
+        'rose',
+        140,
+        undefined,
+        undefined,
+        0.75, // volume
+        '4bars', // loopQuantize
+        'bounce', // traversal
+        18, // duration
+        1.5, // speedMultiplier
+        'speed', // speedMode
+        0.65, // reverb
+        0.35, // fluctuation
+        'speed', // timingMode
+        'fifth', // harmonizer
+        true, // recordUndo
+        false, // isPoint
+        0.25, // distortion
+        0.8, // filterCutoff
+        0.4 // lofi
+      );
+
+      const oldPath = stroke.path;
+      const oldLength = stroke.lut.totalLength;
+
+      const newPath: SplinePath = {
+        segments: [{ p0: { x: 200, y: 300 }, p1: { x: 250, y: 350 }, p2: { x: 300, y: 400 }, p3: { x: 400, y: 500 } }],
+        isClosed: false,
+      };
+
+      const ok = sm.redrawStroke(stroke.id, newPath);
+      expect(ok).toBe(true);
+
+      // Path and LUT should be updated
+      expect(stroke.path).toBe(newPath);
+      expect(stroke.lut.totalLength).not.toBe(oldLength);
+      expect(stroke.path.segments[0].p0.x).toBe(200);
+
+      // All musical, sound and engine parameters MUST be preserved
+      expect(stroke.instrumentId).toBe('rose');
+      expect(stroke.style).toBe('striped');
+      expect(stroke.volume).toBe(0.75);
+      expect(stroke.reverb).toBe(0.65);
+      expect(stroke.distortion).toBe(0.25);
+      expect(stroke.filterCutoff).toBe(0.8);
+      expect(stroke.lofi).toBe(0.4);
+      expect(stroke.harmonizer).toBe('fifth');
+      expect(stroke.traversal).toBe('bounce');
+      expect(stroke.timingMode).toBe('speed');
+      expect(stroke.speedMultiplier).toBe(1.5);
+      expect(stroke.duration).toBe(18);
+
+      // Undo reverts the redraw to the old path
+      sm.undo();
+      expect(stroke.path).toBe(oldPath);
+      expect(stroke.lut.totalLength).toBeCloseTo(oldLength, 1);
+      expect(stroke.path.segments[0].p0.x).toBe(10);
+
+      // Redo restores the new path
+      sm.redo();
+      expect(stroke.path).toBe(newPath);
+      expect(stroke.path.segments[0].p0.x).toBe(200);
     });
   });
 });
