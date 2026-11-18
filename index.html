@@ -250,6 +250,38 @@
             </div>
           </div>
 
+          <!-- Assisted Drawing Toggle & Line Count (2-5) -->
+          <div class="control-group assist-control-group draw-only-control">
+            <label class="top-row-label">Assist</label>
+            <div class="assist-control-row">
+              <button
+                type="button"
+                id="assistToggleBtn"
+                class="toggle-btn assist-toggle-btn has-tooltip"
+                aria-pressed="false"
+                data-tooltip="Assisted Drawing (A): Automatically adds harmonizing companion lines in key whenever you draw a line."
+              >
+                Off
+              </button>
+              <div class="segmented-switch assist-count-switch" id="assistCountControl" style="display: none;" role="group" aria-label="Assisted Line Count">
+                <button type="button" class="seg-btn has-tooltip" data-assist-count="2" data-tooltip="2 Lines: Places your line + 1 harmonic companion (Diatonic 5th).">2</button>
+                <button type="button" class="seg-btn active has-tooltip" data-assist-count="3" data-tooltip="3 Lines: Places your line + 2 harmonic companions (5th &amp; Octave).">3</button>
+                <button type="button" class="seg-btn has-tooltip" data-assist-count="4" data-tooltip="4 Lines: Places your line + 3 companions (5th, Octave &amp; Contrary 3rd).">4</button>
+                <button type="button" class="seg-btn has-tooltip" data-assist-count="5" data-tooltip="5 Lines: Full 5-line harmonic ensemble.">5</button>
+              </div>
+              <button
+                type="button"
+                id="assistInkModeBtn"
+                class="toggle-btn assist-ink-btn has-tooltip"
+                style="display: none;"
+                data-assist-ink="same"
+                data-tooltip="Assisted Instrument Mode: Toggle between Same Ink (single instrument section) and Mixed Inks (complementary multi-instrument ensemble)."
+              >
+                Same Ink
+              </button>
+            </div>
+          </div>
+
           <!-- Master Transport Controls -->
           <div class="control-group top-actions-group">
             <label class="top-row-label">Actions</label>
@@ -411,6 +443,37 @@
                   <button type="button" id="snapPitchBtn" class="toggle-btn has-tooltip" data-tooltip="Magnetic Pitch Snapping: Magnetically locks your hand to scale note lines, eliminating hand-jitter wobble." style="width: 100%;">
                     Snap Off
                   </button>
+                </div>
+              </div>
+
+              <div class="drawer-two-col draw-only-control">
+                <div class="control-group">
+                  <label>Assisted Draw</label>
+                  <button type="button" id="drawerAssistToggleBtn" class="toggle-btn has-tooltip" data-tooltip="Assisted Drawing (A): Automatically places 2 to 5 harmonizing lines when you draw." style="width: 100%;">
+                    Assist Off
+                  </button>
+                </div>
+
+                <div class="control-group has-tooltip" data-tooltip="Assisted Line Count: Total number of lines (2 to 5) placed per drawing gesture when Assisted Drawing is active.">
+                  <label for="drawerAssistCountSelect">Assist Lines</label>
+                  <div class="select-wrapper">
+                    <select id="drawerAssistCountSelect" class="minimal-select">
+                      <option value="2">2 Lines</option>
+                      <option value="3" selected>3 Lines</option>
+                      <option value="4">4 Lines</option>
+                      <option value="5">5 Lines</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div class="control-group draw-only-control has-tooltip" data-tooltip="Assisted Companion Instruments: Choose whether companion lines use the same instrument color or automatically pair complementary instruments.">
+                <label for="drawerAssistInkSelect">Assist Instruments</label>
+                <div class="select-wrapper">
+                  <select id="drawerAssistInkSelect" class="minimal-select">
+                    <option value="same" selected>Same Instrument</option>
+                    <option value="mixed">Mixed Instruments (Ensemble)</option>
+                  </select>
                 </div>
               </div>
 
@@ -1226,8 +1289,8 @@
                 <div class="shortcut-row"><kbd>1</kbd> &ndash; <kbd>7</kbd> <span>Select Sound Ink (or revoice line)</span></div>
                 <div class="shortcut-row"><kbd>T</kbd> <span>Toggle Traversal: Loop &circlearrowright; / Bounce &rlarr;</span></div>
                 <div class="shortcut-row"><kbd>M</kbd> / <kbd>S</kbd> <span>Mute / Solo selected line</span></div>
-                <div class="shortcut-row"><kbd>&larr;</kbd> / <kbd>&rarr;</kbd> <span>Speed &plusmn;0.1x / Duration &plusmn;5s</span></div>
-                <div class="shortcut-row"><kbd>&uarr;</kbd> / <kbd>&darr;</kbd> or <kbd>[</kbd> <kbd>]</kbd> <span>Line Volume &plusmn;5%</span></div>
+                <div class="shortcut-row"><kbd>&larr;</kbd> / <kbd>&rarr;</kbd> <span>Speed &plusmn;0.1x / Duration &plusmn;5s (all selected lines)</span></div>
+                <div class="shortcut-row"><kbd>&uarr;</kbd> / <kbd>&darr;</kbd> or <kbd>[</kbd> <kbd>]</kbd> <span>Volume &plusmn;5% (all selected lines)</span></div>
                 <div class="shortcut-row"><kbd>Scroll over Slider</kbd> <span>Adjust slider or numeric value</span></div>
                 <div class="shortcut-row"><kbd>Backspace</kbd> / <kbd>Del</kbd> <span>Delete selected line</span></div>
               </div>
@@ -1245,6 +1308,7 @@
 
               <div class="shortcut-group">
                 <h3>Pitch Field &amp; Drawing</h3>
+                <div class="shortcut-row"><kbd>A</kbd> <span>Toggle Assisted Drawing (2&ndash;5 lines)</span></div>
                 <div class="shortcut-row"><kbd>Scroll Wheel</kbd> <span>Scroll frequency field vertically</span></div>
                 <div class="shortcut-row"><kbd>PageUp</kbd> / <kbd>PageDn</kbd> <span>Shift octave register up / down</span></div>
                 <div class="shortcut-row"><kbd>Home</kbd> <span>Reset pitch register to middle octave</span></div>

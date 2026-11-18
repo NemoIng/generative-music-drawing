@@ -997,6 +997,41 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     const shortcutsModal = doc.getElementById('shortcutsModal');
     expect(shortcutsModal).not.toBeNull();
     expect(shortcutsModal?.textContent).toContain('Re-draw');
+    expect(shortcutsModal?.textContent).toContain('Assisted Drawing');
+  });
+
+  it('contains Assisted Drawing toggle and 2-5 line count controls in top bar and drawer with zero emojis', () => {
+    const assistToggleBtn = doc.getElementById('assistToggleBtn') as HTMLButtonElement;
+    expect(assistToggleBtn).not.toBeNull();
+    expect(assistToggleBtn.textContent?.trim()).toBe('Off');
+    expect(assistToggleBtn.textContent).not.toMatch(/[\u{1F300}-\u{1F9FF}]/u);
+
+    const assistCountBtns = Array.from(doc.querySelectorAll('#assistCountControl button[data-assist-count]'));
+    expect(assistCountBtns).toHaveLength(4);
+    expect(assistCountBtns.map((b) => b.getAttribute('data-assist-count'))).toEqual(['2', '3', '4', '5']);
+    assistCountBtns.forEach((btn) => {
+      expect(btn.textContent).not.toMatch(/[\u{1F300}-\u{1F9FF}]/u);
+    });
+
+    const drawerAssistBtn = doc.getElementById('drawerAssistToggleBtn') as HTMLButtonElement;
+    expect(drawerAssistBtn).not.toBeNull();
+    expect(drawerAssistBtn.textContent?.trim()).toBe('Assist Off');
+    expect(drawerAssistBtn.textContent).not.toMatch(/[\u{1F300}-\u{1F9FF}]/u);
+
+    const drawerAssistSelect = doc.getElementById('drawerAssistCountSelect') as HTMLSelectElement;
+    expect(drawerAssistSelect).not.toBeNull();
+    const values = Array.from(drawerAssistSelect.options).map((o) => o.value);
+    expect(values).toEqual(['2', '3', '4', '5']);
+
+    const assistInkModeBtn = doc.getElementById('assistInkModeBtn') as HTMLButtonElement;
+    expect(assistInkModeBtn).not.toBeNull();
+    expect(assistInkModeBtn.textContent?.trim()).toBe('Same Ink');
+    expect(assistInkModeBtn.textContent).not.toMatch(/[\u{1F300}-\u{1F9FF}]/u);
+
+    const drawerAssistInkSelect = doc.getElementById('drawerAssistInkSelect') as HTMLSelectElement;
+    expect(drawerAssistInkSelect).not.toBeNull();
+    const inkOptions = Array.from(drawerAssistInkSelect.options).map((o) => o.value);
+    expect(inkOptions).toEqual(['same', 'mixed']);
   });
 });
 

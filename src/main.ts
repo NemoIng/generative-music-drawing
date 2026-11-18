@@ -12,6 +12,7 @@ import { SplinePath, Point2D } from './math/types';
 import { LiveRecorder, simulateAndExportMp3, downloadBlob } from './audio/mp3Export';
 import { ViewModeManager, ViewMode } from './ui/viewModes';
 import { SceneManager, SceneData, SceneSequenceTickResult } from './engine/sceneManager';
+import { generateAssistedStrokes, AssistedLineCount, AssistedInstrumentMode } from './engine/assistedDrawing';
 
 // DOM Elements
 const canvasEl = document.getElementById('musicCanvas') as HTMLCanvasElement;
@@ -60,6 +61,13 @@ let currentLoadedPresetName: string | null = 'Deep Cosmic Drone';
 const shapeButtons = document.querySelectorAll<HTMLButtonElement>('#shapeControl .seg-btn');
 const autoSmoothBtn = document.getElementById('autoSmoothBtn') as HTMLButtonElement;
 const snapPitchBtn = document.getElementById('snapPitchBtn') as HTMLButtonElement;
+const assistToggleBtn = document.getElementById('assistToggleBtn') as HTMLButtonElement | null;
+const assistCountControl = document.getElementById('assistCountControl') as HTMLDivElement | null;
+const assistCountButtons = document.querySelectorAll<HTMLButtonElement>('#assistCountControl .seg-btn');
+const assistInkModeBtn = document.getElementById('assistInkModeBtn') as HTMLButtonElement | null;
+const drawerAssistToggleBtn = document.getElementById('drawerAssistToggleBtn') as HTMLButtonElement | null;
+const drawerAssistCountSelect = document.getElementById('drawerAssistCountSelect') as HTMLSelectElement | null;
+const drawerAssistInkSelect = document.getElementById('drawerAssistInkSelect') as HTMLSelectElement | null;
 const swatchButtons = document.querySelectorAll<HTMLButtonElement>('#instrumentPalette .swatch-btn');
 const xAxisSelect = document.getElementById('xAxisSelect') as HTMLSelectElement;
 const trackTraversalButtons = document.querySelectorAll<HTMLButtonElement>('#trackTraversalControl .seg-btn');
@@ -428,6 +436,9 @@ let prevCanvasHeight = 0;
 let currentStyle: StrokeStyle = 'solid';
 let currentInstrumentId: string = DEFAULT_INSTRUMENT.id;
 let activeDrawingPoints: Point2D[] = [];
+let assistedDrawingEnabled = false;
+let assistedLineCount: AssistedLineCount = 3;
+let assistedInstrumentMode: AssistedInstrumentMode = 'same';
 
 // Input Handling with Draw / Edit modes, straight bars, and pitch snapping
 const inputHandler = new InputHandler(canvasEl, {
@@ -465,6 +476,81 @@ const inputHandler = new InputHandler(canvasEl, {
   },
   onStrokeComplete: (path: SplinePath, isPoint?: boolean) => {
     dismissWelcomePrompt();
+
+    if (assistedDrawingEnabled) {
+      const gainScale = Number((1 / Math.sqrt(assistedLineCount)).toFixed(2));
+      const newStroke = strokeManager.addStroke(
+        path,
+        currentStyle,
+        currentInstrumentId,
+        140,
+        quantizer,
+        renderer.height,
+        gainScale,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        false,
+        isPoint ?? false
+      );
+
+      const companionSpecs = generateAssistedStrokes(
+        newStroke,
+        assistedLineCount,
+        quantizer,
+        renderer.height,
+        renderer.width,
+        { instrumentMode: assistedInstrumentMode }
+      );
+
+      const companionStrokes: DrawnStroke[] = companionSpecs.map((spec) => {
+        const compStroke = strokeManager.addStroke(
+          spec.path,
+          spec.style,
+          spec.instrumentId,
+          140,
+          quantizer,
+          renderer.height,
+          Number((gainScale * spec.volumeMultiplier).toFixed(2)),
+          undefined,
+          spec.traversal,
+          undefined,
+          undefined,
+          undefined,
+          Math.min(1, strokeManager.defaultStrokeReverb + (spec.reverbDelta ?? 0)),
+          undefined,
+          undefined,
+          undefined,
+          false,
+          spec.isPoint ?? false
+        );
+        strokeManager.setStrokePlayheadPhase(
+          compStroke.id,
+          spec.initialPhaseRatio,
+          spec.initialDirection,
+          quantizer,
+          renderer.height
+        );
+        return compStroke;
+      });
+
+      const allPlaced = [newStroke, ...companionStrokes];
+      strokeManager.recordBatchAddUndo(allPlaced);
+      strokeManager.activateAudioVoices();
+      strokeManager.selectStrokes(allPlaced.map((s) => s.id));
+      syncCompositionState();
+      if (inputHandler.appMode === 'draw' && statMode) {
+        statMode.textContent = `Assisted Draw: Placed ${allPlaced.length} Lines (←/→ Tempo)`;
+        statMode.style.color = '#2563eb';
+      }
+      return;
+    }
 
     const newStroke = strokeManager.addStroke(
       path,
@@ -706,6 +792,98 @@ snapPitchBtn.addEventListener('click', () => {
     statPitchSnap.textContent = willSnap ? 'Snap ON' : 'Snap Off';
     statPitchSnap.style.color = willSnap ? '#2563eb' : 'inherit';
   }
+});
+
+// Assisted Drawing Toggle, Line Count (2-5), & Instrument Mode (Same vs Mixed)
+function setAssistedDrawing(
+  enabled: boolean,
+  count?: AssistedLineCount,
+  inkMode?: AssistedInstrumentMode
+): void {
+  assistedDrawingEnabled = enabled;
+  if (count !== undefined) {
+    assistedLineCount = Math.max(2, Math.min(5, Math.round(count))) as AssistedLineCount;
+  }
+  if (inkMode !== undefined) {
+    assistedInstrumentMode = inkMode === 'mixed' ? 'mixed' : 'same';
+  }
+
+  if (assistToggleBtn) {
+    assistToggleBtn.classList.toggle('active', assistedDrawingEnabled);
+    assistToggleBtn.textContent = assistedDrawingEnabled ? 'On' : 'Off';
+    assistToggleBtn.setAttribute('aria-pressed', assistedDrawingEnabled ? 'true' : 'false');
+  }
+  if (assistCountControl) {
+    assistCountControl.style.display = assistedDrawingEnabled ? 'inline-flex' : 'none';
+  }
+  assistCountButtons.forEach((btn) => {
+    const val = parseInt(btn.getAttribute('data-assist-count') || '', 10);
+    btn.classList.toggle('active', val === assistedLineCount);
+  });
+
+  if (assistInkModeBtn) {
+    assistInkModeBtn.style.display = assistedDrawingEnabled ? 'inline-flex' : 'none';
+    const isMixed = assistedInstrumentMode === 'mixed';
+    assistInkModeBtn.classList.toggle('active', isMixed);
+    assistInkModeBtn.textContent = isMixed ? 'Mixed Inks' : 'Same Ink';
+    assistInkModeBtn.setAttribute('data-assist-ink', assistedInstrumentMode);
+  }
+
+  if (drawerAssistToggleBtn) {
+    drawerAssistToggleBtn.classList.toggle('active', assistedDrawingEnabled);
+    drawerAssistToggleBtn.textContent = assistedDrawingEnabled ? 'Assist On' : 'Assist Off';
+  }
+  if (drawerAssistCountSelect) {
+    drawerAssistCountSelect.value = String(assistedLineCount);
+  }
+  if (drawerAssistInkSelect) {
+    drawerAssistInkSelect.value = assistedInstrumentMode;
+  }
+
+  if (statMode && inputHandler.appMode === 'draw') {
+    if (assistedDrawingEnabled) {
+      const inkLabel = assistedInstrumentMode === 'mixed' ? 'Mixed Inks' : 'Same Ink';
+      statMode.textContent = `Assisted Draw ON (${assistedLineCount} Lines • ${inkLabel})`;
+      statMode.style.color = '#2563eb';
+    } else {
+      statMode.textContent = strokeManager.selectedStrokeId ? 'Line Selected (Edit)' : 'Draw / Click to Select';
+      statMode.style.color = strokeManager.selectedStrokeId ? '#2563eb' : 'inherit';
+    }
+  }
+}
+
+assistToggleBtn?.addEventListener('click', () => {
+  setAssistedDrawing(!assistedDrawingEnabled);
+});
+
+drawerAssistToggleBtn?.addEventListener('click', () => {
+  setAssistedDrawing(!assistedDrawingEnabled);
+});
+
+assistCountButtons.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const val = parseInt(btn.getAttribute('data-assist-count') || '', 10);
+    if (val >= 2 && val <= 5) {
+      setAssistedDrawing(true, val as AssistedLineCount);
+    }
+  });
+});
+
+assistInkModeBtn?.addEventListener('click', () => {
+  const nextMode: AssistedInstrumentMode = assistedInstrumentMode === 'mixed' ? 'same' : 'mixed';
+  setAssistedDrawing(true, undefined, nextMode);
+});
+
+drawerAssistCountSelect?.addEventListener('change', () => {
+  const val = parseInt(drawerAssistCountSelect.value, 10);
+  if (val >= 2 && val <= 5) {
+    setAssistedDrawing(assistedDrawingEnabled, val as AssistedLineCount);
+  }
+});
+
+drawerAssistInkSelect?.addEventListener('change', () => {
+  const mode = drawerAssistInkSelect.value === 'mixed' ? 'mixed' : 'same';
+  setAssistedDrawing(assistedDrawingEnabled, undefined, mode);
 });
 
 // Interactive Frequency Range Navigator (8-octave vertical scroll)
@@ -3523,7 +3701,7 @@ function updateTrackActionsVisibility(): void {
   } else {
     const selectedCount = strokeManager.selectedStrokeIds.length;
     if (selectedCount > 1) {
-      if (statMode) statMode.textContent = `${selectedCount} Lines Selected (Drag to Move)`;
+      if (statMode) statMode.textContent = `${selectedCount} Lines Selected (Drag Move • ←/→ Tempo)`;
     } else {
       if (statMode) statMode.textContent = inputHandler.appMode === 'live' ? 'Live Play' : 'Draw / Click to Select';
     }
@@ -4343,6 +4521,13 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     return;
   }
 
+  // Assisted Drawing Toggle: A key (without Cmd/Ctrl/Alt)
+  if (e.key.toLowerCase() === 'a' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    e.preventDefault();
+    setAssistedDrawing(!assistedDrawingEnabled);
+    return;
+  }
+
   // 1. Play / Pause toggle shortcuts: Spacebar or P
   if (e.code === 'Space' || e.key.toLowerCase() === 'p') {
     e.preventDefault();
@@ -4549,46 +4734,57 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
     selectInstrument(instIds[keyIdx]);
   }
 
-  // 10. Volume adjustment for selected stroke: [ or Down = -5%, ] or Up = +5%
+  // 10. Volume adjustment for selected stroke(s): [ or Down = -5%, ] or Up = +5% (hold Shift for +/-15%)
   if (e.key === '[' || e.key === ']' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-    const targetStrokeId = strokeManager.selectedStrokeId || (strokeManager.activeStrokes.length === 1 ? strokeManager.activeStrokes[0].id : null);
-    if (targetStrokeId) {
-      const stroke = strokeManager.activeStrokes.find((s) => s.id === targetStrokeId);
-      if (stroke) {
-        e.preventDefault();
-        const currentVol = stroke.volume ?? 1.0;
-        const delta = (e.key === ']' || e.key === 'ArrowUp') ? 0.05 : -0.05;
-        const nextVol = Math.max(0, Math.min(1, Math.round((currentVol + delta) * 100) / 100));
-        strokeManager.setStrokeVolume(stroke.id, nextVol, true);
+    const targetIds = strokeManager.selectedStrokeIds.length > 0
+      ? strokeManager.selectedStrokeIds
+      : (strokeManager.activeStrokes.length === 1 ? [strokeManager.activeStrokes[0].id] : []);
+    if (targetIds.length > 0) {
+      e.preventDefault();
+      const step = e.shiftKey ? 0.15 : 0.05;
+      const delta = (e.key === ']' || e.key === 'ArrowUp') ? step : -step;
+      const updated = strokeManager.adjustStrokesVolume(targetIds, delta, true);
+      if (updated.length > 0) {
         setCompositionDirty(true);
         updateTrackActionsVisibility();
         renderLayerMixer();
+        renderStudioMixer();
+        if (statMode) {
+          const avgPct = Math.round((updated.reduce((acc, s) => acc + (s.volume ?? 1), 0) / updated.length) * 100);
+          statMode.textContent = updated.length > 1
+            ? `Volume (${updated.length} Lines): ~${avgPct}%`
+            : `Line Volume: ${avgPct}%`;
+          statMode.style.color = '#2563eb';
+        }
       }
     }
   }
 
-  // 10b. Speed / Timing adjustment for selected stroke: Left = -0.1x / -5s, Right = +0.1x / +5s
+  // 10b. Speed / Timing adjustment for selected stroke(s): Left = -0.1x / -5s, Right = +0.1x / +5s (hold Shift for 5x step)
   if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-    const targetStrokeId = strokeManager.selectedStrokeId || (strokeManager.activeStrokes.length === 1 ? strokeManager.activeStrokes[0].id : null);
-    if (targetStrokeId) {
-      const stroke = strokeManager.activeStrokes.find((s) => s.id === targetStrokeId);
-      if (stroke) {
-        e.preventDefault();
-        const isTimer = stroke.timingMode === 'timer' || stroke.speedMode === 'timer';
-        if (isTimer) {
-          const currentDur = Math.round(stroke.duration ?? 30);
-          const delta = e.key === 'ArrowRight' ? 5 : -5;
-          const nextDur = Math.max(1, Math.min(300, currentDur + delta));
-          strokeManager.setStrokeDuration(stroke.id, nextDur, true);
-        } else {
-          const currentSpeed = stroke.speedMultiplier ?? 1.0;
-          const delta = e.key === 'ArrowRight' ? 0.1 : -0.1;
-          const nextSpeed = Math.max(0.1, Math.min(5.0, Math.round((currentSpeed + delta) * 10) / 10));
-          strokeManager.setStrokeSpeed(stroke.id, nextSpeed, true);
-        }
+    const targetIds = strokeManager.selectedStrokeIds.length > 0
+      ? strokeManager.selectedStrokeIds
+      : (strokeManager.activeStrokes.length === 1 ? [strokeManager.activeStrokes[0].id] : []);
+    if (targetIds.length > 0) {
+      e.preventDefault();
+      const mult = e.shiftKey ? 5 : 1;
+      const speedDelta = (e.key === 'ArrowRight' ? 0.1 : -0.1) * mult;
+      const durDelta = (e.key === 'ArrowRight' ? 5 : -5) * mult;
+      const updated = strokeManager.adjustStrokesTiming(targetIds, speedDelta, durDelta, true);
+      if (updated.length > 0) {
         setCompositionDirty(true);
         updateTrackActionsVisibility();
         renderLayerMixer();
+        renderStudioMixer();
+        if (statMode) {
+          const first = updated[0];
+          const isTimer = first.timingMode === 'timer' || first.speedMode === 'timer';
+          const valLabel = isTimer ? `${Math.round(first.duration ?? 30)}s` : `${(first.speedMultiplier ?? 1.0).toFixed(1)}x`;
+          statMode.textContent = updated.length > 1
+            ? `Tempo (${updated.length} Lines): ${valLabel}`
+            : `Line Tempo: ${valLabel}`;
+          statMode.style.color = '#2563eb';
+        }
       }
     }
   }

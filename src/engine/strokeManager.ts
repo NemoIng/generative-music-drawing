@@ -16,6 +16,7 @@ import { calculateBreathing, BreathingMode } from '../audio/breathing';
 
 type UndoAction =
   | { type: 'add'; stroke: DrawnStroke }
+  | { type: 'batchAdd'; strokes: DrawnStroke[] }
   | { type: 'remove'; stroke: DrawnStroke; index: number }
   | { type: 'move'; strokeId: string; dx: number; dy: number }
   | { type: 'multiMove'; moves: { strokeId: string; dx: number; dy: number }[] }
@@ -72,6 +73,24 @@ type UndoAction =
       oldLut: ArcLengthLUT;
       newPath: SplinePath;
       newLut: ArcLengthLUT;
+    }
+  | {
+      type: 'batchSpeed';
+      records: {
+        strokeId: string;
+        oldSpeed: number;
+        newSpeed: number;
+        oldDuration: number;
+        newDuration: number;
+      }[];
+    }
+  | {
+      type: 'batchVolume';
+      records: {
+        strokeId: string;
+        oldVolume: number;
+        newVolume: number;
+      }[];
     };
 
 function distToSegment(p: Point2D, a: Point2D, b: Point2D): number {
@@ -429,6 +448,14 @@ export class StrokeManager {
     for (const stroke of this.strokes) {
       stroke.selected = this.selectedIds.has(stroke.id);
     }
+  }
+
+  /**
+   * Selects multiple active stroke IDs simultaneously while validating existence.
+   */
+  public selectStrokes(ids: string[]): void {
+    const validIds = ids.filter((id) => this.strokes.some((s) => s.id === id));
+    this.selectMultipleStrokes(validIds);
   }
 
   public setHoveredStroke(id: string | null): void {
@@ -1070,6 +1097,119 @@ export class StrokeManager {
   }
 
   /**
+   * Positions a stroke's playhead at a normalized phase ratio [0, 1) and direction along its curve,
+   * updating initial curve evaluation and pitch so staggered lines do not start in lockstep.
+   */
+  public setStrokePlayheadPhase(
+    strokeId: string,
+    phaseRatio: number,
+    direction: 1 | -1 = 1,
+    quantizer?: ScaleQuantizer,
+    canvasHeight?: number
+  ): boolean {
+    const stroke = this.strokes.find((s) => s.id === strokeId);
+    if (!stroke) return false;
+    const clampedRatio = Math.max(0, Math.min(0.999, phaseRatio));
+    const L = stroke.lut.totalLength;
+    const dist = L > 1 ? clampedRatio * L : 0;
+
+    stroke.playhead.currentDistance = dist;
+    stroke.playhead.lastTriggerDistance = dist;
+    stroke.playhead.triggerDistanceAccum = (clampedRatio * 40) % 40;
+    stroke.playhead.direction = direction;
+    stroke.playhead.trail = [];
+
+    const evalResult = evaluateAtDistance(stroke.path, stroke.lut, dist, { useNewtonRaphson: true });
+    stroke.playhead.lastEval = evalResult;
+
+    if (quantizer && canvasHeight && canvasHeight > 0) {
+      const maxY = quantizer.isScrollEnabled ? quantizer.getWorldHeight(canvasHeight) : canvasHeight;
+      const clampedY = Math.max(0, Math.min(maxY, evalResult.point.y));
+      stroke.playhead.lastPitch = stroke.style === 'solid'
+        ? quantizer.quantizeContinuous(clampedY, canvasHeight)
+        : quantizer.quantizeDiscrete(clampedY, canvasHeight);
+    }
+    return true;
+  }
+
+  /**
+   * Adjusts speed multiplier (or timer duration) for multiple strokes simultaneously with atomic undo/redo.
+   */
+  public adjustStrokesTiming(
+    strokeIds: string[],
+    speedDelta: number,
+    durationDelta: number,
+    recordUndo = true
+  ): DrawnStroke[] {
+    const records: {
+      strokeId: string;
+      oldSpeed: number;
+      newSpeed: number;
+      oldDuration: number;
+      newDuration: number;
+    }[] = [];
+    const updated: DrawnStroke[] = [];
+
+    for (const id of strokeIds) {
+      const stroke = this.strokes.find((s) => s.id === id);
+      if (!stroke) continue;
+      const oldSpeed = stroke.speedMultiplier ?? 1.0;
+      const oldDuration = Math.round(stroke.duration ?? 30);
+      const isTimer = stroke.timingMode === 'timer' || stroke.speedMode === 'timer';
+
+      let newSpeed = oldSpeed;
+      let newDuration = oldDuration;
+      if (isTimer) {
+        newDuration = Math.max(1, Math.min(300, oldDuration + durationDelta));
+        if (newDuration === oldDuration) continue;
+        stroke.duration = newDuration;
+      } else {
+        newSpeed = Math.max(0.1, Math.min(5.0, Math.round((oldSpeed + speedDelta) * 10) / 10));
+        if (Math.abs(newSpeed - oldSpeed) < 0.001) continue;
+        stroke.speedMultiplier = newSpeed;
+      }
+      records.push({ strokeId: id, oldSpeed, newSpeed, oldDuration, newDuration });
+      updated.push(stroke);
+    }
+
+    if (recordUndo && records.length > 0) {
+      this.undoStack.push({ type: 'batchSpeed', records });
+      this.redoStack = [];
+    }
+    return updated;
+  }
+
+  /**
+   * Adjusts gain volume for multiple strokes simultaneously with atomic undo/redo.
+   */
+  public adjustStrokesVolume(
+    strokeIds: string[],
+    volumeDelta: number,
+    recordUndo = true
+  ): DrawnStroke[] {
+    const records: { strokeId: string; oldVolume: number; newVolume: number }[] = [];
+    const updated: DrawnStroke[] = [];
+
+    for (const id of strokeIds) {
+      const stroke = this.strokes.find((s) => s.id === id);
+      if (!stroke) continue;
+      const oldVolume = stroke.volume ?? 1.0;
+      const newVolume = Math.max(0, Math.min(1, Math.round((oldVolume + volumeDelta) * 100) / 100));
+      if (Math.abs(newVolume - oldVolume) < 0.001) continue;
+      stroke.volume = newVolume;
+      stroke.droneVoice?.setVolume(newVolume);
+      records.push({ strokeId: id, oldVolume, newVolume });
+      updated.push(stroke);
+    }
+
+    if (recordUndo && records.length > 0) {
+      this.undoStack.push({ type: 'batchVolume', records });
+      this.redoStack = [];
+    }
+    return updated;
+  }
+
+  /**
    * Scales all stroke coordinate points by scaleX and scaleY.
    * This is called on window/canvas resize to ensure that note pitches, panning,
    * drum triggers, and relative geometry remain 100% invariant across window sizes.
@@ -1213,6 +1353,15 @@ export class StrokeManager {
   }
 
   /**
+   * Records an atomic multi-stroke addition entry (used by Assisted Drawing) so a single Undo/Redo toggles all lines together.
+   */
+  public recordBatchAddUndo(strokes: DrawnStroke[]): void {
+    if (strokes.length === 0) return;
+    this.undoStack.push({ type: 'batchAdd', strokes: [...strokes] });
+    this.redoStack = [];
+  }
+
+  /**
    * Rescales melodic stroke Y coordinates proportionally when octave view zoom changes,
    * guaranteeing that musical pitch (frequency and scale degree) remains identical.
    * Onyx drum machine strokes remain locked to their fixed screen zones.
@@ -1325,6 +1474,19 @@ export class StrokeManager {
         if (!scaledPaths.has(action.newPath)) {
           scalePathSegments(action.newPath);
           action.newLut = buildArcLengthLUT(action.newPath);
+        }
+      } else if (action.type === 'batchAdd') {
+        for (const s of action.strokes) {
+          if (s.instrumentId !== 'onyx' && !scaledStrokes.has(s)) {
+            scaledStrokes.add(s);
+            scalePathSegments(s.path);
+            s.lut = buildArcLengthLUT(s.path);
+            if (s.waveParams) {
+              s.waveParams.baseP0.y = scaleY(s.waveParams.baseP0.y);
+              s.waveParams.baseP1.y = scaleY(s.waveParams.baseP1.y);
+              s.waveParams.amplitude *= scaleFactor;
+            }
+          }
         }
       }
     };
@@ -2050,6 +2212,22 @@ export class StrokeManager {
         if (this.selectedId === removed.id) this.selectedId = null;
         this.redoStack.push({ type: 'add', stroke: removed });
       }
+    } else if (action.type === 'batchAdd') {
+      const removedStrokes: DrawnStroke[] = [];
+      for (const s of action.strokes) {
+        const idx = this.strokes.findIndex((st) => st.id === s.id);
+        if (idx !== -1) {
+          const [removed] = this.strokes.splice(idx, 1);
+          removed.droneVoice?.stop();
+          removed.droneVoice = null;
+          if (this.selectedId === removed.id) this.selectedId = null;
+          this.selectedIds.delete(removed.id);
+          removedStrokes.push(removed);
+        }
+      }
+      if (removedStrokes.length > 0) {
+        this.redoStack.push({ type: 'batchAdd', strokes: removedStrokes });
+      }
     } else if (action.type === 'remove') {
       this.strokes.splice(action.index, 0, action.stroke);
       if (action.stroke.style === 'solid' && this.engine.isReady && action.stroke.playhead.lastPitch && this.isStrokeAudible(action.stroke)) {
@@ -2177,6 +2355,24 @@ export class StrokeManager {
         }
       }
       this.redoStack.push(action);
+    } else if (action.type === 'batchSpeed') {
+      for (const r of action.records) {
+        const stroke = this.strokes.find((s) => s.id === r.strokeId);
+        if (stroke) {
+          stroke.speedMultiplier = r.oldSpeed;
+          stroke.duration = r.oldDuration;
+        }
+      }
+      this.redoStack.push(action);
+    } else if (action.type === 'batchVolume') {
+      for (const r of action.records) {
+        const stroke = this.strokes.find((s) => s.id === r.strokeId);
+        if (stroke) {
+          stroke.volume = r.oldVolume;
+          stroke.droneVoice?.setVolume(r.oldVolume);
+        }
+      }
+      this.redoStack.push(action);
     }
 
     return true;
@@ -2192,6 +2388,16 @@ export class StrokeManager {
         const inst = getInstrument(action.stroke.instrumentId);
         action.stroke.droneVoice = new DroneVoice(this.engine);
         action.stroke.droneVoice.start(action.stroke.playhead.lastPitch.frequency, inst, action.stroke.volume ?? 1.0, action.stroke.reverb ?? this.defaultReverb);
+      }
+      this.undoStack.push(action);
+    } else if (action.type === 'batchAdd') {
+      for (const s of action.strokes) {
+        this.strokes.push(s);
+        if (s.style === 'solid' && this.engine.isReady && s.playhead.lastPitch && this.isStrokeAudible(s) && !this.isPaused) {
+          const inst = getInstrument(s.instrumentId);
+          s.droneVoice = new DroneVoice(this.engine);
+          s.droneVoice.start(s.playhead.lastPitch.frequency, inst, s.volume ?? 1.0, s.reverb ?? this.defaultReverb);
+        }
       }
       this.undoStack.push(action);
     } else if (action.type === 'remove') {
@@ -2319,6 +2525,24 @@ export class StrokeManager {
         stroke.waveParams = undefined;
         if (stroke.playhead.currentDistance >= stroke.lut.totalLength) {
           stroke.playhead.currentDistance = stroke.lut.totalLength > 1 ? stroke.playhead.currentDistance % stroke.lut.totalLength : 0;
+        }
+      }
+      this.undoStack.push(action);
+    } else if (action.type === 'batchSpeed') {
+      for (const r of action.records) {
+        const stroke = this.strokes.find((s) => s.id === r.strokeId);
+        if (stroke) {
+          stroke.speedMultiplier = r.newSpeed;
+          stroke.duration = r.newDuration;
+        }
+      }
+      this.undoStack.push(action);
+    } else if (action.type === 'batchVolume') {
+      for (const r of action.records) {
+        const stroke = this.strokes.find((s) => s.id === r.strokeId);
+        if (stroke) {
+          stroke.volume = r.newVolume;
+          stroke.droneVoice?.setVolume(r.newVolume);
         }
       }
       this.undoStack.push(action);

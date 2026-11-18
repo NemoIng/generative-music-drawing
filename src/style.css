@@ -652,6 +652,42 @@ body.dark-mode .app-floating-tooltip {
   box-shadow: var(--shadow-sm);
 }
 
+/* Assisted Drawing Top-Bar Toggle & 2-5 Count Switch */
+.assist-control-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.assist-toggle-btn {
+  height: var(--ctrl-h);
+  padding: 0 9px;
+  font-size: 0.74rem;
+}
+
+.assist-toggle-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.assist-count-switch .seg-btn {
+  padding: 0 7px;
+  font-size: 0.72rem;
+}
+
+.assist-ink-btn {
+  height: var(--ctrl-h);
+  padding: 0 8px;
+  font-size: 0.72rem;
+}
+
+.assist-ink-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
 /* Track Inspector Floating Bar */
 .track-inspector {
   display: flex;
