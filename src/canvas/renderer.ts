@@ -1,11 +1,39 @@
 import { DrawnStroke } from '../engine/types';
 import { ScaleGuideline, ScaleQuantizer } from '../audio/scaleQuantizer';
-import { Point2D } from '../math/types';
+import { Point2D, SplinePath } from '../math/types';
 import { getHitJitter } from '../engine/strokeManager';
 import { evaluateAtDistance } from '../math/arcLengthInverter';
+import { resolveDrumZone } from '../audio/drumMapping';
 import { LiveTrailPoint } from './inputHandler';
 
+function drawRoundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number
+): void {
+  const radius = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(x, y, w, h, radius);
+    return;
+  }
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + w - radius, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+  ctx.lineTo(x + w, y + h - radius);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+  ctx.lineTo(x + radius, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+}
+
 export interface SparkParticle {
+  active: boolean;
   x: number;
   y: number;
   vx: number;
@@ -21,8 +49,21 @@ export class CanvasRenderer {
   private ctx: CanvasRenderingContext2D;
   private canvas: HTMLCanvasElement;
   private dpr = 1;
-  private particles: SparkParticle[] = [];
-  private maxParticles = 140;
+  private readonly maxParticles = 140;
+  private readonly particlePool: SparkParticle[] = Array.from({ length: 140 }, () => ({
+    active: false,
+    x: 0,
+    y: 0,
+    vx: 0,
+    vy: 0,
+    color: '#ffffff',
+    alpha: 0,
+    radius: 1,
+    life: 0,
+    maxLife: 1,
+  }));
+  private particleCursor = 0;
+  private visibleGuidelinesScratch: Array<{ g: ScaleGuideline; y: number }> = [];
 
   // Cached Logical Dimensions & Gradients
   private logicalWidth = 800;
@@ -32,11 +73,24 @@ export class CanvasRenderer {
   private cachedBgHeight = 0;
   private cachedBgDarkMode: boolean | null = null;
 
+  // Dual-Layer Offscreen Static-Layer Cache
+  private staticCanvas: HTMLCanvasElement | null = null;
+  private staticCtx: CanvasRenderingContext2D | null = null;
+  private staticCacheKey = '';
+  private _staticCacheHits = 0;
+  private _staticCacheMisses = 0;
+
   private smoothedMasterEnergy = 0;
+  private smoothedBands = { low: 0, mid: 0, high: 0 };
   private cachedVignetteGradient: CanvasGradient | null = null;
+  private cachedWarmVignetteGradient: CanvasGradient | null = null;
   private cachedVignetteWidth = 0;
   private cachedVignetteHeight = 0;
   private cachedVignetteDarkMode: boolean | null = null;
+  private dottedFluctuationCache = new WeakMap<
+    SplinePath,
+    { fluctuation: number; totalLength: number; dots: Array<{ dx: number; dy: number }> }
+  >();
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -44,6 +98,95 @@ export class CanvasRenderer {
     if (!context) throw new Error('Could not get 2D canvas context');
     this.ctx = context;
     this.resize();
+  }
+
+  public get staticCacheHits(): number {
+    return this._staticCacheHits;
+  }
+
+  public get staticCacheMisses(): number {
+    return this._staticCacheMisses;
+  }
+
+  public invalidateStaticCache(): void {
+    this.staticCacheKey = '';
+  }
+
+  private ensureStaticLayer(): boolean {
+    if (this.staticCanvas && this.staticCtx) return true;
+    try {
+      if (typeof document === 'undefined' || typeof document.createElement !== 'function') {
+        return false;
+      }
+      const offscreen = document.createElement('canvas');
+      if (!offscreen || typeof offscreen.getContext !== 'function') {
+        return false;
+      }
+      const offCtx = offscreen.getContext('2d');
+      if (!offCtx) {
+        return false;
+      }
+      this.staticCanvas = offscreen;
+      this.staticCtx = offCtx;
+      return true;
+    } catch {
+      this.staticCanvas = null;
+      this.staticCtx = null;
+      return false;
+    }
+  }
+
+  /**
+   * Renders static canvas layers (background, guidelines, static beats/strokes) into a
+   * cached offscreen canvas keyed by `cacheKey` and blits pixel-for-pixel onto the main canvas.
+   */
+  public renderStaticLayer(cacheKey: string, drawStatic: () => void): boolean {
+    if (
+      this.ensureStaticLayer() &&
+      this.staticCanvas &&
+      this.staticCtx &&
+      typeof this.ctx.drawImage === 'function' &&
+      this.logicalWidth > 0 &&
+      this.logicalHeight > 0
+    ) {
+      if (cacheKey !== '' && this.staticCacheKey === cacheKey) {
+        this._staticCacheHits++;
+      } else {
+        this._staticCacheMisses++;
+        const targetW = Math.max(1, this.canvas.width);
+        const targetH = Math.max(1, this.canvas.height);
+        if (this.staticCanvas.width !== targetW) {
+          this.staticCanvas.width = targetW;
+        }
+        if (this.staticCanvas.height !== targetH) {
+          this.staticCanvas.height = targetH;
+        }
+        if (typeof this.staticCtx.setTransform === 'function') {
+          this.staticCtx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+        }
+        if (typeof this.staticCtx.clearRect === 'function') {
+          this.staticCtx.clearRect(0, 0, this.logicalWidth + 2, this.logicalHeight + 2);
+        }
+
+        const mainCtx = this.ctx;
+        this.ctx = this.staticCtx;
+        try {
+          drawStatic();
+        } finally {
+          this.ctx = mainCtx;
+        }
+        this.staticCacheKey = cacheKey;
+      }
+
+      this.ctx.save();
+      this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      this.ctx.drawImage(this.staticCanvas, 0, 0);
+      this.ctx.restore();
+      return true;
+    }
+
+    drawStatic();
+    return false;
   }
 
   public resize(): void {
@@ -58,6 +201,8 @@ export class CanvasRenderer {
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.cachedBgGradient = null;
     this.cachedVignetteGradient = null;
+    this.cachedWarmVignetteGradient = null;
+    this.invalidateStaticCache();
   }
 
   public get width(): number {
@@ -75,6 +220,8 @@ export class CanvasRenderer {
       this.isDarkMode = dark;
       this.cachedBgGradient = null;
       this.cachedVignetteGradient = null;
+      this.cachedWarmVignetteGradient = null;
+      this.invalidateStaticCache();
     }
   }
 
@@ -123,14 +270,20 @@ export class CanvasRenderer {
 
     // Responsive blank background margins for scale names (left) and Hz (right)
     // 135px rightMargin ensures frequency labels sit to the left of the pitch navigator rail (width 54px + 12px margin + padding)
-    const leftMargin = Math.min(84, Math.max(56, w * 0.04));
+    const leftMargin = Math.min(88, Math.max(68, w * 0.06));
     const rightMargin = Math.min(150, Math.max(130, w * 0.09));
 
-    // Filter visible guidelines and calculate vertical distances to avoid text overlapping
-    const visible = guidelines
-      .map((g) => ({ g, y: typeof g.screenY === 'number' ? g.screenY : g.y }))
-      .filter(({ y }) => y >= -30 && y <= h + 30)
-      .sort((a, b) => a.y - b.y);
+    // Filter visible guidelines into pre-allocated scratch buffer to avoid per-frame allocations
+    const visible = this.visibleGuidelinesScratch;
+    visible.length = 0;
+    for (let i = 0; i < guidelines.length; i++) {
+      const g = guidelines[i];
+      const y = typeof g.screenY === 'number' ? g.screenY : g.y;
+      if (y >= -30 && y <= h + 30) {
+        visible.push({ g, y });
+      }
+    }
+    visible.sort((a, b) => a.y - b.y);
 
     for (let i = 0; i < visible.length; i++) {
       const { g, y } = visible[i];
@@ -146,7 +299,7 @@ export class CanvasRenderer {
       this.ctx.moveTo(leftMargin, lineY);
       this.ctx.lineTo(w - rightMargin, lineY);
 
-      const isFifth = g.scaleDegree % 7 === 4; // Dominant 5th in heptatonic modes
+      const isFifth = g.isFifth ?? ((((g.scaleDegree % 7) + 7) % 7) === 4); // Dominant 5th fallback
       const isChordTone = !!g.isChordTone && !g.isRoot;
 
       if (isTopBoundary || isBottomBoundary) {
@@ -209,7 +362,7 @@ export class CanvasRenderer {
         ? `${g.noteName} (5th)`
         : g.noteName;
       if (label) {
-        this.ctx.fillText(label, leftMargin - 14, textY);
+        this.ctx.fillText(label, leftMargin - 10, textY);
       }
 
       this.ctx.textAlign = 'left';
@@ -244,13 +397,17 @@ export class CanvasRenderer {
     const ctx = this.ctx;
     ctx.save();
 
-    const leftMargin = Math.min(84, Math.max(56, w * 0.08));
+    const leftMargin = Math.min(84, Math.max(56, w * 0.04));
     const rightMargin = Math.min(150, Math.max(130, w * 0.09));
 
     let zones: { y: number; label: string }[];
+    let kickScreenY = h - 14;
     if (quantizer) {
       const yFromFreq = (freq: number) => {
         const u = ScaleQuantizer.frequencyToNormalizedU(freq);
+        if (!quantizer.isScrollEnabled) {
+          return quantizer.normalizedUToCanvasY(u, h);
+        }
         const worldY = quantizer.normalizedUToWorldY(u, h);
         return quantizer.worldToScreenY(worldY, h);
       };
@@ -259,6 +416,7 @@ export class CanvasRenderer {
         { y: yFromFreq(650), label: 'Toms (650–2.2k Hz)' },
         { y: yFromFreq(260), label: 'Snare / Clap (260–650 Hz)' },
       ];
+      kickScreenY = yFromFreq(140);
     } else {
       zones = [
         { y: h * 0.25, label: 'Hi-Hats' },
@@ -286,12 +444,6 @@ export class CanvasRenderer {
     }
 
     // Bottom Kick label
-    let kickScreenY = h - 14;
-    if (quantizer) {
-      const uKick = ScaleQuantizer.frequencyToNormalizedU(140);
-      const worldY = quantizer.normalizedUToWorldY(uKick, h);
-      kickScreenY = quantizer.worldToScreenY(worldY, h);
-    }
     if (kickScreenY >= -20 && kickScreenY <= h + 20) {
       ctx.font = '700 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
       ctx.fillStyle = this.isDarkMode ? 'rgba(255, 255, 255, 0.85)' : 'rgba(24, 24, 27, 0.75)';
@@ -342,6 +494,127 @@ export class CanvasRenderer {
     ctx.arc(needleX, y, 2.5, 0, Math.PI * 2);
     ctx.fillStyle = '#2563eb';
     ctx.fill();
+
+    ctx.restore();
+  }
+
+  /**
+   * Draws subtle vertical beat guide lines across the playable canvas width plus a moving phase hairline.
+   */
+  public drawBeatGrid(measureProgress: number, enabled: boolean, beatsPerBar: number = 4): void {
+    if (!enabled) return;
+    const w = this.width;
+    const h = this.height;
+    const leftMargin = Math.min(84, Math.max(56, w * 0.04));
+    const rightMargin = Math.min(150, Math.max(130, w * 0.09));
+    const usableWidth = w - rightMargin - leftMargin;
+    if (usableWidth <= 0 || h <= 0) return;
+
+    const beats = Math.max(1, Math.round(beatsPerBar));
+    const clampedProgress = Math.max(0, Math.min(1, measureProgress));
+    const ctx = this.ctx;
+    ctx.save();
+
+    for (let b = 0; b < beats; b++) {
+      const bx = leftMargin + (b / beats) * usableWidth;
+      ctx.beginPath();
+      ctx.moveTo(bx, 0);
+      ctx.lineTo(bx, h);
+      if (b === 0) {
+        ctx.strokeStyle = this.isDarkMode ? 'rgba(255, 255, 255, 0.20)' : 'rgba(28, 25, 23, 0.16)';
+        ctx.lineWidth = 1.25;
+        ctx.setLineDash([6, 6]);
+      } else {
+        ctx.strokeStyle = this.isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(120, 113, 108, 0.08)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([2, 6]);
+      }
+      ctx.stroke();
+    }
+
+    const phaseX = leftMargin + clampedProgress * usableWidth;
+    ctx.beginPath();
+    ctx.moveTo(phaseX, 0);
+    ctx.lineTo(phaseX, h);
+    ctx.setLineDash([]);
+    ctx.strokeStyle = this.isDarkMode ? 'rgba(96, 165, 250, 0.28)' : 'rgba(37, 99, 235, 0.20)';
+    ctx.lineWidth = 1.25;
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  /**
+   * Renders a translucent marquee selection rectangle across dragged screen coordinates.
+   */
+  public drawMarqueeSelection(rect: { x1: number; y1: number; x2: number; y2: number } | null): void {
+    if (!rect) return;
+    const x = Math.min(rect.x1, rect.x2);
+    const y = Math.min(rect.y1, rect.y2);
+    const w = Math.abs(rect.x2 - rect.x1);
+    const h = Math.abs(rect.y2 - rect.y1);
+    if (w < 1 && h < 1) return;
+
+    const ctx = this.ctx;
+    ctx.save();
+    drawRoundRect(ctx, x, y, w, h, 4);
+    ctx.fillStyle = this.isDarkMode ? 'rgba(96, 165, 250, 0.14)' : 'rgba(37, 99, 235, 0.10)';
+    ctx.fill();
+    ctx.strokeStyle = this.isDarkMode ? 'rgba(147, 197, 253, 0.78)' : 'rgba(37, 99, 235, 0.68)';
+    ctx.lineWidth = 1.4;
+    ctx.setLineDash([5, 4]);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
+   * Renders a gentle breathing dashed curve silhouette and centered hint when the canvas is empty.
+   */
+  public drawEmptyCanvasGhostHint(nowMs: number, show: boolean): void {
+    if (!show) return;
+    const w = this.width;
+    const h = this.height;
+    if (w <= 0 || h <= 0) return;
+
+    const breathe = (Math.sin(nowMs * 0.002) + 1) * 0.5;
+    const cx = w * 0.5;
+    const cy = h * 0.5;
+    const spanX = Math.min(260, w * 0.36);
+    const spanY = Math.min(54, h * 0.1);
+
+    const ctx = this.ctx;
+    ctx.save();
+
+    ctx.beginPath();
+    ctx.moveTo(cx - spanX * 0.5, cy + spanY * 0.35);
+    ctx.bezierCurveTo(
+      cx - spanX * 0.16,
+      cy - spanY * 0.85,
+      cx + spanX * 0.16,
+      cy + spanY * 0.85,
+      cx + spanX * 0.5,
+      cy - spanY * 0.35
+    );
+    ctx.strokeStyle = this.isDarkMode ? 'rgba(244, 244, 245, 0.55)' : 'rgba(28, 25, 23, 0.45)';
+    ctx.globalAlpha = 0.22 + breathe * 0.14;
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.setLineDash([6, 8]);
+    ctx.stroke();
+
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3.5 + breathe * 1.5, 0, Math.PI * 2);
+    ctx.fillStyle = this.isDarkMode ? '#93c5fd' : '#2563eb';
+    ctx.globalAlpha = 0.35 + breathe * 0.25;
+    ctx.fill();
+
+    ctx.font = '500 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.fillStyle = this.isDarkMode ? 'rgba(244, 244, 245, 0.72)' : 'rgba(28, 25, 23, 0.62)';
+    ctx.globalAlpha = 0.52 + breathe * 0.18;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Draw a line anywhere to start • Hold Cmd/Ctrl+Drag to marquee-select', cx, cy + spanY + 28);
 
     ctx.restore();
   }
@@ -455,7 +728,7 @@ export class CanvasRenderer {
       ctx.stroke();
     } else if (style === 'dotted') {
       const fluc = stroke.fluctuation ?? 0;
-      if (fluc > 0 && stroke.lut && stroke.lut.totalLength > 0) {
+      if (fluc > 0 && stroke.lut && stroke.lut.totalLength > 0 && path.segments.length > 0) {
         // Draw subtle faint baseline path so the user sees the original trajectory
         ctx.save();
         ctx.globalAlpha = ctx.globalAlpha * 0.25;
@@ -464,22 +737,38 @@ export class CanvasRenderer {
         ctx.stroke();
         ctx.restore();
 
-        // Draw individual scattered fluctuating dots
-        const dotSpacing = 16;
+        const origin = path.segments[0].p0;
         const totalL = stroke.lut.totalLength;
-        const numDots = Math.floor(totalL / dotSpacing);
-        const radius = stroke.selected ? 3.0 : 2.2;
-        const maxJitter = 18;
-
-        ctx.fillStyle = effectiveColor;
-        for (let i = 0; i <= numDots; i++) {
-          const d = Math.min(totalL, i * dotSpacing + dotSpacing * 0.5);
-          const evalPt = evaluateAtDistance(stroke.path, stroke.lut, d);
-          const jitter = getHitJitter(stroke.id, i) * fluc * maxJitter;
-          ctx.beginPath();
-          ctx.arc(evalPt.point.x, evalPt.point.y + jitter, radius, 0, Math.PI * 2);
-          ctx.fill();
+        let cached = this.dottedFluctuationCache.get(path);
+        if (!cached || cached.fluctuation !== fluc || cached.totalLength !== totalL) {
+          const dotSpacing = 16;
+          const numDots = Math.floor(totalL / dotSpacing);
+          const maxJitter = 18;
+          const dots: Array<{ dx: number; dy: number }> = [];
+          for (let i = 0; i <= numDots; i++) {
+            const d = Math.min(totalL, i * dotSpacing + dotSpacing * 0.5);
+            const evalPt = evaluateAtDistance(path, stroke.lut, d);
+            const jitter = getHitJitter(stroke.id, i) * fluc * maxJitter;
+            dots.push({
+              dx: evalPt.point.x - origin.x,
+              dy: evalPt.point.y + jitter - origin.y,
+            });
+          }
+          cached = { fluctuation: fluc, totalLength: totalL, dots };
+          this.dottedFluctuationCache.set(path, cached);
         }
+
+        // Batch all scattered dots for this stroke into a single fill pass
+        const radius = stroke.selected ? 3.0 : 2.2;
+        ctx.fillStyle = effectiveColor;
+        ctx.beginPath();
+        for (let i = 0; i < cached.dots.length; i++) {
+          const px = origin.x + cached.dots[i].dx;
+          const py = origin.y + cached.dots[i].dy;
+          ctx.moveTo(px + radius, py);
+          ctx.arc(px, py, radius, 0, Math.PI * 2);
+        }
+        ctx.fill();
       } else {
         ctx.lineWidth = stroke.selected ? 4.5 : 3.5;
         ctx.setLineDash([2, 14]);
@@ -520,9 +809,10 @@ export class CanvasRenderer {
       // Floating pill badge above start point with Volume, Texture, Speed Multiplier & Progress (suppressed during multi-selection)
       if (!isMultiSelection) {
         const volPercent = Math.round(vol * 100);
+        const isTimerMode = stroke.timingMode === 'timer' || stroke.speedMode === 'timer';
         const speedMult = stroke.speedMultiplier ?? 1.0;
         const speedText = Number.isInteger(speedMult * 10) ? speedMult.toFixed(1) : speedMult.toFixed(2);
-        const speedLabel = `${speedText}x`;
+        const speedLabel = isTimerMode ? `${Math.round(stroke.duration ?? 30)}s` : `${speedText}x`;
         const progressPct = stroke.lut.totalLength > 0
           ? Math.min(100, Math.max(0, Math.round((stroke.playhead.currentDistance / stroke.lut.totalLength) * 100)))
           : 0;
@@ -535,7 +825,7 @@ export class CanvasRenderer {
           : `${volPercent}% vol • ${speedLabel} • ${progressPct}% • ${travMode}`;
         if (stroke.instrumentId === 'onyx') {
           const drumFreq = stroke.playhead.lastPitch?.frequency ?? 200;
-          const drumName = drumFreq < 260 ? 'Kick' : drumFreq < 650 ? 'Snare' : drumFreq < 2200 ? 'Tom' : 'Hi-Hat';
+          const drumName = resolveDrumZone(drumFreq, stroke.style === 'striped').label;
           const drumLabel = stroke.style === 'striped' ? `${drumName} Roll` : drumName;
           tagText = stroke.isPoint
             ? `${volPercent}% vol • ${drumLabel} Dot`
@@ -553,8 +843,7 @@ export class CanvasRenderer {
         const tagY = startPt.y - 22;
 
         ctx.fillStyle = '#1c1917';
-        ctx.beginPath();
-        ctx.roundRect(tagX, tagY, tagW, tagH, 8);
+        drawRoundRect(ctx, tagX, tagY, tagW, tagH, 8);
         ctx.fill();
 
         ctx.fillStyle = '#ffffff';
@@ -570,10 +859,16 @@ export class CanvasRenderer {
   /**
    * Draws animated constant-velocity playhead with trail, acoustic pulse, and clean minimal HUD tag.
    */
-  public drawPlayhead(stroke: DrawnStroke, nowMs: number, hasSolo: boolean = false): void {
+  public drawPlayhead(
+    stroke: DrawnStroke,
+    nowMs: number,
+    hasSolo: boolean = false,
+    energyBoost: number = 0
+  ): void {
     const ph = stroke.playhead;
     if (!ph.lastEval || ph.finished) return;
 
+    const clampedEnergy = Math.max(0, Math.min(1, energyBoost));
     const { x, y } = ph.lastEval.point;
     const ctx = this.ctx;
     ctx.save();
@@ -621,27 +916,27 @@ export class CanvasRenderer {
       if (stroke.style === 'solid') {
         const swell = ph.currentSwell ?? 1.0;
         const breathePhase = (Math.sin(nowMs * 0.002) + 1) * 0.5;
-        const breatheRadius = (8 + breathePhase * 8) * swell;
-        const breatheAlpha = Math.min(0.65, (0.2 + breathePhase * 0.25) * swell);
+        const breatheRadius = (8 + breathePhase * 8) * swell + clampedEnergy * 3;
+        const breatheAlpha = Math.min(0.75, (0.2 + breathePhase * 0.25) * swell + clampedEnergy * 0.14);
 
         ctx.beginPath();
         ctx.arc(x, y, breatheRadius, 0, Math.PI * 2);
         ctx.strokeStyle = effectiveColor;
         ctx.globalAlpha = breatheAlpha;
-        ctx.lineWidth = 1.6;
+        ctx.lineWidth = 1.6 + clampedEnergy * 0.4;
         ctx.stroke();
       } else {
         const speedMult = Math.max(0.1, stroke.speedMultiplier ?? 1.0);
         const pulsePeriod = stroke.isPoint ? Math.max(80, 1000 / speedMult) : 1400;
         const pulsePhase = (nowMs % pulsePeriod) / pulsePeriod;
-        const pulseRadius = 6 + pulsePhase * 14;
-        const pulseAlpha = (1 - pulsePhase) * 0.45;
+        const pulseRadius = 6 + pulsePhase * 14 + clampedEnergy * 3;
+        const pulseAlpha = Math.min(0.65, (1 - pulsePhase) * (0.45 + clampedEnergy * 0.18));
 
         ctx.beginPath();
         ctx.arc(x, y, pulseRadius, 0, Math.PI * 2);
         ctx.strokeStyle = effectiveColor;
         ctx.globalAlpha = pulseAlpha;
-        ctx.lineWidth = 1.2;
+        ctx.lineWidth = 1.2 + clampedEnergy * 0.35;
         ctx.stroke();
       }
       ctx.globalAlpha = 1.0;
@@ -681,22 +976,29 @@ export class CanvasRenderer {
       const boxW = textWidth + padding * 2;
       const boxH = 18;
 
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.08)';
+      ctx.shadowColor = this.isDarkMode ? 'rgba(0, 0, 0, 0.35)' : 'rgba(0, 0, 0, 0.08)';
       ctx.shadowBlur = 6;
       ctx.shadowOffsetY = 2;
 
-      ctx.fillStyle = '#ffffff';
-      ctx.strokeStyle = stroke.selected ? '#2563eb' : stroke.soloed ? '#d97706' : ph.lastPitch.isSnapped ? stroke.color : '#d6d3cd';
+      ctx.fillStyle = this.isDarkMode ? 'rgba(15, 23, 42, 0.86)' : 'rgba(255, 255, 255, 0.94)';
+      ctx.strokeStyle = stroke.selected
+        ? (this.isDarkMode ? '#60a5fa' : '#2563eb')
+        : stroke.soloed
+        ? (this.isDarkMode ? '#fbbf24' : '#d97706')
+        : ph.lastPitch.isSnapped
+        ? baseColor
+        : (this.isDarkMode ? 'rgba(255, 255, 255, 0.18)' : '#d6d3cd');
       ctx.lineWidth = 1;
 
-      ctx.beginPath();
-      ctx.roundRect(badgeX, badgeY - 12, boxW, boxH, 4);
+      drawRoundRect(ctx, badgeX, badgeY - 12, boxW, boxH, 4);
       ctx.fill();
       ctx.stroke();
 
       ctx.shadowBlur = 0;
       ctx.shadowOffsetY = 0;
-      ctx.fillStyle = stroke.muted ? '#78716c' : '#1c1917';
+      ctx.fillStyle = stroke.muted
+        ? (this.isDarkMode ? '#94a3b8' : '#78716c')
+        : (this.isDarkMode ? '#f8fafc' : '#1c1917');
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillText(badgeText, badgeX + padding, badgeY - 3);
@@ -758,10 +1060,13 @@ export class CanvasRenderer {
 
     // 1. If multiple points, draw glowing tapering ribbons connecting them
     if (trail.length >= 2) {
-      // Pass A: Soft luminous outer glow
+      // Layered alpha passes avoid per-segment shadowBlur toggling at 60 FPS
+      ctx.shadowBlur = 0;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
+      ctx.strokeStyle = color;
 
+      // Pass A1: Wide outer soft halo
       for (let i = 1; i < trail.length; i++) {
         const pPrev = trail[i - 1];
         const pCurr = trail[i];
@@ -772,24 +1077,37 @@ export class CanvasRenderer {
         const alpha = Math.pow(1 - progress, 1.4);
         if (alpha <= 0.01) continue;
 
-        // Position along the trail (0 at start, 1 at head)
         const trailRatio = i / (trail.length - 1);
-        const glowWidth = 3 + trailRatio * 7;
-
         ctx.beginPath();
         ctx.moveTo(pPrev.screenX, pPrev.screenY);
         ctx.lineTo(pCurr.screenX, pCurr.screenY);
+        ctx.globalAlpha = alpha * (isDarkMode ? 0.16 : 0.11);
+        ctx.lineWidth = 7 + trailRatio * 13;
+        ctx.stroke();
+      }
 
-        ctx.shadowColor = color;
-        ctx.shadowBlur = isDarkMode ? 14 : 8;
-        ctx.strokeStyle = color;
-        ctx.globalAlpha = alpha * 0.45;
-        ctx.lineWidth = glowWidth;
+      // Pass A2: Inner luminous glow
+      for (let i = 1; i < trail.length; i++) {
+        const pPrev = trail[i - 1];
+        const pCurr = trail[i];
+        const age = nowMs - pCurr.time;
+        if (age >= maxLifetimeMs) continue;
+
+        const progress = Math.max(0, Math.min(1, age / maxLifetimeMs));
+        const alpha = Math.pow(1 - progress, 1.4);
+        if (alpha <= 0.01) continue;
+
+        const trailRatio = i / (trail.length - 1);
+        ctx.beginPath();
+        ctx.moveTo(pPrev.screenX, pPrev.screenY);
+        ctx.lineTo(pCurr.screenX, pCurr.screenY);
+        ctx.globalAlpha = alpha * (isDarkMode ? 0.34 : 0.28);
+        ctx.lineWidth = 3 + trailRatio * 7;
         ctx.stroke();
       }
 
       // Pass B: Crisp core ribbon with smooth tapering
-      ctx.shadowBlur = 0;
+      ctx.strokeStyle = isDarkMode ? '#ffffff' : color;
       for (let i = 1; i < trail.length; i++) {
         const pPrev = trail[i - 1];
         const pCurr = trail[i];
@@ -807,7 +1125,6 @@ export class CanvasRenderer {
         ctx.moveTo(pPrev.screenX, pPrev.screenY);
         ctx.lineTo(pCurr.screenX, pCurr.screenY);
 
-        ctx.strokeStyle = isDarkMode ? '#ffffff' : color;
         ctx.globalAlpha = alpha * 0.95;
         ctx.lineWidth = coreWidth;
         ctx.stroke();
@@ -858,12 +1175,7 @@ export class CanvasRenderer {
         ctx.lineWidth = 1.2;
         ctx.globalAlpha = badgeAlpha;
 
-        ctx.beginPath();
-        if (typeof (ctx as any).roundRect === 'function') {
-          (ctx as any).roundRect(badgeX, badgeY - 13, boxW, boxH, 5);
-        } else {
-          ctx.rect(badgeX, badgeY - 13, boxW, boxH);
-        }
+        drawRoundRect(ctx, badgeX, badgeY - 13, boxW, boxH, 5);
         ctx.fill();
         ctx.stroke();
 
@@ -884,24 +1196,37 @@ export class CanvasRenderer {
    */
   public spawnSparks(x: number, y: number, color: string, count: number = 7, speedMultiplier: number = 1.0): void {
     const effectiveColor = this.isDarkMode && (color === '#18181b' || color === 'black') ? '#f4f4f5' : color;
+    const pool = this.particlePool;
+    const poolLen = this.maxParticles;
+
     for (let i = 0; i < count; i++) {
-      if (this.particles.length >= this.maxParticles) {
-        this.particles.shift(); // Evict oldest
+      let slot = this.particleCursor;
+      for (let scan = 0; scan < poolLen; scan++) {
+        const idx = (this.particleCursor + scan) % poolLen;
+        if (!pool[idx].active) {
+          slot = idx;
+          break;
+        }
       }
+
       const angle = Math.random() * Math.PI * 2;
       const speed = (1.2 + Math.random() * 2.8) * speedMultiplier;
       const life = 0.28 + Math.random() * 0.25; // seconds
-      this.particles.push({
-        x,
-        y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        color: effectiveColor,
-        alpha: 0.9,
-        radius: 1.2 + Math.random() * 2.0,
-        life,
-        maxLife: life,
-      });
+      const radius = 1.2 + Math.random() * 2.0;
+
+      const p = pool[slot];
+      p.active = true;
+      p.x = x;
+      p.y = y;
+      p.vx = Math.cos(angle) * speed;
+      p.vy = Math.sin(angle) * speed;
+      p.color = effectiveColor;
+      p.alpha = 0.9;
+      p.radius = radius;
+      p.life = life;
+      p.maxLife = life;
+
+      this.particleCursor = (slot + 1) % poolLen;
     }
   }
 
@@ -909,22 +1234,31 @@ export class CanvasRenderer {
    * Updates physics and draws all active spark particles.
    */
   public updateAndDrawParticles(dtSec: number): void {
-    if (this.particles.length === 0) return;
     const ctx = this.ctx;
-    ctx.save();
+    const pool = this.particlePool;
+    const step = Math.min(Math.max(0, dtSec) * 60, 3);
+    const damping = Math.pow(0.94, step);
+    let didSave = false;
 
-    for (let i = this.particles.length - 1; i >= 0; i--) {
-      const p = this.particles[i];
+    for (let i = 0; i < pool.length; i++) {
+      const p = pool[i];
+      if (!p.active) continue;
+
       p.life -= dtSec;
       if (p.life <= 0) {
-        this.particles.splice(i, 1);
+        p.active = false;
         continue;
       }
 
-      p.x += p.vx;
-      p.y += p.vy;
-      p.vx *= 0.94; // slight drag
-      p.vy *= 0.94;
+      if (!didSave) {
+        ctx.save();
+        didSave = true;
+      }
+
+      p.x += p.vx * step;
+      p.y += p.vy * step;
+      p.vx *= damping;
+      p.vy *= damping;
 
       const progress = p.life / p.maxLife; // 1 down to 0
       const currentAlpha = p.alpha * progress;
@@ -936,72 +1270,143 @@ export class CanvasRenderer {
       ctx.fill();
     }
 
-    ctx.restore();
+    if (didSave) {
+      ctx.restore();
+    }
   }
 
   /**
    * Renders ambient audio-reactive spectrum along the bottom margin of the canvas.
    */
-  public drawAudioReactiveSpectrum(freqData: Uint8Array | null, masterEnergy: number): void {
-    if (!freqData || freqData.length === 0) return;
+  public drawAudioReactiveSpectrum(
+    freqData: Uint8Array | null,
+    masterEnergy: number,
+    bands?: { low: number; mid: number; high: number; master?: number }
+  ): void {
+    const hasFreqData = !!freqData && freqData.length > 0;
+    if (!hasFreqData && !bands) return;
+
     const ctx = this.ctx;
     const w = this.width;
     const h = this.height;
 
+    const effectiveMaster = masterEnergy > 0 ? masterEnergy : (bands?.master ?? 0);
     // Exponentially smooth master energy so audio transients never strobe or flicker
-    this.smoothedMasterEnergy = this.smoothedMasterEnergy * 0.90 + masterEnergy * 0.10;
+    this.smoothedMasterEnergy = this.smoothedMasterEnergy * 0.90 + effectiveMaster * 0.10;
+
+    let rawLow = 0;
+    let rawMid = 0;
+    let rawHigh = 0;
+    if (bands) {
+      rawLow = bands.low;
+      rawMid = bands.mid;
+      rawHigh = bands.high;
+    } else if (freqData && freqData.length > 0) {
+      const len = freqData.length;
+      const lowEnd = Math.max(1, Math.floor(len * 0.18));
+      const midEnd = Math.max(lowEnd + 1, Math.floor(len * 0.55));
+      let lowSum = 0;
+      let midSum = 0;
+      let highSum = 0;
+      for (let i = 0; i < len; i++) {
+        const v = freqData[i] / 255;
+        if (i < lowEnd) lowSum += v;
+        else if (i < midEnd) midSum += v;
+        else highSum += v;
+      }
+      rawLow = lowSum / lowEnd;
+      rawMid = midSum / Math.max(1, midEnd - lowEnd);
+      rawHigh = highSum / Math.max(1, len - midEnd);
+    }
+
+    this.smoothedBands.low = this.smoothedBands.low * 0.88 + rawLow * 0.12;
+    this.smoothedBands.mid = this.smoothedBands.mid * 0.88 + rawMid * 0.12;
+    this.smoothedBands.high = this.smoothedBands.high * 0.88 + rawHigh * 0.12;
 
     ctx.save();
 
     // 1. Subtle, ultra-soft perimeter edge vignette (100% transparent center, zero background flicker)
-    if (this.smoothedMasterEnergy > 0.08) {
-      const glowAlpha = Math.min(0.06, (this.smoothedMasterEnergy - 0.08) * 0.12);
+    const combinedEnergy = Math.max(
+      this.smoothedMasterEnergy,
+      this.smoothedBands.low * 0.5 + this.smoothedBands.mid * 0.35 + this.smoothedBands.high * 0.15
+    );
+    if (combinedEnergy > 0.08) {
+      const glowAlpha = Math.min(0.06, (combinedEnergy - 0.08) * 0.12);
       if (glowAlpha > 0.005) {
         if (
           !this.cachedVignetteGradient ||
+          !this.cachedWarmVignetteGradient ||
           this.cachedVignetteWidth !== w ||
           this.cachedVignetteHeight !== h ||
           this.cachedVignetteDarkMode !== this.isDarkMode
         ) {
-          const grad = ctx.createRadialGradient(w * 0.5, h * 0.5, h * 0.25, w * 0.5, h * 0.5, w * 0.85);
-          grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
-          grad.addColorStop(1, this.isDarkMode ? 'rgba(59, 130, 246, 0.4)' : 'rgba(37, 99, 235, 0.25)');
-          this.cachedVignetteGradient = grad;
+          const coolGrad = ctx.createRadialGradient(w * 0.5, h * 0.5, h * 0.25, w * 0.5, h * 0.5, w * 0.85);
+          coolGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+          coolGrad.addColorStop(1, this.isDarkMode ? 'rgba(59, 130, 246, 0.4)' : 'rgba(37, 99, 235, 0.25)');
+          this.cachedVignetteGradient = coolGrad;
+
+          const warmGrad = ctx.createRadialGradient(w * 0.5, h * 0.5, h * 0.25, w * 0.5, h * 0.5, w * 0.85);
+          warmGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+          warmGrad.addColorStop(1, this.isDarkMode ? 'rgba(245, 158, 11, 0.36)' : 'rgba(217, 119, 6, 0.22)');
+          this.cachedWarmVignetteGradient = warmGrad;
+
           this.cachedVignetteWidth = w;
           this.cachedVignetteHeight = h;
           this.cachedVignetteDarkMode = this.isDarkMode;
         }
 
-        ctx.globalAlpha = glowAlpha;
-        ctx.fillStyle = this.cachedVignetteGradient;
-        ctx.fillRect(0, 0, w, h);
+        const totalBand = this.smoothedBands.low + this.smoothedBands.mid + this.smoothedBands.high;
+        const warmWeight = totalBand > 0.001
+          ? Math.max(0, Math.min(1, this.smoothedBands.low / totalBand))
+          : 0;
+        const coolAlpha = glowAlpha * (1 - warmWeight * 0.65);
+        const warmAlpha = glowAlpha * warmWeight * 0.85;
+
+        if (coolAlpha > 0.002) {
+          ctx.globalAlpha = coolAlpha;
+          ctx.fillStyle = this.cachedVignetteGradient;
+          ctx.fillRect(0, 0, w, h);
+        }
+        if (warmAlpha > 0.002) {
+          ctx.globalAlpha = warmAlpha;
+          ctx.fillStyle = this.cachedWarmVignetteGradient;
+          ctx.fillRect(0, 0, w, h);
+        }
         ctx.globalAlpha = 1.0;
       }
     }
 
     // 2. Minimalist glowing waveform/spectrum floor along the bottom canvas
-    const bins = Math.min(freqData.length, 32);
-    const barWidth = w / bins;
-    const maxHeight = Math.min(36, h * 0.08);
+    if (freqData && freqData.length > 0) {
+      const bins = Math.min(freqData.length, 32);
+      const barWidth = w / bins;
+      const intensityScale = 1 + Math.min(0.25, this.smoothedBands.mid * 0.2 + this.smoothedBands.high * 0.15);
+      const maxHeight = Math.min(36, h * 0.08) * intensityScale;
 
-    ctx.beginPath();
-    ctx.moveTo(0, h);
+      ctx.beginPath();
+      ctx.moveTo(0, h);
 
-    for (let i = 0; i < bins; i++) {
-      const val = freqData[i] / 255;
-      const barH = val * maxHeight;
-      const x = i * barWidth + barWidth * 0.5;
-      const y = h - barH;
-      if (i === 0) {
-        ctx.lineTo(0, y);
+      for (let i = 0; i < bins; i++) {
+        const val = freqData[i] / 255;
+        const barH = val * maxHeight;
+        const x = i * barWidth + barWidth * 0.5;
+        const y = h - barH;
+        if (i === 0) {
+          ctx.lineTo(0, y);
+        }
+        ctx.lineTo(x, y);
       }
-      ctx.lineTo(x, y);
-    }
-    ctx.lineTo(w, h);
-    ctx.closePath();
+      ctx.lineTo(w, h);
+      ctx.closePath();
 
-    ctx.fillStyle = this.isDarkMode ? 'rgba(96, 165, 250, 0.06)' : 'rgba(37, 99, 235, 0.04)';
-    ctx.fill();
+      const floorAlpha = this.isDarkMode
+        ? Math.min(0.11, 0.06 + this.smoothedBands.high * 0.04)
+        : Math.min(0.08, 0.04 + this.smoothedBands.high * 0.03);
+      ctx.fillStyle = this.isDarkMode
+        ? `rgba(96, 165, 250, ${floorAlpha.toFixed(4)})`
+        : `rgba(37, 99, 235, ${floorAlpha.toFixed(4)})`;
+      ctx.fill();
+    }
 
     ctx.restore();
   }

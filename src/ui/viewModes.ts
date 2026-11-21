@@ -14,6 +14,7 @@ export class ViewModeManager {
   private topBarEl: HTMLElement | null = null;
   private bottomBarEl: HTMLElement | null = null;
   private pitchNavEl: HTMLElement | null = null;
+  private boundCleanups: Array<() => void> = [];
 
   constructor(callbacks: ViewModeCallbacks) {
     this.callbacks = callbacks;
@@ -33,6 +34,8 @@ export class ViewModeManager {
     bottomBar?: HTMLElement | null;
     pitchNav?: HTMLElement | null;
   }): void {
+    this.destroy();
+
     this.appEl = elements.app;
     this.studioDeckEl = elements.studioDeck;
     this.zenDockEl = elements.zenDock;
@@ -40,7 +43,27 @@ export class ViewModeManager {
     this.bottomBarEl = elements.bottomBar || null;
     this.pitchNavEl = elements.pitchNav || null;
 
+    const doc = this.appEl?.ownerDocument || (typeof document !== 'undefined' ? document : null);
+    if (doc) {
+      doc.querySelectorAll<HTMLElement>('[data-view-mode]').forEach((btn) => {
+        const onClick = (): void => {
+          const nextMode = btn.getAttribute('data-view-mode');
+          if (nextMode === 'studio' || nextMode === 'zen') {
+            this.setMode(nextMode);
+          }
+        };
+        btn.addEventListener('click', onClick);
+        this.boundCleanups.push(() => btn.removeEventListener('click', onClick));
+      });
+    }
+
     this.applyMode(this.currentMode, false);
+  }
+
+  public destroy(): void {
+    while (this.boundCleanups.length > 0) {
+      this.boundCleanups.pop()?.();
+    }
   }
 
   public getMode(): ViewMode {
@@ -104,7 +127,9 @@ export class ViewModeManager {
     if (doc) {
       doc.querySelectorAll<HTMLElement>('[data-view-mode]').forEach((btn) => {
         const btnMode = btn.getAttribute('data-view-mode');
-        btn.classList.toggle('active', btnMode === mode);
+        const isActive = btnMode === mode;
+        btn.classList.toggle('active', isActive);
+        btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
       });
     }
 

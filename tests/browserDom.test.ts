@@ -17,77 +17,112 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
   });
 
   it('contains inspector speed controls and continuous slider', () => {
-    const speedControls = doc.getElementById('trackSpeedControls');
-    expect(speedControls).toBeDefined();
+    expect(doc.getElementById('trackInspectorBar')).toBeNull();
+    expect(doc.getElementById('trackSpeedControls')).toBeNull();
+    expect(doc.getElementById('trackSpeedSlider')).toBeNull();
 
-    const slider = doc.getElementById('trackSpeedSlider') as HTMLInputElement;
-    expect(slider).toBeDefined();
+    const dockedInspector = doc.getElementById('studioDockedInspector');
+    expect(dockedInspector).not.toBeNull();
+
+    const timingRow = doc.getElementById('studioTimingSliderRow');
+    expect(timingRow).not.toBeNull();
+
+    const modeLabel = doc.getElementById('studioTimingModeLabel');
+    expect(modeLabel).not.toBeNull();
+    expect(modeLabel?.textContent?.trim()).toBe('Speed');
+
+    const slider = doc.getElementById('studioTimingSlider') as HTMLInputElement;
+    expect(slider).not.toBeNull();
     expect(slider.type).toBe('range');
     expect(slider.min).toBe('0.1');
     expect(slider.max).toBe('4.0');
     expect(slider.step).toBe('0.05');
     expect(slider.value).toBe('1.0');
 
-    const speedVal = doc.getElementById('trackSpeedVal');
-    expect(speedVal).toBeDefined();
+    const speedVal = doc.getElementById('studioTimingVal');
+    expect(speedVal).not.toBeNull();
+    expect(speedVal?.textContent?.trim()).toBe('1.00x');
   });
 
-  it('contains speed preset pills for 1/4x, 1/2x, 1x, and 2x', () => {
-    const presetPills = doc.getElementById('speedPresetPills');
-    expect(presetPills).toBeDefined();
+  it('contains docked timing mode segmented toggle and confirms legacy speed pills are removed', () => {
+    expect(doc.getElementById('speedPresetPills')).toBeNull();
 
-    const pills = doc.querySelectorAll('.speed-pill');
-    expect(pills.length).toBeGreaterThanOrEqual(4);
+    const dockedInspector = doc.getElementById('studioDockedInspector');
+    expect(dockedInspector).not.toBeNull();
 
-    const speeds = Array.from(pills).map((p) => p.getAttribute('data-speed'));
-    expect(speeds).toContain('0.25');
-    expect(speeds).toContain('0.5');
-    expect(speeds).toContain('1.0');
-    expect(speeds).toContain('2.0');
+    const timingToggle = dockedInspector?.querySelector('#studioTimingToggle');
+    expect(timingToggle).not.toBeNull();
+
+    const btns = Array.from(timingToggle?.querySelectorAll('.seg-btn') || []);
+    expect(btns.map((b) => b.getAttribute('data-timing-mode'))).toEqual(['speed', 'timer']);
+    expect(btns.map((b) => b.textContent?.trim())).toEqual(['Speed', 'Timer']);
   });
 
   it('contains timing mode toggle buttons (Speed vs Timer)', () => {
-    const modeToggle = doc.getElementById('speedModeToggle');
-    expect(modeToggle).toBeDefined();
+    expect(doc.getElementById('speedModeToggle')).toBeNull();
+    expect(doc.getElementById('speedModeSpeedBtn')).toBeNull();
+    expect(doc.getElementById('speedModeTimerBtn')).toBeNull();
 
-    const speedBtn = doc.getElementById('speedModeSpeedBtn');
-    expect(speedBtn).toBeDefined();
+    const timingToggle = doc.getElementById('studioTimingToggle');
+    expect(timingToggle).not.toBeNull();
 
-    const timerBtn = doc.getElementById('speedModeTimerBtn');
-    expect(timerBtn).toBeDefined();
+    const speedBtn = timingToggle?.querySelector('.seg-btn[data-timing-mode="speed"]');
+    expect(speedBtn).not.toBeNull();
+
+    const timerBtn = timingToggle?.querySelector('.seg-btn[data-timing-mode="timer"]');
+    expect(timerBtn).not.toBeNull();
   });
 
-  it('contains timer duration controls with 1s to 300s range and preset pills', () => {
-    const durationGroup = doc.getElementById('trackDurationGroup');
-    expect(durationGroup).toBeDefined();
+  it('contains docked wave shape, amplitude, and period controls and confirms legacy duration group is removed', () => {
+    expect(doc.getElementById('trackDurationGroup')).toBeNull();
+    expect(doc.getElementById('trackDurationSlider')).toBeNull();
 
-    const durationSlider = doc.getElementById('trackDurationSlider') as HTMLInputElement;
-    expect(durationSlider).toBeDefined();
-    expect(durationSlider.min).toBe('1');
-    expect(durationSlider.max).toBe('300');
+    const dockedInspector = doc.getElementById('studioDockedInspector');
+    expect(dockedInspector).not.toBeNull();
 
-    const pills = doc.querySelectorAll('#durationPresetPills .speed-pill');
-    expect(pills.length).toBeGreaterThanOrEqual(4);
-    const durations = Array.from(pills).map((p) => p.getAttribute('data-duration'));
-    expect(durations).toContain('10');
-    expect(durations).toContain('30');
-    expect(durations).toContain('60');
-    expect(durations).toContain('120');
+    const waveShapeSelect = dockedInspector?.querySelector('#studioWaveShapeSelect') as HTMLSelectElement | null;
+    expect(waveShapeSelect).not.toBeNull();
+
+    const waveSineBtn = dockedInspector?.querySelector('#studioWaveSineBtn') as HTMLButtonElement | null;
+    expect(waveSineBtn).not.toBeNull();
+
+    const waveAmpSlider = dockedInspector?.querySelector('#studioWaveAmpSlider') as HTMLInputElement | null;
+    expect(waveAmpSlider).not.toBeNull();
+    expect(waveAmpSlider?.type).toBe('range');
+    expect(waveAmpSlider?.min).toBe('0');
+    expect(waveAmpSlider?.max).toBe('100');
+    expect(waveAmpSlider?.step).toBe('1');
+    expect(waveAmpSlider?.value).toBe('0');
+
+    const waveAmpVal = dockedInspector?.querySelector('#studioWaveAmpVal');
+    expect(waveAmpVal).not.toBeNull();
+    expect(waveAmpVal?.textContent?.trim()).toBe('0px');
+
+    const wavePeriodSlider = dockedInspector?.querySelector('#studioWavePeriodSlider') as HTMLInputElement | null;
+    expect(wavePeriodSlider).not.toBeNull();
+    expect(wavePeriodSlider?.type).toBe('range');
+    expect(wavePeriodSlider?.min).toBe('1');
+    expect(wavePeriodSlider?.max).toBe('8');
+    expect(wavePeriodSlider?.step).toBe('1');
+    expect(wavePeriodSlider?.value).toBe('2');
+
+    const wavePeriodVal = dockedInspector?.querySelector('#studioWavePeriodVal');
+    expect(wavePeriodVal).not.toBeNull();
+    expect(wavePeriodVal?.textContent?.trim()).toBe('2');
   });
 
-  it('contains traversal control with Restart and Bounce and confirms texture control is removed from inspector', () => {
-    const travControl = doc.getElementById('trackTraversalControl');
-    expect(travControl).toBeDefined();
+  it('contains traversal control with Restart and Bounce and confirms legacy traversal and texture controls are removed', () => {
+    expect(doc.getElementById('trackTraversalControl')).toBeNull();
+    expect(doc.getElementById('trackTextureControl')).toBeNull();
+
+    const travControl = doc.getElementById('studioTraversalSwitch');
+    expect(travControl).not.toBeNull();
 
     const travBtns = travControl?.querySelectorAll('.seg-btn');
     expect(travBtns?.length).toBe(2);
     const travModes = Array.from(travBtns || []).map((b) => b.getAttribute('data-track-traversal'));
     expect(travModes).toContain('restart');
     expect(travModes).toContain('bounce');
-
-    // Texture control was removed from inspector
-    const trackTextureControl = doc.getElementById('trackTextureControl');
-    expect(trackTextureControl).toBeNull();
   });
 
   it('contains general default sync select with both speed presets and timer presets', () => {
@@ -105,40 +140,62 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     expect(optionValues).toContain('timer:120');
   });
 
-  it('contains individual line reverb slider in track inspector dock', () => {
-    const reverbSlider = doc.getElementById('trackReverbSlider') as HTMLInputElement;
-    expect(reverbSlider).toBeDefined();
-    expect(reverbSlider.type).toBe('range');
-    expect(reverbSlider.min).toBe('0');
-    expect(reverbSlider.max).toBe('100');
-    expect(reverbSlider.value).toBe('40');
+  it('contains Tone & Grit FX sliders in studio docked inspector and confirms legacy track reverb slider is removed', () => {
+    expect(doc.getElementById('trackReverbSlider')).toBeNull();
+    expect(doc.getElementById('trackReverbVal')).toBeNull();
 
-    const reverbVal = doc.getElementById('trackReverbVal');
-    expect(reverbVal).toBeDefined();
-    expect(reverbVal?.textContent?.trim()).toBe('40%');
+    const dockedInspector = doc.getElementById('studioDockedInspector');
+    expect(dockedInspector).not.toBeNull();
+
+    const distSlider = dockedInspector?.querySelector('#studioDistortionSlider') as HTMLInputElement | null;
+    const distVal = dockedInspector?.querySelector('#studioDistortionVal');
+    expect(distSlider).not.toBeNull();
+    expect(distSlider?.type).toBe('range');
+    expect(distSlider?.min).toBe('0');
+    expect(distSlider?.max).toBe('100');
+    expect(distSlider?.value).toBe('0');
+    expect(distVal?.textContent?.trim()).toBe('0%');
+
+    const filterSlider = dockedInspector?.querySelector('#studioFilterSlider') as HTMLInputElement | null;
+    const filterVal = dockedInspector?.querySelector('#studioFilterVal');
+    expect(filterSlider).not.toBeNull();
+    expect(filterSlider?.type).toBe('range');
+    expect(filterSlider?.min).toBe('0');
+    expect(filterSlider?.max).toBe('100');
+    expect(filterSlider?.value).toBe('100');
+    expect(filterVal?.textContent?.trim()).toBe('100%');
+
+    const lofiSlider = dockedInspector?.querySelector('#studioLofiSlider') as HTMLInputElement | null;
+    const lofiVal = dockedInspector?.querySelector('#studioLofiVal');
+    expect(lofiSlider).not.toBeNull();
+    expect(lofiSlider?.type).toBe('range');
+    expect(lofiSlider?.min).toBe('0');
+    expect(lofiSlider?.max).toBe('100');
+    expect(lofiSlider?.value).toBe('0');
+    expect(lofiVal?.textContent?.trim()).toBe('0%');
   });
 
-  it('contains individual line tone fluctuation slider and confirms deadband slider is removed', () => {
-    const flucSlider = doc.getElementById('trackFluctuationSlider') as HTMLInputElement;
-    expect(flucSlider).toBeDefined();
+  it('contains individual line tone fluctuation slider in studio docked inspector and confirms legacy and deadband sliders are removed', () => {
+    expect(doc.getElementById('trackFluctuationSlider')).toBeNull();
+    expect(doc.getElementById('trackFluctuationVal')).toBeNull();
+    expect(doc.getElementById('deadbandSlider')).toBeNull();
+
+    const flucSlider = doc.getElementById('studioFluctuationSlider') as HTMLInputElement;
+    expect(flucSlider).not.toBeNull();
     expect(flucSlider.type).toBe('range');
     expect(flucSlider.min).toBe('0');
-    expect(flucSlider.max).toBe('1');
-    expect(flucSlider.step).toBe('0.01');
-    expect(flucSlider.value).toBe('0.00');
+    expect(flucSlider.max).toBe('100');
+    expect(flucSlider.step).toBe('1');
+    expect(flucSlider.value).toBe('0');
 
-    const flucVal = doc.getElementById('trackFluctuationVal');
-    expect(flucVal).toBeDefined();
-    expect(flucVal?.textContent?.trim()).toBe('0.00');
-
-    // Deadband slider must be completely removed from the DOM
-    const deadbandSlider = doc.getElementById('deadbandSlider');
-    expect(deadbandSlider).toBeNull();
+    const flucVal = doc.getElementById('studioFluctuationVal');
+    expect(flucVal).not.toBeNull();
+    expect(flucVal?.textContent?.trim()).toBe('0%');
   });
 
   it('contains interactive pitch navigator HUD and frequency range scroll controls', () => {
     const nav = doc.getElementById('pitchNavigator');
-    expect(nav).toBeDefined();
+    expect(nav).not.toBeNull();
     expect(nav?.getAttribute('aria-label')).toBe('Frequency Range Navigator');
 
     // Up, Down, Mid buttons removed from scrollbar for a clean mini-map HUD
@@ -147,13 +204,13 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     expect(doc.getElementById('pitchResetBtn')).toBeNull();
 
     const track = doc.getElementById('pitchTrack');
-    expect(track).toBeDefined();
+    expect(track).not.toBeNull();
 
     const thumb = doc.getElementById('pitchThumb');
-    expect(thumb).toBeDefined();
+    expect(thumb).not.toBeNull();
 
     const thumbLabel = doc.getElementById('pitchThumbLabel');
-    expect(thumbLabel).toBeDefined();
+    expect(thumbLabel).not.toBeNull();
 
     // Frequency markers along the track
     const marks = track?.querySelectorAll('.pitch-mark');
@@ -163,7 +220,8 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     expect(markTexts).toContain('2.0 kHz');
     expect(markTexts).toContain('630 Hz');
     expect(markTexts).toContain('200 Hz');
-    expect(markTexts).toContain('100 Hz');
+    expect(markTexts).toContain('110 Hz');
+    expect(markTexts).not.toContain('100 Hz');
   });
 
   it('contains Live Wand & Performance Controls inside advanced drawer', () => {
@@ -201,62 +259,65 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     expect(drawOnlyControls.length).toBeGreaterThanOrEqual(3);
   });
 
-  it('contains dedicated line inspector dock and advanced drawer with collision-free layering', () => {
-    const inspectorBar = doc.getElementById('trackInspectorBar');
-    expect(inspectorBar).toBeDefined();
-    expect(inspectorBar?.style.display).toBe('none');
+  it('contains studio docked line inspector and advanced drawer with collision-free layering', () => {
+    expect(doc.getElementById('trackInspectorBar')).toBeNull();
+
+    const dockedInspector = doc.getElementById('studioDockedInspector');
+    expect(dockedInspector).not.toBeNull();
+    expect(dockedInspector?.classList.contains('studio-docked-inspector')).toBe(true);
+    expect(dockedInspector?.classList.contains('is-empty')).toBe(true);
+
+    const dockedContent = doc.getElementById('dockedInspectorContent');
+    expect(dockedContent).not.toBeNull();
+    expect(dockedContent?.style.display).toBe('none');
 
     const drawer = doc.getElementById('advancedDrawer');
-    expect(drawer).toBeDefined();
+    expect(drawer).not.toBeNull();
     expect(drawer?.style.display).toBe('none');
 
     const toggleBtn = doc.getElementById('drawerToggleBtn');
-    expect(toggleBtn).toBeDefined();
+    expect(toggleBtn).not.toBeNull();
     expect(toggleBtn?.textContent?.trim()).toBe('Controls');
 
     const closeBtn = doc.getElementById('drawerCloseBtn');
-    expect(closeBtn).toBeDefined();
+    expect(closeBtn).not.toBeNull();
     expect(closeBtn?.textContent?.trim()).toBe('Close');
 
     const cssPath = path.resolve(__dirname, '../src/style.css');
     const css = fs.readFileSync(cssPath, 'utf-8');
 
+    // Legacy floating inspector CSS has been completely removed
+    expect(css).not.toMatch(/\.track-inspector-bar\b/);
+
     // Advanced drawer is anchored on the right side as a popover sidebar
     expect(css).toMatch(/\.advanced-drawer\s*\{[^}]*right:\s*14px/);
     expect(css).toMatch(/\.advanced-drawer\s*\{[^}]*z-index:\s*200/);
 
-    // Inspector bar must have elevated z-index (130) and smooth transition
-    expect(css).toMatch(/\.track-inspector-bar\s*\{[^}]*z-index:\s*130/);
-    expect(css).toMatch(/\.track-inspector-bar\s*\{[^}]*transition:[^}]*top/);
-
-    // Inspector with drawer shifts away from the right popover
-    expect(css).toMatch(/\.track-inspector-bar\.inspector-with-drawer/);
-
-    // Bottom dock offset is 38px to sit cleanly above bottom status bar
-    expect(css).toMatch(/\.track-inspector-bar\.inspector-bottom\s*\{[^}]*bottom:\s*38px/);
-
-    // Inspector bar bounds and fit-content styling
-    expect(css).toMatch(/\.track-inspector-bar\s*\{[^}]*width:\s*fit-content/);
-    expect(css).toMatch(/\.track-inspector-bar\s*\{[^}]*max-width:\s*calc\(100vw\s*-\s*28px\)/);
-
-    // Badge styling prevents multi-line wrapping
-    expect(css).toMatch(/\.inspector-badge-name\s*\{[^}]*white-space:\s*nowrap/);
-    expect(css).toMatch(/\.inspector-badge-name\s*\{[^}]*text-overflow:\s*ellipsis/);
-
-    // Timing wrap is a single horizontal flex row rather than a double-decker
-    expect(css).toMatch(/\.track-speed-wrap\s*\{[^}]*flex-direction:\s*row/);
+    // Studio docked inspector layout & scrollable content styling
+    expect(css).toMatch(/\.studio-docked-inspector\s*\{[^}]*flex-shrink:\s*0/);
+    expect(css).toMatch(/\.studio-docked-inspector\s*\{[^}]*display:\s*flex/);
+    expect(css).toMatch(/\.studio-docked-inspector\s*\{[^}]*flex-direction:\s*column/);
+    expect(css).toMatch(/\.docked-inspector-content\s*\{[^}]*overflow-y:\s*auto/);
   });
 
-  it('guarantees all buttons and labels in the inspector bar contain only clean text without emojis', () => {
-    const inspectorBar = doc.getElementById('trackInspectorBar');
-    expect(inspectorBar).toBeDefined();
+  it('guarantees all buttons and labels in the studio docked inspector contain only clean text without emojis', () => {
+    expect(doc.getElementById('trackInspectorBar')).toBeNull();
 
-    const buttons = inspectorBar?.querySelectorAll('button') || [];
+    const dockedInspector = doc.getElementById('studioDockedInspector');
+    expect(dockedInspector).not.toBeNull();
+
+    const buttons = dockedInspector?.querySelectorAll('button') || [];
     expect(buttons.length).toBeGreaterThan(0);
+
+    const labels = dockedInspector?.querySelectorAll('label, .docked-label, .docked-sublabel') || [];
+    expect(labels.length).toBeGreaterThan(0);
 
     const emojiRegex = /[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u;
     for (const btn of Array.from(buttons)) {
       expect(emojiRegex.test(btn.textContent || '')).toBe(false);
+    }
+    for (const lbl of Array.from(labels)) {
+      expect(emojiRegex.test(lbl.textContent || '')).toBe(false);
     }
   });
 
@@ -313,28 +374,28 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     expect(emojiRegex.test(randBtn.textContent || '')).toBe(false);
   });
 
-  it('has removed old chord progression strip and provides line harmonizer voicing selects', () => {
-    // Old progression strip should be gone
-    const oldStrip = doc.getElementById('chordProgressionStrip');
-    expect(oldStrip).toBeNull();
+  it('has removed old chord progression strip and legacy track harmonizer, and provides studio voicing select', () => {
+    // Old progression strip and floating inspector select should be gone
+    expect(doc.getElementById('chordProgressionStrip')).toBeNull();
+    expect(doc.getElementById('trackHarmonizerSelect')).toBeNull();
 
     // Default harmonizer voicing select in drawer
     const defaultHarmonizer = doc.getElementById('defaultHarmonizerSelect') as HTMLSelectElement;
-    expect(defaultHarmonizer).toBeDefined();
+    expect(defaultHarmonizer).not.toBeNull();
     expect(defaultHarmonizer.tagName.toLowerCase()).toBe('select');
     const defaultOptions = Array.from(defaultHarmonizer.options).map((o) => o.value);
-    expect(defaultOptions).toEqual(['single', 'octave', 'subOctave', 'dualOctave']);
+    expect(defaultOptions).toEqual(['single', 'octave', 'subOctave', 'dualOctave', 'fifth', 'triad', 'seventh']);
 
-    // Track inspector harmonizer voicing select
-    const trackHarmonizer = doc.getElementById('trackHarmonizerSelect') as HTMLSelectElement;
-    expect(trackHarmonizer).toBeDefined();
-    expect(trackHarmonizer.tagName.toLowerCase()).toBe('select');
-    const trackOptions = Array.from(trackHarmonizer.options).map((o) => o.value);
-    expect(trackOptions).toEqual(['single', 'octave', 'subOctave', 'dualOctave']);
+    // Studio docked inspector voicing select
+    const studioVoicing = doc.getElementById('studioVoicingSelect') as HTMLSelectElement;
+    expect(studioVoicing).not.toBeNull();
+    expect(studioVoicing.tagName.toLowerCase()).toBe('select');
+    const studioOptions = Array.from(studioVoicing.options).map((o) => o.value);
+    expect(studioOptions).toEqual(['single', 'octave', 'subOctave', 'dualOctave', 'fifth', 'triad', 'seventh']);
 
-    // Clean text / emoji-free check on harmonizer options
+    // Clean text / emoji-free check on voicing options
     const emojiRegex = /[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u;
-    for (const opt of Array.from(trackHarmonizer.options)) {
+    for (const opt of Array.from(studioVoicing.options)) {
       expect(emojiRegex.test(opt.textContent || '')).toBe(false);
     }
     for (const opt of Array.from(defaultHarmonizer.options)) {
@@ -477,28 +538,28 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     expect(keysText.some((t) => t.includes('Esc'))).toBe(true);
   });
 
-  it('contains delete buttons across inspector, studio deck, and layers mixer', () => {
-    const deleteTrackBtn = doc.getElementById('deleteTrackBtn');
-    expect(deleteTrackBtn).toBeDefined();
+  it('contains delete button in studio docked inspector and layers mixer, confirming legacy deleteTrackBtn is removed', () => {
+    expect(doc.getElementById('deleteTrackBtn')).toBeNull();
 
     const studioDelTrackBtn = doc.getElementById('studioDelTrackBtn');
-    expect(studioDelTrackBtn).toBeDefined();
+    expect(studioDelTrackBtn).not.toBeNull();
+    expect(doc.getElementById('studioDockedInspector')?.contains(studioDelTrackBtn)).toBe(true);
 
     const studioMixerList = doc.getElementById('studioMixerList');
-    expect(studioMixerList).toBeDefined();
+    expect(studioMixerList).not.toBeNull();
 
     // The separate floating layerMixerDrawer panel is removed
     const layerMixerDrawer = doc.getElementById('layerMixerDrawer');
     expect(layerMixerDrawer).toBeNull();
 
     const studioLayerCount = doc.getElementById('studioLayerCount');
-    expect(studioLayerCount).toBeDefined();
+    expect(studioLayerCount).not.toBeNull();
 
     const layerCountBadge = doc.getElementById('layerCountBadge');
-    expect(layerCountBadge).toBeDefined();
+    expect(layerCountBadge).not.toBeNull();
 
     const layersStatusChip = doc.getElementById('layersStatusChip');
-    expect(layersStatusChip).toBeDefined();
+    expect(layersStatusChip).not.toBeNull();
     expect(layersStatusChip?.tagName.toLowerCase()).toBe('span');
     expect(layersStatusChip?.classList.contains('status-chip')).toBe(true);
   });
@@ -586,6 +647,15 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
 
     expect(renderedText).toContain('0.5x');
     expect(renderedText).not.toMatch(/\d+\.\d+s/);
+
+    // Timer-mode stroke pill displays exact timer seconds instead of speed multiplier
+    stroke.timingMode = 'timer';
+    stroke.speedMode = 'timer';
+    stroke.duration = 50;
+    renderedText = '';
+    renderer.drawStroke(stroke);
+    expect(renderedText).toContain('50s');
+    expect(renderedText).not.toContain('0.5x');
   });
 
   it('contains share button pointing to production URL and supports composition coordinates correctly', async () => {
@@ -607,7 +677,15 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
 
   it('supports modifying sliders and number inputs by scrolling (wheel event)', () => {
     const bpmSlider = doc.getElementById('bpmSlider') as HTMLInputElement;
+    const studioBpmSlider = doc.getElementById('studioMasterBpmSlider') as HTMLInputElement;
     expect(bpmSlider).not.toBeNull();
+    expect(studioBpmSlider).not.toBeNull();
+    expect(bpmSlider.min).toBe('10');
+    expect(bpmSlider.max).toBe('240');
+    expect(bpmSlider.step).toBe('1');
+    expect(studioBpmSlider.min).toBe('10');
+    expect(studioBpmSlider.max).toBe('240');
+    expect(studioBpmSlider.step).toBe('1');
     bpmSlider.value = '100';
 
     // Simulate wheel-to-modify logic
@@ -627,18 +705,18 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     let inputFired = false;
     bpmSlider.addEventListener('input', () => { inputFired = true; });
 
-    // Scroll up (deltaY < 0): increases value by step (step is 2)
+    // Scroll up (deltaY < 0): increases value by step (step is 1)
     handleSliderWheel(bpmSlider, -100);
-    expect(bpmSlider.value).toBe('102');
+    expect(bpmSlider.value).toBe('101');
     expect(inputFired).toBe(true);
 
-    // Scroll down (deltaY > 0): decreases value by step (step is 2)
+    // Scroll down (deltaY > 0): decreases value by step (step is 1)
     handleSliderWheel(bpmSlider, 100);
     expect(bpmSlider.value).toBe('100');
 
     // Shift key: 5x step jump
     handleSliderWheel(bpmSlider, -100, true);
-    expect(bpmSlider.value).toBe('110');
+    expect(bpmSlider.value).toBe('105');
   });
 
   it('contains Reverb Space Model options and Sound Dynamics controls across drawer and studio deck', () => {
@@ -739,33 +817,41 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     expect(soloBtn.classList.contains('active-solo')).toBe(true);
   });
 
-  it('contains traversal and wave control elements in inspectors that can be toggled for dot notes', () => {
-    const trackTraversalCell = doc.getElementById('trackTraversalControl')?.closest('.inspector-cell');
-    const trackWaveCell = doc.getElementById('trackWaveControl');
+  it('contains traversal and wave control elements in studio docked inspector and zen pill that can be toggled for dot notes', () => {
+    expect(doc.getElementById('trackTraversalControl')).toBeNull();
+    expect(doc.getElementById('trackWaveControl')).toBeNull();
+
     const studioTraversalSwitch = doc.getElementById('studioTraversalSwitch');
     const studioWaveShapeSelect = doc.getElementById('studioWaveShapeSelect');
+    const studioWavePeriodSlider = doc.getElementById('studioWavePeriodSlider');
     const zenContextTravBtn = doc.getElementById('zenContextTravBtn');
 
-    expect(trackTraversalCell).toBeDefined();
-    expect(trackWaveCell).toBeDefined();
-    expect(studioTraversalSwitch).toBeDefined();
-    expect(studioWaveShapeSelect).toBeDefined();
-    expect(zenContextTravBtn).toBeDefined();
+    expect(studioTraversalSwitch).not.toBeNull();
+    expect(studioWaveShapeSelect).not.toBeNull();
+    expect(studioWavePeriodSlider).not.toBeNull();
+    expect(zenContextTravBtn).not.toBeNull();
 
-    // Verify hiding styling can be applied
+    // Verify hiding styling can be applied cleanly and restored
     const studioTraversalRow = studioTraversalSwitch?.closest('.docked-row') as HTMLElement | null;
     const studioWaveGroup = studioWaveShapeSelect?.closest('.docked-group') as HTMLElement | null;
+    expect(studioTraversalRow).not.toBeNull();
+    expect(studioWaveGroup).not.toBeNull();
+
+    const prevTravDisplay = studioTraversalRow?.style.display ?? '';
+    const prevWaveDisplay = studioWaveGroup?.style.display ?? '';
+    const prevZenDisplay = zenContextTravBtn?.style.display ?? '';
+
     if (studioTraversalRow) studioTraversalRow.style.display = 'none';
     if (studioWaveGroup) studioWaveGroup.style.display = 'none';
-    if (trackTraversalCell) (trackTraversalCell as HTMLElement).style.display = 'none';
-    if (trackWaveCell) (trackWaveCell as HTMLElement).style.display = 'none';
-    if (zenContextTravBtn) (zenContextTravBtn as HTMLElement).style.display = 'none';
+    if (zenContextTravBtn) zenContextTravBtn.style.display = 'none';
 
     expect(studioTraversalRow?.style.display).toBe('none');
     expect(studioWaveGroup?.style.display).toBe('none');
-    expect((trackTraversalCell as HTMLElement)?.style.display).toBe('none');
-    expect((trackWaveCell as HTMLElement)?.style.display).toBe('none');
-    expect((zenContextTravBtn as HTMLElement)?.style.display).toBe('none');
+    expect(zenContextTravBtn?.style.display).toBe('none');
+
+    if (studioTraversalRow) studioTraversalRow.style.display = prevTravDisplay;
+    if (studioWaveGroup) studioWaveGroup.style.display = prevWaveDisplay;
+    if (zenContextTravBtn) zenContextTravBtn.style.display = prevZenDisplay;
   });
 
   it('contains statAudio element with initial unstarted state and updates properly', () => {
@@ -963,12 +1049,8 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     }
   });
 
-  it('contains Re-draw action buttons in both floating and studio docked inspectors with zero emojis', () => {
-    const redrawBtn = doc.getElementById('redrawTrackBtn') as HTMLButtonElement;
-    expect(redrawBtn).not.toBeNull();
-    expect(redrawBtn.textContent?.trim()).toBe('Re-draw');
-    // Ensure no emojis in text
-    expect(redrawBtn.textContent).not.toMatch(/[\u{1F300}-\u{1F9FF}]/u);
+  it('contains Re-draw action button in studio docked inspector (and confirms legacy redrawTrackBtn is removed) with zero emojis', () => {
+    expect(doc.getElementById('redrawTrackBtn')).toBeNull();
 
     const studioRedrawBtn = doc.getElementById('studioRedrawTrackBtn') as HTMLButtonElement;
     expect(studioRedrawBtn).not.toBeNull();
@@ -1032,6 +1114,175 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     expect(drawerAssistInkSelect).not.toBeNull();
     const inkOptions = Array.from(drawerAssistInkSelect.options).map((o) => o.value);
     expect(inkOptions).toEqual(['same', 'mixed']);
+  });
+
+  it('provides all 12 root options in #studioRootSelect matching #rootSelect (C2..A3)', () => {
+    const rootSelect = doc.getElementById('rootSelect') as HTMLSelectElement | null;
+    const studioRootSelect = doc.getElementById('studioRootSelect') as HTMLSelectElement | null;
+    expect(rootSelect).not.toBeNull();
+    expect(studioRootSelect).not.toBeNull();
+
+    const expectedRoots = ['C2', 'D2', 'E2', 'F2', 'G2', 'A2', 'C3', 'D3', 'E3', 'F3', 'G3', 'A3'];
+    const rootValues = Array.from(rootSelect!.options).map((o) => o.value);
+    const studioRootValues = Array.from(studioRootSelect!.options).map((o) => o.value);
+
+    expect(rootValues).toEqual(expectedRoots);
+    expect(studioRootValues).toEqual(expectedRoots);
+    expect(studioRootValues).toEqual(rootValues);
+  });
+
+  it('does not disable zoom via user-scalable=no in viewport meta and secures guide.html link', () => {
+    const viewportMeta = doc.querySelector('meta[name="viewport"]') as HTMLMetaElement | null;
+    expect(viewportMeta).not.toBeNull();
+    const content = viewportMeta?.getAttribute('content') || '';
+    expect(content).not.toContain('user-scalable=no');
+
+    const guideLink = doc.querySelector('a[href="guide.html"]') as HTMLAnchorElement | null;
+    expect(guideLink).not.toBeNull();
+    expect(guideLink?.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
+  it('adds role="dialog" and aria-modal="true" to all 4 modals and removes raw $...$ LaTeX delimiters from #infoModal', () => {
+    const modalIds = ['shortcutsModal', 'infoModal', 'savePresetModal', 'recordModal'];
+    for (const id of modalIds) {
+      const modal = doc.getElementById(id);
+      expect(modal, `${id} should exist`).not.toBeNull();
+      expect(modal?.getAttribute('role'), `${id} role`).toBe('dialog');
+      expect(modal?.getAttribute('aria-modal'), `${id} aria-modal`).toBe('true');
+    }
+
+    const infoModal = doc.getElementById('infoModal');
+    expect(infoModal).not.toBeNull();
+    const infoText = infoModal?.textContent || '';
+    expect(infoText).not.toMatch(/\$[^$]+\$/);
+    expect(infoText).not.toContain('$');
+  });
+
+  it('contains Wave 1 Studio Deck, Articulation, Swing, Quantize, MIDI, Export, Confirm Modal, and Onboarding DOM elements', () => {
+    // 1. Studio Docked Inspector: Articulation slider & badge
+    const inspector = doc.getElementById('studioDockedInspector');
+    const artSlider = doc.getElementById('studioArticulationSlider') as HTMLInputElement | null;
+    const artVal = doc.getElementById('studioArticulationVal');
+    expect(inspector).not.toBeNull();
+    expect(artSlider).not.toBeNull();
+    expect(artSlider?.min).toBe('20');
+    expect(artSlider?.max).toBe('250');
+    expect(artVal).not.toBeNull();
+    expect(inspector?.contains(artSlider)).toBe(true);
+    expect(inspector?.contains(artVal)).toBe(true);
+
+    // 2. Studio Master Tab: Swing, Beat Grid, Bar Quantize, and Web MIDI Panel
+    const tabMaster = doc.getElementById('studioTabMaster');
+    const swingSlider = doc.getElementById('studioMasterSwingSlider') as HTMLInputElement | null;
+    const beatGridToggle = doc.getElementById('beatGridToggle');
+    const quantizedToggle = doc.getElementById('quantizedTriggerToggle');
+    const midiPanel = doc.getElementById('midiPanel');
+    expect(tabMaster).not.toBeNull();
+    expect(swingSlider).not.toBeNull();
+    expect(swingSlider?.min).toBe('0');
+    expect(swingSlider?.max).toBe('75');
+    expect(beatGridToggle).not.toBeNull();
+    expect(quantizedToggle).not.toBeNull();
+    expect(midiPanel).not.toBeNull();
+    expect(tabMaster?.contains(swingSlider)).toBe(true);
+    expect(tabMaster?.contains(beatGridToggle)).toBe(true);
+    expect(tabMaster?.contains(quantizedToggle)).toBe(true);
+    expect(tabMaster?.contains(midiPanel)).toBe(true);
+
+    const midiControlIds = [
+      'midiEnableBtn',
+      'midiOutputSelect',
+      'midiInputSelect',
+      'midiChannelSelect',
+      'midiLearnTargetSelect',
+      'midiLearnBtn',
+    ];
+    for (const id of midiControlIds) {
+      const el = doc.getElementById(id);
+      expect(el, `${id} should exist`).not.toBeNull();
+      expect(midiPanel?.contains(el), `${id} should be inside #midiPanel`).toBe(true);
+      expect(tabMaster?.contains(el), `${id} should be inside #studioTabMaster`).toBe(true);
+    }
+
+    // 3. Studio Deck Header Controls: collapse rail, history badge, A/B capture & compare
+    const studioDeck = doc.getElementById('studioDeck');
+    expect(studioDeck).not.toBeNull();
+    for (const id of ['studioDeckCollapseBtn', 'historyCountBadge', 'abCaptureBtn', 'abCompareBtn']) {
+      const el = doc.getElementById(id);
+      expect(el, `${id} should exist`).not.toBeNull();
+      expect(studioDeck?.contains(el), `${id} should be inside #studioDeck`).toBe(true);
+    }
+
+    // 4. Record Modal: export format select (mp3, wav) and Export Stems button
+    const recordModal = doc.getElementById('recordModal');
+    const exportFormat = doc.getElementById('exportFormatSelect') as HTMLSelectElement | null;
+    const exportStemsBtn = doc.getElementById('exportStemsBtn');
+    expect(recordModal).not.toBeNull();
+    expect(exportFormat).not.toBeNull();
+    expect(exportStemsBtn).not.toBeNull();
+    expect(recordModal?.contains(exportFormat)).toBe(true);
+    expect(recordModal?.contains(exportStemsBtn)).toBe(true);
+    expect(Array.from(exportFormat!.options).map((o) => o.value)).toEqual(['mp3', 'wav']);
+
+    // 5. Confirm Modal, Onboarding Coachmark, and Replay Tour button
+    const confirmModal = doc.getElementById('confirmModal');
+    expect(confirmModal).not.toBeNull();
+    expect(confirmModal?.getAttribute('role')).toBe('dialog');
+    expect(confirmModal?.getAttribute('aria-modal')).toBe('true');
+
+    expect(doc.getElementById('onboardingCoachmark')).not.toBeNull();
+    expect(doc.getElementById('replayTourBtn')).not.toBeNull();
+
+    // 6. Multi-Selection Speed Sync controls inside Studio Docked Inspector (emoji-free)
+    const multiSyncBtn = doc.getElementById('studioMultiSyncSpeedBtn');
+    const multiMatchBtn = doc.getElementById('studioMultiMatchFirstBtn');
+    const multiSpeedSlider = doc.getElementById('studioMultiSpeedSlider') as HTMLInputElement | null;
+    expect(multiSyncBtn).not.toBeNull();
+    expect(multiMatchBtn).not.toBeNull();
+    expect(multiSpeedSlider).not.toBeNull();
+    expect(inspector?.contains(multiSyncBtn)).toBe(true);
+
+    // 7. Timbral Breathing selector mirrored in Master FX tab
+    const studioBreathingSelect = doc.getElementById('studioBreathingSelect') as HTMLSelectElement | null;
+    expect(studioBreathingSelect).not.toBeNull();
+    expect(tabMaster?.contains(studioBreathingSelect)).toBe(true);
+    expect(Array.from(studioBreathingSelect!.options).map((o) => o.value)).toEqual(['gentle', 'deep', 'drift', 'off']);
+
+    // 8. Tooltip shortcut coverage & stale description cleanup
+    const liveModeBtn = doc.querySelector('#appModeControl [data-app-mode="live"]');
+    const zenTopBtn = doc.querySelector('#viewModeControl [data-view-mode="zen"]');
+    const resyncBtn = doc.getElementById('resyncBtn');
+    const liveSnapParent = doc.getElementById('liveSnapBtn')?.closest('[data-tooltip]');
+    expect(liveModeBtn?.getAttribute('data-tooltip')).toContain('(L)');
+    expect(zenTopBtn?.getAttribute('data-tooltip')).toContain('(V)');
+    expect(resyncBtn?.getAttribute('data-tooltip')).toContain('(0)');
+    expect(beatGridToggle?.getAttribute('data-tooltip')).toContain('(G)');
+    expect(quantizedToggle?.getAttribute('data-tooltip')).toContain('(Q)');
+    expect(liveSnapParent?.getAttribute('data-tooltip')).not.toContain('chord progression');
+
+    // 9. Adaptive 3-zone responsive top bar layout
+    const topPrimary = doc.querySelector('.top-bar-primary');
+    const topLeft = topPrimary?.querySelector('.top-bar-left');
+    const topTools = topPrimary?.querySelector('.top-bar-tools');
+    const topRight = topPrimary?.querySelector('.top-bar-right');
+    expect(topPrimary).not.toBeNull();
+    expect(topLeft).not.toBeNull();
+    expect(topTools).not.toBeNull();
+    expect(topRight).not.toBeNull();
+
+    expect(topLeft?.contains(doc.getElementById('templateSelect'))).toBe(true);
+    expect(topTools?.contains(doc.getElementById('instrumentPalette'))).toBe(true);
+    expect(topTools?.contains(doc.getElementById('appModeControl'))).toBe(true);
+    expect(topTools?.contains(doc.getElementById('viewModeControl'))).toBe(true);
+    expect(topTools?.contains(doc.getElementById('strokeModeControl'))).toBe(true);
+    expect(topTools?.contains(doc.getElementById('shapeControl'))).toBe(true);
+    expect(topTools?.contains(doc.getElementById('assistToggleBtn'))).toBe(true);
+    expect(topRight?.contains(doc.getElementById('drawerToggleBtn'))).toBe(true);
+    expect(topRight?.contains(doc.getElementById('recordModalBtn'))).toBe(true);
+
+    const cssPath = path.resolve(__dirname, '../src/style.css');
+    const css = fs.readFileSync(cssPath, 'utf-8');
+    expect(css).toMatch(/@media\s*\(max-width:\s*1519px\)[\s\S]*?\.top-bar-tools\s*\{[^}]*order:\s*3;[^}]*flex:\s*1\s+0\s+100%/);
   });
 });
 

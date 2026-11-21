@@ -545,7 +545,7 @@
       <a href="#live-play" class="toc-item">✨ Live Play Mode</a>
       <a href="#instruments" class="toc-item">🌈 7 Sound Inks</a>
       <a href="#inspector" class="toc-item">🎛️ Line Controls</a>
-      <a href="#harmony" class="toc-item">🌌 Chord Progressions</a>
+      <a href="#studio-features" class="toc-item">🏛️ Studio Features</a>
       <a href="#tips" class="toc-item">💡 10 Golden Tips</a>
       <a href="#recipes" class="toc-item">🥣 Instant Recipes</a>
       <a href="#shortcuts" class="toc-item">⌨️ Shortcuts</a>
@@ -708,7 +708,7 @@
           <div class="card" style="padding: 1.25rem; background: var(--bg-card);">
             <h4 style="color: var(--accent-emerald); margin-bottom: 0.5rem;">🎵 Live Scale Lock & Theremin Glide</h4>
             <p style="color: var(--text-muted); font-size: 0.92rem;">
-              Switch between <strong>Free Glide</strong> (continuous microtonal portamento) and <strong>Scale Lock</strong> (locks onto active scale notes and chord progression tones). In Scale Lock, every touch is guaranteed 100% in tune with your background loops!
+              Switch between <strong>Free Glide</strong> (continuous microtonal portamento) and <strong>Scale Lock</strong> (locks onto active modal scale notes). In Scale Lock, every touch is guaranteed 100% in tune with your background loops!
             </p>
           </div>
           <div class="card" style="padding: 1.25rem; background: var(--bg-card);">
@@ -854,85 +854,93 @@
     <section id="inspector">
       <div class="section-header">
         <span class="section-tag">Fine-Tuning</span>
-        <h2 class="section-title">🎛️ The Line Inspector: Sculpting Every Track</h2>
+        <h2 class="section-title">🎛️ The Docked Line Inspector: Sculpting Every Track</h2>
       </div>
 
       <div class="card">
         <p style="color: var(--text-muted); margin-bottom: 1.25rem;">
-          Click on any line on the canvas to select it. A glowing Inspector panel appears on the right with powerful controls for that specific line:
+          Click any line on the canvas (or select a card in the Studio Deck <strong>Layers</strong> mixer) to inspect it. Controls appear in the <strong>Docked Line Inspector</strong> inside the Studio Deck—alongside quick audio sliders in the top bar and a compact floating pill in <strong>Zen</strong> view:
         </p>
 
         <div class="grid-2">
           <div>
-            <h4 style="margin-bottom: 0.25rem;">🔊 Volume & 🫧 Reverb</h4>
+            <h4 style="margin-bottom: 0.25rem;">🔊 Volume, 🫧 Reverb &amp; 🎲 Fluctuation</h4>
             <p style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 1rem;">
-              Set the individual loudness and reverb room size for each stroke. Give your lead melodies high reverb and your bass clean punch!
+              Adjust each line's <strong>Volume</strong> (0–100%), individual <strong>Reverb</strong> send (0–100%), and <strong>Fluctuation</strong> (0.00–1.00) for organic pitch drift and tape-like micro-imperfection.
             </p>
 
-            <h4 style="margin-bottom: 0.25rem;">⏱️ Speed vs Bars Mode</h4>
+            <h4 style="margin-bottom: 0.25rem;">🎚️ Tone, Grit &amp; Gate Articulation</h4>
             <p style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 1rem;">
-              Choose between <strong>Speed</strong> (travels at a constant pace) or <strong>Bars</strong> (locks the travel time to exactly 1, 2, 4, or 8 musical measures).
+              Shape timbre per line with <strong>Distortion</strong> (0–100% analog saturation), <strong>Tone Filter</strong> (0–100% dark mellow warmth to crisp brightness), <strong>Lo-Fi Crunch</strong> (0–100% retro sampler grit), and <strong>Gate</strong> (20% crisp staccato plucks to 250% lush legato sustains &amp; portamento glide).
             </p>
 
-            <h4 style="margin-bottom: 0.25rem;">🎲 Tone Fluctuation (Humanize)</h4>
+            <h4 style="margin-bottom: 0.25rem;">⏱️ Timing: Speed vs Timer</h4>
             <p style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 1rem;">
-              Adds subtle organic micro-variations to the pitch and dot scattering. Set it to 15-30% for that vintage, nostalgic cassette tape warmth.
+              Control pacing with <strong>Speed</strong> (velocity multiplier from 0.1x to 4.0x with quick ¼x–2x pills) or <strong>Timer</strong> (exact loop duration from 1s up to 300s—ideal for slow meditative drones).
             </p>
           </div>
 
           <div>
-            <h4 style="margin-bottom: 0.25rem;">🌊 Wavify (Sine Wave Restructure)</h4>
+            <h4 style="margin-bottom: 0.25rem;">🔀 Traversal (Restart vs Bounce) &amp; 🎼 7 Voicings</h4>
             <p style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 1rem;">
-              Want rolling arpeggios without drawing wavy lines by hand? Click <strong>Sine Wave</strong> in the inspector to turn any straight line into undulating sinusoidal peaks and valleys!
+              Choose <strong>Restart ↻</strong> (loops from the start) or <strong>Bounce ⇄</strong> (oscillates back and forth). Set diatonic harmonic <strong>Voicing</strong> across all 7 modes: Single (1x), Octave (+8va), Sub-Octave (-8vb), Dual Octave (±8va), <strong>Fifth (5th)</strong>, <strong>Triad (1-3-5)</strong>, or <strong>Seventh (1-3-5-7)</strong>.
             </p>
 
-            <h4 style="margin-bottom: 0.25rem;">📋 Copy, Paste & Duplicate</h4>
+            <h4 style="margin-bottom: 0.25rem;">🌊 Wave Shape, Period &amp; Amplitude</h4>
             <p style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 1rem;">
-              Select a line and press <kbd>⌘C</kbd> / <kbd>⌘V</kbd> or <kbd>⌘D</kbd> (or click <strong>Duplicate</strong>). It clones your curve with all volume, instrument, and speed settings preserved!
+              Turn any curve into mathematical motion using <strong>Wave Shape</strong> (<em>Sine, Tangent, Triangle, Square, Sawtooth,</em> or <em>Arch</em>), <strong>Amplitude</strong> (0–100px), and <strong>Period</strong> (0.5x–8.0x cycles).
             </p>
 
-            <h4 style="margin-bottom: 0.25rem;">🔀 Traversal: Restart vs Bounce</h4>
-            <p style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 0.75rem;">
-              Set how the playhead moves: <strong>Restart ↻</strong> (loops from the beginning of your line) or <strong>Bounce ⇄</strong> (smoothly oscillates back and forth).
-            </p>
-
-            <h4 style="margin-bottom: 0.25rem;">⏱ Timing: Speed vs Timer</h4>
+            <h4 style="margin-bottom: 0.25rem;">✏️ Re-draw, Multi-Select, Duplicate-Drag &amp; Mute/Solo</h4>
             <p style="font-size: 0.875rem; color: var(--text-muted);">
-              Control pacing with <strong>Speed</strong> (velocity multiplier ¼x to 4x) or <strong>Timer</strong> (set exact duration from 1s up to 300s). For long meditative drones, simply set the timer high (e.g. 60s, 120s, or 300s).
+              Click <strong>Re-draw</strong> (or press <kbd>R</kbd> / hold <kbd>⌥ Option + Drag</kbd> empty space) to redraw a line's geometry while preserving all sound settings. Drag with <kbd>⌘ / Ctrl + Drag</kbd> for <strong>Marquee Box Multi-Select</strong>, <kbd>⌥ Option + Drag Line</kbd> to <strong>Duplicate &amp; Drag</strong> lines in place, or use <strong>Mute</strong> (<kbd>M</kbd>), <strong>Solo</strong> (<kbd>S</kbd>), <strong>Duplicate</strong> (<kbd>⌘D</kbd>), and <kbd>⌘C</kbd> / <kbd>⌘V</kbd>.
             </p>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- 6. Harmonic Progressions -->
-    <section id="harmony">
+    <!-- 6. Studio Features -->
+    <section id="studio-features">
       <div class="section-header">
-        <span class="section-tag">Musical Progression</span>
-        <h2 class="section-title">🌌 Ambient Chord Progressions</h2>
+        <span class="section-tag">Production &amp; Workflow</span>
+        <h2 class="section-title">🏛️ Studio Deck, Scenes, Assist, MIDI &amp; Audio Export</h2>
       </div>
 
-      <div class="card">
-        <p style="color: var(--text-muted); margin-bottom: 1rem;">
-          In traditional music apps, you have to manually record chord changes. Here, the built-in <strong>Harmonic Engine</strong> shifts the harmony automatically behind your drawing!
-        </p>
-        <p style="color: var(--text-muted); margin-bottom: 1rem;">
-          Open <strong>⚙ Controls</strong> and select a progression under <em>Harmonic Progression</em>:
-        </p>
+      <div class="grid-2">
+        <div class="card">
+          <h4 style="color: var(--accent-indigo); margin-bottom: 0.4rem;">🎛️ Studio Deck, Collapsible Rail &amp; A/B Snapshots (<kbd>V</kbd>)</h4>
+          <p style="font-size: 0.9rem; color: var(--text-muted);">
+            <strong>Studio</strong> keeps a collapsible right-hand rack open with <em>Layers</em> (mixer, Docked Inspector, Undo depth badge, and <strong>Save A / A/B</strong> snapshot comparison), <em>Master FX</em> (Tempo, <strong>Groove Swing</strong> 0–75%, Space Reverb, Stereo Width, Tape Warmth, Ducking, Scale, Root, <strong>Beat Grid</strong> overlay, and <strong>Next-Bar Quantize</strong>), and <em>Scenes</em>. Press <kbd>V</kbd> anytime to switch to <strong>Zen</strong> for a full-bleed canvas.
+          </p>
+        </div>
 
-        <div class="grid-3">
-          <div style="background: rgba(255,255,255,0.03); padding: 1rem; border-radius: 10px; border: 1px solid var(--border);">
-            <h4 style="color: var(--accent-indigo); margin-bottom: 0.25rem;">Neo-Riemannian Ambient</h4>
-            <p style="font-size: 0.825rem; color: var(--text-muted);">D Dorian → F Lydian → C Major → A Minor. Dreamy, cinematic modal interchange that feels like flying over mountains.</p>
-          </div>
-          <div style="background: rgba(255,255,255,0.03); padding: 1rem; border-radius: 10px; border: 1px solid var(--border);">
-            <h4 style="color: var(--accent-amber); margin-bottom: 0.25rem;">Eno Modal Drift</h4>
-            <p style="font-size: 0.825rem; color: var(--text-muted);">A slow 4-measure pendulum between Dm7 and G9 with continuous fifths. Pure 1970s tape ambient drift.</p>
-          </div>
-          <div style="background: rgba(255,255,255,0.03); padding: 1rem; border-radius: 10px; border: 1px solid var(--border);">
-            <h4 style="color: var(--accent-purple); margin-bottom: 0.25rem;">Cathedral Swell</h4>
-            <p style="font-size: 0.825rem; color: var(--text-muted);">F Lydian → Am9 → Cmaj7 → Dm7. Majestic, uplifting, spiritual harmonies that resonate like sunlight through stained glass.</p>
-          </div>
+        <div class="card">
+          <h4 style="color: var(--accent-purple); margin-bottom: 0.4rem;">🎬 Scene Arranger &amp; Crossfade Morphing</h4>
+          <p style="font-size: 0.9rem; color: var(--text-muted);">
+            Open the <strong>Scenes</strong> tab in the Studio Deck to capture multiple musical movements and sequence them automatically. Set <strong>Morph Duration</strong> from <code>2s</code> to <code>25s</code>, choose between <strong>Lush Overlap</strong>, <strong>Reverb Wash</strong>, or <strong>Linear</strong> transitions, and enable <strong>Bar Quantize</strong> to lock scene switches and mute/unmute toggles to the next bar downbeat.
+          </p>
+        </div>
+
+        <div class="card">
+          <h4 style="color: var(--accent-emerald); margin-bottom: 0.4rem;">🪄 Assisted Drawing (<kbd>A</kbd>) &amp; Canvas Gestures</h4>
+          <p style="font-size: 0.9rem; color: var(--text-muted);">
+            Press <kbd>A</kbd> (or toggle <strong>Assist</strong>) to automatically place <strong>2 to 5 harmonizing companion lines</strong> in key (<strong>Same Ink</strong> or <strong>Mixed Instruments</strong>). On trackpads and touchscreens, use <strong>Marquee Box Select</strong> (<kbd>⌘ / Ctrl + Drag</kbd>), <strong>Duplicate-Drag</strong> (<kbd>⌥ Option + Drag Line</kbd>), and <strong>2-Finger Pinch / Drag</strong> for touch octave zoom and vertical pitch scrolling.
+          </p>
+        </div>
+
+        <div class="card">
+          <h4 style="color: var(--accent-amber); margin-bottom: 0.4rem;">🎹 Web MIDI I/O &amp; MIDI Learn</h4>
+          <p style="font-size: 0.9rem; color: var(--text-muted);">
+            Expand <strong>MIDI I/O</strong> in <em>Master FX</em> and click <strong>Enable Web MIDI</strong> to send polyphonic notes to external hardware synths or DAWs (Auto per-ink channels with Ch10 drums, or fixed Ch 1–16). Route external keyboards in, or click <strong>Learn CC</strong> to map hardware knobs directly to Tempo, Reverb, Stereo Width, Tape Warmth, Ducking, Swing, or the selected line's Tone, Distortion, and Volume.
+          </p>
+        </div>
+
+        <div class="card" style="grid-column: 1 / -1;">
+          <h4 style="color: var(--accent-indigo); margin-bottom: 0.4rem;">💿 Record, Lossless WAV &amp; Per-Layer Stems Export</h4>
+          <p style="font-size: 0.9rem; color: var(--text-muted);">
+            Click <strong>Record</strong> in the top bar to render your composition faster than real time as a <strong>192 kbps MP3</strong> or <strong>Lossless WAV (16-bit PCM)</strong>, export individual <strong>Per-Layer Stems</strong> cleanly isolated per track for DAW mixing, or capture a real-time <strong>Live Record</strong> take while performing.
+          </p>
         </div>
       </div>
     </section>
@@ -1002,16 +1010,16 @@
         </div>
 
         <div class="card">
-          <h4>9. Hit "Sync" to Lock, or "Randomize" to Scatter</h4>
+          <h4>9. Re-draw Paths, Move in Re-draw Mode, Sync Phase, or Randomize Polyrhythms</h4>
           <p style="font-size: 0.9rem; color: var(--text-muted); margin-top: 0.25rem;">
-            Press <kbd>R</kbd> or click <strong>Sync</strong> to align all moving playhead dots to line starts simultaneously. Click <strong>Randomize</strong> (or press <kbd>Shift+R</kbd>) to scatter all moving dots to random positions along each line for generative polyrhythms and evolving phase patterns.
+            Press <kbd>R</kbd> to enter <strong>Re-draw Mode</strong>: grab any line to move or multi-select it, or draw in empty space to reshape the selected curve while keeping all its sound settings (or press <kbd>D</kbd> / <kbd>Esc</kbd> to return to Draw Mode). Click <strong>Sync</strong> in the toolbar (or press <kbd>0</kbd>) to align playheads to phase 0, or click <strong>Randomize</strong> (<kbd>Shift+R</kbd>) to scatter playheads for evolving polyrhythms.
           </p>
         </div>
 
         <div class="card">
-          <h4>10. 📁 Save and Share Your Scores</h4>
+          <h4>10. Save, Export Audio &amp; Stems, and Share Your Scores</h4>
           <p style="font-size: 0.9rem; color: var(--text-muted); margin-top: 0.25rem;">
-            Created something magical? Open <strong>⚙ Controls</strong> and click <strong>Save File</strong> to download your song as a tiny JSON file. You can load it anytime or share it with friends!
+            Created something magical? Press <kbd>⌘S</kbd> to save a preset or export a backup JSON file, click <strong>Record</strong> to bounce 192 kbps MP3, lossless WAV, or per-layer stems, or click <strong>Share</strong> in the bottom bar to copy a shareable URL!
           </p>
         </div>
       </div>
@@ -1034,7 +1042,7 @@
             <li>Line 1: Indigo (Solid) straight line at the bottom</li>
             <li>Line 2: Spruce (Solid) gentle wave in the middle</li>
             <li>Line 3: Violet (Dotted) arch near the top (Fluctuation: 20%)</li>
-            <li>Progression: Neo-Riemannian Ambient</li>
+            <li>Master Acoustics: Cathedral Space &amp; Deep Ocean Breathing</li>
           </ul>
         </div>
 
@@ -1089,59 +1097,39 @@
               <td>Starts or pauses all playheads on the canvas</td>
             </tr>
             <tr>
-              <td>Resync All Lines</td>
-              <td><kbd>R</kbd></td>
-              <td>Snaps all playheads back to line starts simultaneously</td>
+              <td>Fast-Forward / Rewind</td>
+              <td>Hold <kbd>+</kbd> / <kbd>-</kbd></td>
+              <td>Scrubs selected line (or all lines) forward or backward at 4x speed</td>
             </tr>
             <tr>
-              <td>Undo / Redo</td>
-              <td><kbd>⌘Z</kbd> / <kbd>⌘Y</kbd></td>
-              <td>Undo or redo drawing, moving, or parameter changes</td>
+              <td>Sync All Playheads</td>
+              <td><kbd>0</kbd></td>
+              <td>Resets all playheads simultaneously to phase 0 (line start) for locked alignment</td>
             </tr>
             <tr>
-              <td>Copy / Paste</td>
-              <td><kbd>⌘C</kbd> / <kbd>⌘V</kbd></td>
-              <td>Copies selected line and pastes with all settings preserved</td>
+              <td>Draw Score / Re-draw Selected Line</td>
+              <td><kbd>D</kbd> / <kbd>R</kbd></td>
+              <td><kbd>D</kbd> returns to Draw Score Mode; <kbd>R</kbd> toggles Re-draw Mode (drag any line to move; draw empty space to replace path while keeping sound settings)</td>
             </tr>
             <tr>
-              <td>Duplicate Selected</td>
-              <td><kbd>⌘D</kbd></td>
-              <td>Instantly clones the selected line offset by 24px</td>
+              <td>Beat Grid / Bar Quantize</td>
+              <td><kbd>G</kbd> / <kbd>Q</kbd></td>
+              <td>Toggles the 4-beat canvas Beat Grid overlay (<kbd>G</kbd>) or Next-Bar Quantize (<kbd>Q</kbd>)</td>
             </tr>
             <tr>
-              <td>Delete Selected</td>
-              <td><kbd>Backspace</kbd> / <kbd>Del</kbd></td>
-              <td>Removes the selected stroke from the canvas</td>
+              <td>Randomize Playheads</td>
+              <td><kbd>Shift+R</kbd></td>
+              <td>Scatters all moving playheads to random phase positions for generative polyrhythms</td>
             </tr>
             <tr>
-              <td>Select Inks (1 - 7)</td>
-              <td><kbd>1</kbd> to <kbd>7</kbd></td>
-              <td>Quickly switches between Indigo, Amber, Spruce, Violet, Rose, Slate, Onyx</td>
+              <td>Toggle Assisted Drawing</td>
+              <td><kbd>A</kbd></td>
+              <td>Toggles Assisted Drawing on/off (automatically places 2–5 harmonizing companion lines)</td>
             </tr>
             <tr>
-              <td>Texture Modes</td>
-              <td><kbd>Q</kbd> / <kbd>W</kbd> / <kbd>E</kbd></td>
-              <td>Switch between Solid (Q), Dotted (W), and Roll (E) textures</td>
-            </tr>
-            <tr>
-              <td>Draw Straight Bar</td>
-              <td>Hold <kbd>Shift</kbd></td>
-              <td>Draws a perfectly horizontal note bar while dragging</td>
-            </tr>
-            <tr>
-              <td>Scroll Pitch Field</td>
-              <td><kbd>Mouse Wheel</kbd></td>
-              <td>Scrolls through the 8-octave frequency world</td>
-            </tr>
-            <tr>
-              <td>Toggle Traversal (Straight / Bounce)</td>
-              <td><kbd>T</kbd></td>
-              <td>Toggles playhead traversal between Straight loop and Bounce back-and-forth</td>
-            </tr>
-            <tr>
-              <td>Line Speed / Timer</td>
-              <td><kbd>←</kbd> / <kbd>→</kbd></td>
-              <td>Modifies speed multiplier by ±0.1x or timer duration by ±5s</td>
+              <td>Toggle View (Studio ↔ Zen)</td>
+              <td><kbd>V</kbd></td>
+              <td>Toggles between Studio Deck and Zen Canvas views</td>
             </tr>
             <tr>
               <td>Toggle Draw / Live Mode</td>
@@ -1154,9 +1142,84 @@
               <td>Expands canvas to fill your entire display</td>
             </tr>
             <tr>
-              <td>Cycle View Modes</td>
-              <td><kbd>V</kbd></td>
-              <td>Cycles through Studio Deck → Zen Canvas → Scene Arranger</td>
+              <td>Select Inks (1 - 7)</td>
+              <td><kbd>1</kbd> to <kbd>7</kbd></td>
+              <td>Quickly switches between Indigo, Amber, Spruce, Violet, Rose, Yellow, Onyx</td>
+            </tr>
+            <tr>
+              <td>Mute / Solo / Layers Tab</td>
+              <td><kbd>M</kbd> / <kbd>S</kbd></td>
+              <td>Mutes (<kbd>M</kbd>) or Solos (<kbd>S</kbd>) the selected line; pressing <kbd>M</kbd> with no selection opens the Studio Layers mixer</td>
+            </tr>
+            <tr>
+              <td>Toggle Traversal (Restart / Bounce)</td>
+              <td><kbd>T</kbd></td>
+              <td>Toggles playhead traversal between Restart loop and Bounce back-and-forth</td>
+            </tr>
+            <tr>
+              <td>Line Volume</td>
+              <td><kbd>↑</kbd> / <kbd>↓</kbd> or <kbd>[</kbd> / <kbd>]</kbd></td>
+              <td>Adjusts selected line volume by ±5% (hold <kbd>Shift</kbd> for ±15%)</td>
+            </tr>
+            <tr>
+              <td>Line Speed / Timer</td>
+              <td><kbd>←</kbd> / <kbd>→</kbd></td>
+              <td>Slows down (<kbd>←</kbd>) or speeds up (<kbd>→</kbd>) all selected lines (±0.1x speed or ∓5s timer; hold <kbd>Shift</kbd> for 5x step)</td>
+            </tr>
+            <tr>
+              <td>Draw Straight Bar</td>
+              <td>Hold <kbd>Shift</kbd></td>
+              <td>Draws a perfectly horizontal note bar while dragging</td>
+            </tr>
+            <tr>
+              <td>Scroll Pitch Field</td>
+              <td><kbd>Mouse Wheel</kbd> / <kbd>PageUp</kbd> / <kbd>PageDown</kbd> / <kbd>Home</kbd></td>
+              <td>Scrolls vertically across the frequency spectrum, shifts by an octave, or resets to the middle register</td>
+            </tr>
+            <tr>
+              <td>Undo / Redo</td>
+              <td><kbd>⌘Z</kbd> / <kbd>⌘Shift+Z</kbd> / <kbd>Ctrl+Y</kbd></td>
+              <td>Undo or redo drawing, moving, or parameter changes</td>
+            </tr>
+            <tr>
+              <td>Copy / Paste / Duplicate</td>
+              <td><kbd>⌘C</kbd> / <kbd>⌘V</kbd> / <kbd>⌘D</kbd></td>
+              <td>Copies, pastes, or duplicates the selected line with all settings preserved</td>
+            </tr>
+            <tr>
+              <td>Select All</td>
+              <td><kbd>⌘A</kbd></td>
+              <td>Selects all lines on the canvas</td>
+            </tr>
+            <tr>
+              <td>Marquee Box Multi-Select</td>
+              <td><kbd>⌘ / Ctrl + Drag</kbd></td>
+              <td>Draws a selection rectangle to select multiple lines at once</td>
+            </tr>
+            <tr>
+              <td>Duplicate &amp; Drag Line(s)</td>
+              <td><kbd>⌥ Option + Drag Line</kbd></td>
+              <td>Clones and repositions the selected line(s) in a single gesture</td>
+            </tr>
+            <tr>
+              <td>Touch Octave Zoom &amp; Pitch Scroll</td>
+              <td><kbd>2-Finger Pinch / Drag</kbd></td>
+              <td>Pinch to zoom visible octaves or two-finger drag vertically to pan pitch range on touchscreens</td>
+            </tr>
+            <tr>
+              <td>Save Preset</td>
+              <td><kbd>⌘S</kbd> / <kbd>Ctrl+S</kbd></td>
+              <td>Quick-saves the current composition preset</td>
+            </tr>
+            <tr>
+              <td>Delete Selected</td>
+              <td><kbd>Backspace</kbd> / <kbd>Del</kbd></td>
+              <td>Removes the selected stroke(s) from the canvas</td>
+            </tr>
+            <tr>
+              <td>Cancel / Deselect / Shortcuts Help</td>
+              <td><kbd>Esc</kbd> / <kbd>?</kbd></td>
+              <td><kbd>Esc</kbd> closes open modals/drawers, exits Re-draw Mode, or deselects lines; <kbd>?</kbd> opens the in-app shortcuts cheat sheet</td>
             </tr>
           </tbody>
         </table>
@@ -1180,13 +1243,13 @@
       const current = html.getAttribute('data-theme') || 'dark';
       const next = current === 'dark' ? 'light' : 'dark';
       html.setAttribute('data-theme', next);
-      localStorage.setItem('theme', next);
+      localStorage.setItem('harmonic_theme', next);
       const btnText = document.getElementById('themeBtnText');
       if (btnText) btnText.textContent = next === 'dark' ? 'Light Theme' : 'Dark Theme';
     }
 
-    // Initialize saved theme
-    const savedTheme = localStorage.getItem('theme') || 'dark';
+    // Initialize saved theme (shared with index.html)
+    const savedTheme = localStorage.getItem('harmonic_theme') || localStorage.getItem('theme') || 'dark';
     document.documentElement.setAttribute('data-theme', savedTheme);
     const initBtnText = document.getElementById('themeBtnText');
     if (initBtnText) initBtnText.textContent = savedTheme === 'dark' ? 'Light Theme' : 'Dark Theme';

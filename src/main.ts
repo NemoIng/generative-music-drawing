@@ -1,63 +1,57 @@
 import './style.css';
 import { ScaleQuantizer } from './audio/scaleQuantizer';
 import { SCALES, ROOT_NOTES } from './audio/scales';
-import { StrokeManager, getNextVersionName } from './engine/strokeManager';
+import { StrokeManager } from './engine/strokeManager';
 import { CanvasRenderer } from './canvas/renderer';
 import { InputHandler, DrawShape } from './canvas/inputHandler';
-import { DrawnStroke, StrokeStyle, TraversalMode, HarmonizerMode, BreathingMode, XAxisModulationMode, LoopQuantizeMode, WaveShapeType, SavedComposition, MorphCurveMode } from './engine/types';
+import {
+  DrawnStroke,
+  StrokeStyle,
+  TraversalMode,
+  HarmonizerMode,
+  BreathingMode,
+  XAxisModulationMode,
+  SavedComposition,
+} from './engine/types';
 import { INSTRUMENTS, DEFAULT_INSTRUMENT, getInstrument, getInstrumentColor } from './audio/instruments';
 import { TEMPLATES, buildTemplateStrokes } from './audio/templates';
 import { soundEngine, ReverbType } from './audio/audioContext';
 import { SplinePath, Point2D } from './math/types';
-import { LiveRecorder, simulateAndExportMp3, downloadBlob } from './audio/mp3Export';
+import { LiveRecorder } from './audio/mp3Export';
 import { ViewModeManager, ViewMode } from './ui/viewModes';
 import { SceneManager, SceneData, SceneSequenceTickResult } from './engine/sceneManager';
 import { generateAssistedStrokes, AssistedLineCount, AssistedInstrumentMode } from './engine/assistedDrawing';
+import {
+  STORAGE_KEYS,
+  readStorageKey,
+  writeStorageKey,
+  loadSavedPresets,
+  savePreset,
+} from './ui/storage';
+import { showToast } from './ui/toast';
+import { createShareUrl, decodeCompositionBase64Url, fetchSharedTrack } from './ui/shareService';
+import { bindSliderUndo } from './ui/sliderUndo';
+import { createKeydownHandler } from './ui/shortcuts';
+import { PresetModalController } from './ui/presetModalController';
+import { RecordExportController } from './ui/recordExportController';
+import { SceneUiController } from './ui/sceneUiController';
+import { StudioDeckController } from './ui/studioDeckController';
+import { activateModalFocusTrap } from './ui/modalFocus';
+import { showConfirmDialog, isConfirmDialogOpen, cancelConfirmDialog } from './ui/confirmModal';
+import { OnboardingController } from './ui/onboarding';
+import { ABSnapshotManager } from './ui/abSnapshot';
+import { midiController } from './audio/midiController';
 
 // DOM Elements
 const canvasEl = document.getElementById('musicCanvas') as HTMLCanvasElement;
 const templateSelect = document.getElementById('templateSelect') as HTMLSelectElement;
-const saveTemplateBtn = document.getElementById('saveTemplateBtn') as HTMLButtonElement;
 const loadTemplateFileBtn = document.getElementById('loadTemplateFileBtn') as HTMLButtonElement;
 const topLoadPresetBtn = document.getElementById('topLoadPresetBtn') as HTMLButtonElement | null;
-const topSavePresetBtn = document.getElementById('topSavePresetBtn') as HTMLButtonElement | null;
-const topDeletePresetBtn = document.getElementById('topDeletePresetBtn') as HTMLButtonElement | null;
 const loadFileInput = document.getElementById('loadFileInput') as HTMLInputElement;
-const savedTemplatesGroup = document.getElementById('savedTemplatesGroup') as HTMLOptGroupElement;
-const savePresetModal = document.getElementById('savePresetModal') as HTMLElement;
-const closeSavePresetModalBtn = document.getElementById('closeSavePresetModalBtn') as HTMLButtonElement;
-const savePresetNameInput = document.getElementById('savePresetNameInput') as HTMLInputElement;
-const overwritePresetBtn = document.getElementById('overwritePresetBtn') as HTMLButtonElement;
-const saveNewVersionBtn = document.getElementById('saveNewVersionBtn') as HTMLButtonElement;
-const saveCustomNameBtn = document.getElementById('saveCustomNameBtn') as HTMLButtonElement;
-const saveExportJsonCheck = document.getElementById('saveExportJsonCheck') as HTMLInputElement;
-const savedPresetsCountBadge = document.getElementById('savedPresetsCountBadge') as HTMLElement | null;
-const savedPresetsListContainer = document.getElementById('savedPresetsListContainer') as HTMLElement | null;
 
-// Record & MP3 Export Controls
-const recordModalBtn = document.getElementById('recordModalBtn') as HTMLButtonElement | null;
-const recordModal = document.getElementById('recordModal') as HTMLElement | null;
-const closeRecordModalBtn = document.getElementById('closeRecordModalBtn') as HTMLButtonElement | null;
-const tabSimulateBtn = document.getElementById('tabSimulateBtn') as HTMLButtonElement | null;
-const tabLiveBtn = document.getElementById('tabLiveBtn') as HTMLButtonElement | null;
-const tabSimulatePane = document.getElementById('tabSimulatePane') as HTMLElement | null;
-const tabLivePane = document.getElementById('tabLivePane') as HTMLElement | null;
-const simDurationInput = document.getElementById('simDurationInput') as HTMLInputElement | null;
-const durationPillBtns = document.querySelectorAll<HTMLButtonElement>('.duration-pill-btn');
-const simProgressWrap = document.getElementById('simProgressWrap') as HTMLElement | null;
-const simProgressBar = document.getElementById('simProgressBar') as HTMLElement | null;
-const simProgressStatus = document.getElementById('simProgressStatus') as HTMLElement | null;
-const startSimulateBtn = document.getElementById('startSimulateBtn') as HTMLButtonElement | null;
-const startLiveRecBtn = document.getElementById('startLiveRecBtn') as HTMLButtonElement | null;
-const liveRecordingBanner = document.getElementById('liveRecordingBanner') as HTMLElement | null;
-const liveRecTimer = document.getElementById('liveRecTimer') as HTMLElement | null;
-const stopLiveRecBtn = document.getElementById('stopLiveRecBtn') as HTMLButtonElement | null;
-const cancelLiveRecBtn = document.getElementById('cancelLiveRecBtn') as HTMLButtonElement | null;
+let currentLoadedPresetName: string | null = 'Cathedral of Solitude';
+let currentLoadedTemplateId = 'cathedralSolitude';
 
-let liveRecorder: LiveRecorder | null = null;
-let isSimulating = false;
-
-let currentLoadedPresetName: string | null = 'Deep Cosmic Drone';
 const shapeButtons = document.querySelectorAll<HTMLButtonElement>('#shapeControl .seg-btn');
 const autoSmoothBtn = document.getElementById('autoSmoothBtn') as HTMLButtonElement;
 const snapPitchBtn = document.getElementById('snapPitchBtn') as HTMLButtonElement;
@@ -70,7 +64,6 @@ const drawerAssistCountSelect = document.getElementById('drawerAssistCountSelect
 const drawerAssistInkSelect = document.getElementById('drawerAssistInkSelect') as HTMLSelectElement | null;
 const swatchButtons = document.querySelectorAll<HTMLButtonElement>('#instrumentPalette .swatch-btn');
 const xAxisSelect = document.getElementById('xAxisSelect') as HTMLSelectElement;
-const trackTraversalButtons = document.querySelectorAll<HTMLButtonElement>('#trackTraversalControl .seg-btn');
 const scaleSelect = document.getElementById('scaleSelect') as HTMLSelectElement;
 const rootSelect = document.getElementById('rootSelect') as HTMLSelectElement;
 const generalSyncSelect = document.getElementById('generalSyncSelect') as HTMLSelectElement;
@@ -83,44 +76,6 @@ const spaceSlider = document.getElementById('spaceSlider') as HTMLInputElement;
 const spaceVal = document.getElementById('spaceVal') as HTMLSpanElement;
 const octavesSlider = document.getElementById('octavesSlider') as HTMLInputElement;
 const octavesVal = document.getElementById('octavesVal') as HTMLSpanElement;
-const trackInspectorBar = document.getElementById('trackInspectorBar') as HTMLElement;
-const trackBadgeDot = document.getElementById('trackBadgeDot') as HTMLElement;
-const trackLabel = document.getElementById('trackLabel') as HTMLSpanElement;
-const trackVolSlider = document.getElementById('trackVolSlider') as HTMLInputElement;
-const trackVolVal = document.getElementById('trackVolVal') as HTMLSpanElement;
-const trackReverbSlider = document.getElementById('trackReverbSlider') as HTMLInputElement | null;
-const trackReverbVal = document.getElementById('trackReverbVal') as HTMLSpanElement | null;
-const trackFluctuationSlider = document.getElementById('trackFluctuationSlider') as HTMLInputElement | null;
-const trackFluctuationVal = document.getElementById('trackFluctuationVal') as HTMLSpanElement | null;
-const trackDistortionSlider = document.getElementById('trackDistortionSlider') as HTMLInputElement | null;
-const trackDistortionVal = document.getElementById('trackDistortionVal') as HTMLSpanElement | null;
-const trackFilterSlider = document.getElementById('trackFilterSlider') as HTMLInputElement | null;
-const trackFilterVal = document.getElementById('trackFilterVal') as HTMLSpanElement | null;
-const trackLofiSlider = document.getElementById('trackLofiSlider') as HTMLInputElement | null;
-const trackLofiVal = document.getElementById('trackLofiVal') as HTMLSpanElement | null;
-const waveShapeSelect = document.getElementById('waveShapeSelect') as HTMLSelectElement;
-const waveSineBtn = document.getElementById('waveSineBtn') as HTMLButtonElement;
-const waveAmpSlider = document.getElementById('waveAmpSlider') as HTMLInputElement;
-const waveAmpVal = document.getElementById('waveAmpVal') as HTMLSpanElement;
-const wavePeriodSlider = document.getElementById('wavePeriodSlider') as HTMLInputElement;
-const wavePeriodVal = document.getElementById('wavePeriodVal') as HTMLSpanElement;
-const muteBtn = document.getElementById('muteBtn') as HTMLButtonElement;
-const soloBtn = document.getElementById('soloBtn') as HTMLButtonElement;
-const redrawTrackBtn = document.getElementById('redrawTrackBtn') as HTMLButtonElement | null;
-const duplicateTrackBtn = document.getElementById('duplicateTrackBtn') as HTMLButtonElement | null;
-const deleteTrackBtn = document.getElementById('deleteTrackBtn') as HTMLButtonElement;
-const deselectTrackBtn = document.getElementById('deselectTrackBtn') as HTMLButtonElement;
-const trackTextureButtons = document.querySelectorAll<HTMLButtonElement>('#trackTextureControl .seg-btn');
-const speedModeSpeedBtn = document.getElementById('speedModeSpeedBtn') as HTMLButtonElement | null;
-const speedModeTimerBtn = document.getElementById('speedModeTimerBtn') as HTMLButtonElement | null;
-const speedModeBarsBtn = document.getElementById('speedModeBarsBtn') as HTMLButtonElement | null;
-const trackSpeedControls = document.getElementById('trackSpeedControls') as HTMLElement | null;
-const trackBarsControls = document.getElementById('trackBarsControls') as HTMLElement | null;
-const trackSpeedSlider = document.getElementById('trackSpeedSlider') as HTMLInputElement | null;
-const trackSpeedVal = document.getElementById('trackSpeedVal') as HTMLSpanElement | null;
-const speedPills = document.querySelectorAll<HTMLButtonElement>('#speedPresetPills .speed-pill');
-const trackSyncSelect = document.getElementById('trackSyncSelect') as HTMLSelectElement | null;
-const durationPills = document.querySelectorAll<HTMLButtonElement>('#durationPresetPills .speed-pill');
 const resyncBtn = document.getElementById('resyncBtn') as HTMLButtonElement;
 const randomizePlayheadsBtn = document.getElementById('randomizePlayheadsBtn') as HTMLButtonElement;
 const undoBtn = document.getElementById('undoBtn') as HTMLButtonElement;
@@ -142,151 +97,21 @@ const closeModalBtn = document.getElementById('closeModalBtn') as HTMLButtonElem
 const shortcutsBtn = document.getElementById('shortcutsBtn') as HTMLButtonElement | null;
 const shortcutsModal = document.getElementById('shortcutsModal') as HTMLDivElement | null;
 const closeShortcutsModalBtn = document.getElementById('closeShortcutsModalBtn') as HTMLButtonElement | null;
+const replayTourBtn = document.getElementById('replayTourBtn') as HTMLButtonElement | null;
 const shareLinkBtn = document.getElementById('shareLinkBtn') as HTMLButtonElement | null;
 const audioUnlockPrompt = document.getElementById('audioUnlockPrompt') as HTMLDivElement | null;
 const startAudioBannerBtn = document.getElementById('startAudioBannerBtn') as HTMLButtonElement | null;
 
-export function dismissWelcomePrompt(): void {
-  if (audioUnlockPrompt) {
-    audioUnlockPrompt.classList.add('hidden');
-    audioUnlockPrompt.style.display = 'none';
-    audioUnlockPrompt.style.pointerEvents = 'none';
-  }
-}
-const statStrokes = document.getElementById('statStrokes') as HTMLSpanElement | null;
 const statMode = document.getElementById('statMode') as HTMLSpanElement | null;
-const statTempo = document.getElementById('statTempo') as HTMLSpanElement | null;
-const statInstrument = document.getElementById('statInstrument') as HTMLSpanElement | null;
-const statLoopSync = document.getElementById('statLoopSync') as HTMLSpanElement | null;
-const statPitchSnap = document.getElementById('statPitchSnap') as HTMLSpanElement | null;
 const statAudio = document.getElementById('statAudio') as HTMLButtonElement | HTMLSpanElement | null;
-
-/**
- * Synchronizes the bottom bar audio status chip (#statAudio) with Web Audio engine state.
- */
-export function updateAudioStatusChip(): void {
-  if (!statAudio) return;
-  if (soundEngine.isReady) {
-    statAudio.textContent = 'Audio: Active';
-    statAudio.setAttribute('data-tooltip', 'Audio Engine Active: Web Audio synthesizer running');
-    statAudio.classList.remove('chip-unstarted');
-    statAudio.classList.add('chip-ready');
-  } else {
-    statAudio.textContent = 'Click to Start Audio';
-    statAudio.setAttribute('data-tooltip', 'Click to Start Audio Engine');
-    statAudio.classList.add('chip-unstarted');
-    statAudio.classList.remove('chip-ready');
-  }
-}
-
-// Reactively update audio status chip whenever AudioContext state changes (running/suspended)
-soundEngine.onStateChange = () => {
-  updateAudioStatusChip();
-};
-
-export async function ensureAudioUnlocked(): Promise<void> {
-  if (!soundEngine.isReady) {
-    try {
-      await soundEngine.init();
-      try {
-        LiveRecorder.preloadWorklet(soundEngine.context);
-      } catch {
-        // optional worklet preload
-      }
-      strokeManager.activateAudioVoices();
-    } catch (err) {
-      console.warn('Audio initialization deferred:', err);
-    }
-  } else {
-    strokeManager.activateAudioVoices();
-  }
-  updateAudioStatusChip();
-  dismissWelcomePrompt();
-}
-
-startAudioBannerBtn?.addEventListener('click', async (e) => {
-  e.stopPropagation();
-  await ensureAudioUnlocked();
-});
-audioUnlockPrompt?.addEventListener('click', async () => {
-  await ensureAudioUnlocked();
-});
-statAudio?.addEventListener('click', async () => {
-  await ensureAudioUnlocked();
-});
 const contextHelp = document.getElementById('contextHelp') as HTMLSpanElement;
-const trackDurationGroup = document.getElementById('trackDurationGroup') as HTMLElement;
-const trackDurationSlider = document.getElementById('trackDurationSlider') as HTMLInputElement;
-const trackDurationVal = document.getElementById('trackDurationVal') as HTMLSpanElement;
 const defaultHarmonizerSelect = document.getElementById('defaultHarmonizerSelect') as HTMLSelectElement | null;
-const trackHarmonizerControl = document.getElementById('trackHarmonizerControl') as HTMLElement | null;
-const trackHarmonizerSelect = document.getElementById('trackHarmonizerSelect') as HTMLSelectElement | null;
 const breathingControlGroup = document.getElementById('breathingControlGroup') as HTMLElement | null;
 const breathingSelect = document.getElementById('breathingSelect') as HTMLSelectElement | null;
-
-const BREATHING_GENERAL_TOOLTIP =
-  'Timbral Breathing: Adds natural breathing movement — Gentle Swell (soft warm rise and fall), Deep Ocean (slow immersive waves), Tape Drift (dreamy floating texture), or Off (steady, unchanging tones).';
-
-function updateBreathingTooltip(_mode?: BreathingMode): void {
-  if (breathingControlGroup) {
-    breathingControlGroup.setAttribute('data-tooltip', BREATHING_GENERAL_TOOLTIP);
-  }
-}
 
 // Layers Mixer & Presets Dirty State Controls
 const layerCountBadge = document.getElementById('layerCountBadge') as HTMLSpanElement | null;
 const dirtyIndicator = document.getElementById('dirtyIndicator') as HTMLSpanElement | null;
-const quickSaveBtn = document.getElementById('quickSaveBtn') as HTMLButtonElement | null;
-
-let isCompositionDirty = false;
-
-function setCompositionDirty(dirty: boolean): void {
-  isCompositionDirty = dirty;
-  if (dirtyIndicator) {
-    dirtyIndicator.classList.toggle('is-visible', dirty);
-    dirtyIndicator.style.opacity = dirty ? '1' : '0';
-    dirtyIndicator.style.visibility = dirty ? 'visible' : 'hidden';
-    dirtyIndicator.style.display = 'inline-flex';
-  }
-  const baseTitle = 'Harmonic Geometry • Generative Music Drawing';
-  document.title = dirty ? `• ${baseTitle}` : baseTitle;
-}
-
-function formatDurationSec(sec: number): string {
-  if (sec < 60) return `${sec}s`;
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return s > 0 ? `${m}m ${s}s` : `${m}m`;
-}
-
-function applyGeneralSync(val: string): void {
-  if (val.startsWith('speed:')) {
-    const mult = parseFloat(val.replace('speed:', ''));
-    strokeManager.setDefaultSpeedMode('speed');
-    strokeManager.setDefaultSpeedMultiplier(mult);
-    if (statLoopSync && !strokeManager.selectedStrokeId) {
-      statLoopSync.textContent = `Default: ${mult}x Speed`;
-    }
-  } else if (val.startsWith('timer:')) {
-    const dur = parseInt(val.replace('timer:', ''), 10);
-    strokeManager.setDefaultSpeedMode('timer');
-    strokeManager.setDefaultDuration(dur);
-    if (statLoopSync && !strokeManager.selectedStrokeId) {
-      statLoopSync.textContent = `Default: ${formatDurationSec(dur)} Timer`;
-    }
-  } else if (val.startsWith('bars:')) {
-    const mode = val.replace('bars:', '') as LoopQuantizeMode;
-    strokeManager.setDefaultSpeedMode('bars');
-    strokeManager.setLoopQuantizeMode(mode);
-    if (statLoopSync && !strokeManager.selectedStrokeId) {
-      const defSyncLabel = mode === '1bar' ? '1 Bar'
-        : (mode === '2bars' ? '2 Bars'
-        : (mode === '4bars' ? '4 Bars'
-        : (mode === '8bars' ? '8 Bars' : 'Freeform')));
-      statLoopSync.textContent = `Default: ${defSyncLabel}`;
-    }
-  }
-}
 
 // Pitch Navigator Controls
 const pitchNavigator = document.getElementById('pitchNavigator') as HTMLElement;
@@ -315,54 +140,12 @@ const studioDeckEl = document.getElementById('studioDeck') as HTMLElement | null
 const zenPillDockEl = document.getElementById('zenPillDock') as HTMLElement | null;
 const zenContextPillEl = document.getElementById('zenContextPill') as HTMLElement | null;
 
-// Studio Deck Elements
-const studioTabBtnMixer = document.getElementById('studioTabBtnMixer') as HTMLButtonElement | null;
-const studioTabBtnMaster = document.getElementById('studioTabBtnMaster') as HTMLButtonElement | null;
-const studioTabBtnScenes = document.getElementById('studioTabBtnScenes') as HTMLButtonElement | null;
-const studioTabMixer = document.getElementById('studioTabMixer') as HTMLElement | null;
-const studioTabMaster = document.getElementById('studioTabMaster') as HTMLElement | null;
-const studioTabScenes = document.getElementById('studioTabScenes') as HTMLElement | null;
-const studioMixerList = document.getElementById('studioMixerList') as HTMLElement | null;
 const studioLayerCount = document.getElementById('studioLayerCount') as HTMLSpanElement | null;
-const studioMuteAllBtn = document.getElementById('studioMuteAllBtn') as HTMLButtonElement | null;
-const studioUnmuteAllBtn = document.getElementById('studioUnmuteAllBtn') as HTMLButtonElement | null;
-
-// Studio Docked Inspector
-const studioDockedInspector = document.getElementById('studioDockedInspector') as HTMLElement | null;
-const dockedInspectorToggleBtn = document.getElementById('dockedInspectorToggleBtn') as HTMLButtonElement | null;
-const studioBadgeDot = document.getElementById('dockedBadgeDot') as HTMLElement | null;
-const studioInspectorLabel = document.getElementById('dockedInspectorLabel') as HTMLElement | null;
-const studioInspectorSub = document.getElementById('dockedInspectorSub') as HTMLElement | null;
-const studioInspectorContent = document.getElementById('dockedInspectorContent') as HTMLElement | null;
-const studioVoicingSelect = document.getElementById('studioVoicingSelect') as HTMLSelectElement | null;
-const studioTimingToggle = document.getElementById('studioTimingToggle') as HTMLElement | null;
-const studioTimingSlider = document.getElementById('studioTimingSlider') as HTMLInputElement | null;
-const studioTimingVal = document.getElementById('studioTimingVal') as HTMLSpanElement | null;
-const studioTraversalSwitch = document.getElementById('studioTraversalSwitch') as HTMLElement | null;
-const studioWaveShapeSelect = document.getElementById('studioWaveShapeSelect') as HTMLSelectElement | null;
-const studioWaveSineBtn = document.getElementById('studioWaveSineBtn') as HTMLButtonElement | null;
-const studioWaveAmpSlider = document.getElementById('studioWaveAmpSlider') as HTMLInputElement | null;
-const studioWaveAmpVal = document.getElementById('studioWaveAmpVal') as HTMLSpanElement | null;
-const studioRedrawTrackBtn = document.getElementById('studioRedrawTrackBtn') as HTMLButtonElement | null;
-const studioDupTrackBtn = document.getElementById('studioDupTrackBtn') as HTMLButtonElement | null;
-const studioDelTrackBtn = document.getElementById('studioDelTrackBtn') as HTMLButtonElement | null;
-const studioDeselectTrackBtn = document.getElementById('studioDeselectTrackBtn') as HTMLButtonElement | null;
-const studioTimingModeLabel = document.getElementById('studioTimingModeLabel') as HTMLElement | null;
-const studioDistortionSlider = document.getElementById('studioDistortionSlider') as HTMLInputElement | null;
-const studioDistortionVal = document.getElementById('studioDistortionVal') as HTMLSpanElement | null;
-const studioFilterSlider = document.getElementById('studioFilterSlider') as HTMLInputElement | null;
-const studioFilterVal = document.getElementById('studioFilterVal') as HTMLSpanElement | null;
-const studioLofiSlider = document.getElementById('studioLofiSlider') as HTMLInputElement | null;
-const studioLofiVal = document.getElementById('studioLofiVal') as HTMLSpanElement | null;
 
 // Minimalist Running Sequence HUD
 const seqMiniIndicator = document.getElementById('seqMiniIndicator') as HTMLElement | null;
-const seqMiniName = document.getElementById('seqMiniName') as HTMLElement | null;
-const seqMiniState = document.getElementById('seqMiniState') as HTMLElement | null;
-const seqMiniProgressText = document.getElementById('seqMiniProgressText') as HTMLElement | null;
-const seqMiniBarFill = document.getElementById('seqMiniBarFill') as HTMLElement | null;
 
-// Studio Master Controls
+// Studio Master Controls (value mirroring from Drawer / syncMasterFxUI)
 const studioMasterBpmSlider = document.getElementById('studioMasterBpmSlider') as HTMLInputElement | null;
 const studioMasterBpmVal = document.getElementById('studioMasterBpmVal') as HTMLSpanElement | null;
 const studioMasterReverbSlider = document.getElementById('studioMasterReverbSlider') as HTMLInputElement | null;
@@ -377,8 +160,7 @@ const studioDuckingVal = document.getElementById('studioDuckingVal') as HTMLSpan
 const studioScaleSelect = document.getElementById('studioScaleSelect') as HTMLSelectElement | null;
 const studioRootSelect = document.getElementById('studioRootSelect') as HTMLSelectElement | null;
 const studioXAxisSelect = document.getElementById('studioXAxisSelect') as HTMLSelectElement | null;
-const studioSyncBtn = document.getElementById('studioSyncBtn') as HTMLButtonElement | null;
-const studioRandomizeBtn = document.getElementById('studioRandomizeBtn') as HTMLButtonElement | null;
+const studioBreathingSelect = document.getElementById('studioBreathingSelect') as HTMLSelectElement | null;
 
 // Controls Drawer Reverb & Dynamics Controls
 const reverbTypeSelect = document.getElementById('reverbTypeSelect') as HTMLSelectElement | null;
@@ -405,19 +187,129 @@ const zenContextRedrawBtn = document.getElementById('zenContextRedrawBtn') as HT
 const zenContextMuteBtn = document.getElementById('zenContextMuteBtn') as HTMLButtonElement | null;
 const zenContextSoloBtn = document.getElementById('zenContextSoloBtn') as HTMLButtonElement | null;
 const zenContextTravBtn = document.getElementById('zenContextTravBtn') as HTMLButtonElement | null;
-const zenContextCloseBtn = document.getElementById('zenContextCloseBtn') as HTMLButtonElement | null;
 
-// Scene Arranger Elements
-const scenePlaySeqBtn = document.getElementById('scenePlaySeqBtn') as HTMLButtonElement | null;
-const sceneSeqPlayText = document.getElementById('sceneSeqPlayText') as HTMLSpanElement | null;
-const sceneMorphSlider = document.getElementById('sceneMorphSlider') as HTMLInputElement | null;
-const sceneMorphVal = document.getElementById('sceneMorphVal') as HTMLSpanElement | null;
-const sceneMorphCurveSelect = document.getElementById('sceneMorphCurveSelect') as HTMLSelectElement | null;
-const sceneMorphBlendButtons = document.querySelectorAll<HTMLButtonElement>('#sceneMorphBlendSwitch .seg-btn');
-const sceneAddBtn = document.getElementById('sceneAddBtn') as HTMLButtonElement | null;
-const sceneDupBtn = document.getElementById('sceneDupBtn') as HTMLButtonElement | null;
-const sceneDelBtn = document.getElementById('sceneDelBtn') as HTMLButtonElement | null;
+// Scene Arranger List (morphing badge class sync during sequence ticks)
 const sceneCardsList = document.getElementById('sceneCardsList') as HTMLElement | null;
+
+let autoOnboardingStarted = false;
+
+export function dismissWelcomePrompt(): void {
+  if (audioUnlockPrompt) {
+    audioUnlockPrompt.classList.add('hidden');
+    audioUnlockPrompt.style.display = 'none';
+    audioUnlockPrompt.style.pointerEvents = 'none';
+  }
+  if (!autoOnboardingStarted) {
+    autoOnboardingStarted = true;
+    onboarding.start();
+  }
+}
+
+/**
+ * Synchronizes the bottom bar audio status chip (#statAudio) with Web Audio engine state.
+ */
+export function updateAudioStatusChip(): void {
+  if (!statAudio) return;
+  if (soundEngine.isReady) {
+    statAudio.textContent = 'Audio: Active';
+    statAudio.setAttribute('data-tooltip', 'Audio Engine Active: Web Audio synthesizer running');
+    statAudio.classList.remove('chip-unstarted');
+    statAudio.classList.add('chip-ready');
+  } else {
+    statAudio.textContent = 'Click to Start Audio';
+    statAudio.setAttribute('data-tooltip', 'Click to Start Audio Engine');
+    statAudio.classList.add('chip-unstarted');
+    statAudio.classList.remove('chip-ready');
+  }
+}
+
+// Reactively update audio status chip whenever AudioContext state changes (running/suspended)
+soundEngine.onStateChange = () => {
+  updateAudioStatusChip();
+};
+
+let audioUnlockListenersRemoved = false;
+function removeAudioUnlockListeners(): void {
+  if (audioUnlockListenersRemoved || typeof window === 'undefined') return;
+  audioUnlockListenersRemoved = true;
+  window.removeEventListener('pointerdown', unlockAudioOnGesture);
+  window.removeEventListener('click', unlockAudioOnGesture);
+  window.removeEventListener('keydown', unlockAudioOnGesture);
+  window.removeEventListener('touchstart', unlockAudioOnGesture);
+}
+
+export async function ensureAudioUnlocked(): Promise<void> {
+  if (!soundEngine.isReady) {
+    try {
+      await soundEngine.init();
+      try {
+        LiveRecorder.preloadWorklet(soundEngine.context);
+      } catch {
+        // optional worklet preload
+      }
+      strokeManager.activateAudioVoices();
+    } catch (err) {
+      console.warn('Audio initialization deferred:', err);
+    }
+  } else {
+    strokeManager.activateAudioVoices();
+  }
+  if (soundEngine.isReady) {
+    removeAudioUnlockListeners();
+  }
+  updateAudioStatusChip();
+  dismissWelcomePrompt();
+}
+
+startAudioBannerBtn?.addEventListener('click', async (e) => {
+  e.stopPropagation();
+  await ensureAudioUnlocked();
+});
+audioUnlockPrompt?.addEventListener('click', async () => {
+  await ensureAudioUnlocked();
+});
+statAudio?.addEventListener('click', async () => {
+  await ensureAudioUnlocked();
+});
+
+const BREATHING_GENERAL_TOOLTIP =
+  'Timbral Breathing: Adds natural breathing movement — Gentle Swell (soft warm rise and fall), Deep Ocean (slow immersive waves), Tape Drift (dreamy floating texture), or Off (steady, unchanging tones).';
+
+function updateBreathingTooltip(_mode?: BreathingMode): void {
+  if (breathingControlGroup) {
+    breathingControlGroup.setAttribute('data-tooltip', BREATHING_GENERAL_TOOLTIP);
+  }
+}
+
+let isCompositionDirty = false;
+
+function setCompositionDirty(dirty: boolean): void {
+  isCompositionDirty = dirty;
+  if (dirtyIndicator) {
+    dirtyIndicator.classList.toggle('is-visible', dirty);
+    dirtyIndicator.style.opacity = dirty ? '1' : '0';
+    dirtyIndicator.style.visibility = dirty ? 'visible' : 'hidden';
+    dirtyIndicator.style.display = 'inline-flex';
+  }
+  const baseTitle = 'Harmonic Geometry • Generative Music Drawing';
+  document.title = dirty ? `• ${baseTitle}` : baseTitle;
+}
+
+function applyGeneralSync(val: string): void {
+  if (val.startsWith('speed:')) {
+    const mult = parseFloat(val.replace('speed:', ''));
+    strokeManager.setDefaultSpeedMode('speed');
+    strokeManager.setDefaultSpeedMultiplier(mult);
+  } else if (val.startsWith('timer:')) {
+    const dur = parseInt(val.replace('timer:', ''), 10);
+    strokeManager.setDefaultSpeedMode('timer');
+    strokeManager.setDefaultDuration(dur);
+  } else if (val.startsWith('bars:')) {
+    const mode = val.replace('bars:', '') as 'freeform' | '1bar' | '2bars' | '4bars' | '8bars';
+    strokeManager.setDefaultSpeedMode('bars');
+    strokeManager.setLoopQuantizeMode(mode);
+  }
+}
 
 // Engine State
 const quantizer = new ScaleQuantizer({
@@ -429,6 +321,12 @@ quantizer.setScrollEnabled(true);
 
 const strokeManager = new StrokeManager();
 const renderer = new CanvasRenderer(canvasEl);
+const sceneManager = new SceneManager();
+const abSnapshot = new ABSnapshotManager();
+const onboarding = new OnboardingController();
+
+let beatGridVisible = readStorageKey('harmonic_beat_grid') === '1';
+let pendingSceneId: string | null = null;
 
 let prevCanvasWidth = 0;
 let prevCanvasHeight = 0;
@@ -440,13 +338,48 @@ let assistedDrawingEnabled = false;
 let assistedLineCount: AssistedLineCount = 3;
 let assistedInstrumentMode: AssistedInstrumentMode = 'same';
 
-// Input Handling with Draw / Edit modes, straight bars, and pitch snapping
+// Web MIDI Output Hooks
+strokeManager.onMidiPulse = (event) => {
+  const baseDurMs = event.isDrum ? 90 : event.isStriped ? 110 : 220;
+  const durationMs = Math.max(40, Math.round(baseDurMs * event.articulation));
+  midiController.sendPulseNote(
+    event.instrumentId,
+    event.frequency,
+    event.velocity,
+    durationMs,
+    event.isDrum,
+    event.drumZone,
+    event.tomFreq
+  );
+};
+
+strokeManager.onMidiDroneUpdate = (event) => {
+  midiController.updateDroneNote(
+    event.strokeId,
+    event.instrumentId,
+    event.frequency,
+    event.velocity,
+    event.normX,
+    event.curvature,
+    event.filterCutoff
+  );
+};
+
+strokeManager.onMidiDroneStop = (strokeId) => {
+  midiController.stopDroneNote(strokeId);
+};
+
+// Restore persisted Auto-Smooth preference safely
+const savedAutoSmooth = readStorageKey(STORAGE_KEYS.AUTO_SMOOTH);
+const initialAutoSmooth = savedAutoSmooth !== null ? savedAutoSmooth !== 'false' : true;
+
+// Input Handling with Draw / Edit modes, straight bars, marquee multi-select, and touch gestures
 const inputHandler = new InputHandler(canvasEl, {
   strokeManager,
   getQuantizer: () => quantizer,
   getCurrentInstrument: () => currentInstrumentId,
   getCurrentStyle: () => currentStyle,
-  getXAxisModulation: () => (xAxisSelect ? xAxisSelect.value : 'panAndTone'),
+  getXAxisModulation: () => (xAxisSelect ? (xAxisSelect.value as XAxisModulationMode) : 'panAndTone'),
   onPointerDown: () => {
     dismissWelcomePrompt();
     updateAudioStatusChip();
@@ -455,7 +388,7 @@ const inputHandler = new InputHandler(canvasEl, {
     strokeManager.redrawStroke(strokeId, path);
     strokeManager.selectStroke(strokeId);
     updateTrackActionsVisibility();
-    updateMixerSelection();
+    studioDeckController.updateMixerSelection();
     syncCompositionState();
     if (statMode && inputHandler.appMode === 'redraw') {
       const s = strokeManager.getStroke(strokeId);
@@ -545,6 +478,7 @@ const inputHandler = new InputHandler(canvasEl, {
       strokeManager.activateAudioVoices();
       strokeManager.selectStrokes(allPlaced.map((s) => s.id));
       syncCompositionState();
+      onboarding.notifyUserAction('drew_stroke');
       if (inputHandler.appMode === 'draw' && statMode) {
         statMode.textContent = `Assisted Draw: Placed ${allPlaced.length} Lines (←/→ Tempo)`;
         statMode.style.color = '#2563eb';
@@ -574,15 +508,15 @@ const inputHandler = new InputHandler(canvasEl, {
     );
 
     strokeManager.activateAudioVoices();
-    // Automatically select the newly drawn line
     strokeManager.selectStroke(newStroke.id);
     updateTrackActionsVisibility();
-    updateMixerSelection();
+    studioDeckController.updateMixerSelection();
     if (inputHandler.appMode === 'draw' && statMode) {
       statMode.textContent = 'Line Selected (Edit)';
       statMode.style.color = '#2563eb';
     }
     syncCompositionState();
+    onboarding.notifyUserAction('drew_stroke');
   },
   onDrawChange: (points: Point2D[]) => {
     activeDrawingPoints = points;
@@ -598,8 +532,11 @@ const inputHandler = new InputHandler(canvasEl, {
     if (stroke && (inputHandler.appMode === 'redraw' || inputHandler.isRedrawing)) {
       syncInstrumentToStroke(stroke);
     }
+    if (strokeId !== null || strokeManager.selectedStrokeIds.length > 0) {
+      onboarding.notifyUserAction('selected_stroke');
+    }
     updateTrackActionsVisibility();
-    updateMixerSelection();
+    studioDeckController.updateMixerSelection();
     if (statMode) {
       if (inputHandler.appMode === 'draw') {
         statMode.textContent = strokeId ? 'Line Selected (Edit)' : 'Draw / Click to Select';
@@ -612,7 +549,42 @@ const inputHandler = new InputHandler(canvasEl, {
       }
     }
   },
+  onMarqueeSelect: (worldRect) => {
+    const hits = strokeManager.getStrokesInRect(worldRect);
+    if (hits.length > 0) {
+      strokeManager.selectMultipleStrokes(hits.map((s) => s.id));
+      onboarding.notifyUserAction('selected_stroke');
+    } else {
+      strokeManager.selectStroke(null);
+    }
+    updateTrackActionsVisibility();
+    studioDeckController.updateMixerSelection();
+  },
+  onDuplicateDragStart: (ids: string[]) => {
+    const created = strokeManager.duplicateStrokes(ids, 0, 0, quantizer, renderer.height);
+    if (created.length > 0) {
+      if (soundEngine.isReady) {
+        strokeManager.activateAudioVoices();
+      }
+      syncCompositionState();
+    }
+    return created.map((s) => s.id);
+  },
+  onPinchOctaveZoom: (scaleFactor: number) => {
+    if (!Number.isFinite(scaleFactor) || scaleFactor <= 0) return;
+    applyOctaveSpan(quantizer.getConfig().octaveSpan / scaleFactor);
+  },
+  onTwoFingerScrollY: (deltaY: number) => {
+    smoothScrollBy(deltaY);
+  },
 });
+
+inputHandler.setAutoSmooth(initialAutoSmooth);
+if (autoSmoothBtn) {
+  autoSmoothBtn.classList.toggle('active', initialAutoSmooth);
+  autoSmoothBtn.setAttribute('aria-pressed', initialAutoSmooth ? 'true' : 'false');
+  autoSmoothBtn.textContent = initialAutoSmooth ? 'Smooth On' : 'Smooth Off';
+}
 
 function syncInstrumentToStroke(stroke: DrawnStroke): void {
   currentInstrumentId = stroke.instrumentId;
@@ -620,7 +592,7 @@ function syncInstrumentToStroke(stroke: DrawnStroke): void {
   swatchButtons.forEach((btn) => {
     btn.classList.toggle('active', btn.getAttribute('data-instrument') === stroke.instrumentId);
   });
-  document.querySelectorAll<HTMLElement>('#zenSwatches .zen-swatch').forEach((btn) => {
+  document.querySelectorAll<HTMLElement>('#zenSwatches .swatch-btn').forEach((btn) => {
     btn.classList.toggle('active', btn.getAttribute('data-instrument') === stroke.instrumentId);
   });
   strokeModeButtons.forEach((b) => {
@@ -629,16 +601,11 @@ function syncInstrumentToStroke(stroke: DrawnStroke): void {
   document.querySelectorAll<HTMLElement>('#zenStyleControl .seg-btn').forEach((b) => {
     b.classList.toggle('active', b.getAttribute('data-zen-style') === stroke.style);
   });
-  if (statInstrument) {
-    const inst = getInstrument(stroke.instrumentId);
-    statInstrument.textContent = `${inst.icon} ${inst.name}`;
-  }
 }
 
 function updateRedrawButtonsUI(isArmed: boolean): void {
   const isRedrawActive = isArmed || inputHandler.appMode === 'redraw';
-  redrawTrackBtn?.classList.toggle('active', isRedrawActive);
-  studioRedrawTrackBtn?.classList.toggle('active', isRedrawActive);
+  document.getElementById('studioRedrawTrackBtn')?.classList.toggle('active', isRedrawActive);
   zenContextRedrawBtn?.classList.toggle('active', isRedrawActive);
   appModeButtons.forEach((btn) => {
     if (btn.getAttribute('data-app-mode') === 'redraw') {
@@ -669,15 +636,19 @@ function updateRedrawButtonsUI(isArmed: boolean): void {
 function setAppMode(mode: 'draw' | 'redraw' | 'live'): void {
   inputHandler.setAppMode(mode);
   appModeButtons.forEach((btn) => {
-    btn.classList.toggle('active', btn.getAttribute('data-app-mode') === mode);
+    const isActive = btn.getAttribute('data-app-mode') === mode;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
   });
 
-  if (mode === 'redraw') {
+  if (mode === 'live') {
+    onboarding.notifyUserAction('tried_feature');
+  } else if (mode === 'redraw') {
     if (!strokeManager.selectedStrokeId && strokeManager.activeStrokes.length > 0) {
       const last = strokeManager.activeStrokes[strokeManager.activeStrokes.length - 1];
       strokeManager.selectStroke(last.id);
       updateTrackActionsVisibility();
-      updateMixerSelection();
+      studioDeckController.updateMixerSelection();
     }
     const targetStroke = strokeManager.selectedStrokeId ? strokeManager.getStroke(strokeManager.selectedStrokeId) : null;
     if (targetStroke) {
@@ -696,7 +667,7 @@ function setAppMode(mode: 'draw' | 'redraw' | 'live'): void {
       const s = strokeManager.selectedStrokeId ? strokeManager.getStroke(strokeManager.selectedStrokeId) : null;
       const instName = s ? getInstrument(s.instrumentId)?.name || 'Line' : 'Line';
       const color = s ? renderer.getStrokeColor(s) : '#2563eb';
-      statMode.textContent = `Re-draw: Draw curve on canvas to replace '${instName}'`;
+      statMode.textContent = `Re-draw '${instName}' (Drag line to move • Draw empty space to replace)`;
       statMode.style.color = color;
     } else {
       if (strokeManager.selectedStrokeId) {
@@ -709,11 +680,9 @@ function setAppMode(mode: 'draw' | 'redraw' | 'live'): void {
     }
   }
 
-  // In Live mode, highlight live performance controls
   if (liveControlsGroup) {
     liveControlsGroup.style.display = mode === 'live' ? 'flex' : 'none';
   }
-  // Keep drawing controls accessible so user can adjust shape, smoothing, or grid defaults anytime
   drawOnlyControls.forEach((el) => {
     el.style.display = '';
   });
@@ -753,6 +722,7 @@ liveSnapBtn?.addEventListener('click', () => {
   const nextSnap = !inputHandler.isLiveSnapToScale;
   inputHandler.setLiveSnapToScale(nextSnap);
   liveSnapBtn.classList.toggle('active', nextSnap);
+  liveSnapBtn.setAttribute('aria-pressed', nextSnap ? 'true' : 'false');
   liveSnapBtn.textContent = nextSnap ? 'Scale Lock ON' : 'Free Glide';
 });
 
@@ -762,7 +732,7 @@ liveTrailSlider?.addEventListener('input', () => {
   inputHandler.setLiveTrailLifetime(sec * 1000);
 });
 
-// Drawing Shape Switching (Curve vs Straight Note Bar)
+// Drawing Shape Switching (Curve vs Straight Note Bar vs Dot)
 shapeButtons.forEach((btn) => {
   btn.addEventListener('click', () => {
     shapeButtons.forEach((b) => b.classList.remove('active'));
@@ -775,23 +745,22 @@ shapeButtons.forEach((btn) => {
 });
 
 // Auto-Smooth Toggle
-autoSmoothBtn.addEventListener('click', () => {
+autoSmoothBtn?.addEventListener('click', () => {
   const willSmooth = !inputHandler.isAutoSmooth;
   inputHandler.setAutoSmooth(willSmooth);
   autoSmoothBtn.classList.toggle('active', willSmooth);
+  autoSmoothBtn.setAttribute('aria-pressed', willSmooth ? 'true' : 'false');
   autoSmoothBtn.textContent = willSmooth ? 'Smooth On' : 'Smooth Off';
+  writeStorageKey(STORAGE_KEYS.AUTO_SMOOTH, String(willSmooth));
 });
 
 // Magnetic Pitch Snap Toggle
-snapPitchBtn.addEventListener('click', () => {
+snapPitchBtn?.addEventListener('click', () => {
   const willSnap = !inputHandler.isPitchSnapped;
   inputHandler.setSnapPitch(willSnap);
   snapPitchBtn.classList.toggle('active', willSnap);
+  snapPitchBtn.setAttribute('aria-pressed', willSnap ? 'true' : 'false');
   snapPitchBtn.textContent = willSnap ? 'Snap ON' : 'Snap Off';
-  if (statPitchSnap) {
-    statPitchSnap.textContent = willSnap ? 'Snap ON' : 'Snap Off';
-    statPitchSnap.style.color = willSnap ? '#2563eb' : 'inherit';
-  }
 });
 
 // Assisted Drawing Toggle, Line Count (2-5), & Instrument Mode (Same vs Mixed)
@@ -829,8 +798,11 @@ function setAssistedDrawing(
     assistInkModeBtn.setAttribute('data-assist-ink', assistedInstrumentMode);
   }
 
+  topBarEl?.querySelector('.top-bar-primary')?.classList.toggle('is-assist-expanded', assistedDrawingEnabled);
+
   if (drawerAssistToggleBtn) {
     drawerAssistToggleBtn.classList.toggle('active', assistedDrawingEnabled);
+    drawerAssistToggleBtn.setAttribute('aria-pressed', assistedDrawingEnabled ? 'true' : 'false');
     drawerAssistToggleBtn.textContent = assistedDrawingEnabled ? 'Assist On' : 'Assist Off';
   }
   if (drawerAssistCountSelect) {
@@ -940,10 +912,8 @@ function smoothScrollTo(targetY: number): void {
   flashNavigatorOnScroll();
 }
 
-// 1. Mouse Wheel / Trackpad Scroll with High-Frequency Directional Filtering
 canvasEl.addEventListener('wheel', (e: WheelEvent) => {
   e.preventDefault();
-  // Filter out pure horizontal swipes (e.g. back navigation gesture)
   if (Math.abs(e.deltaX) > Math.abs(e.deltaY) * 1.5) {
     return;
   }
@@ -955,7 +925,6 @@ pitchNavigator?.addEventListener('wheel', (e: WheelEvent) => {
   smoothScrollBy(e.deltaY);
 }, { passive: false });
 
-// 2. Click directly on track to jump view with smooth glide
 pitchTrack?.addEventListener('pointerdown', (e: PointerEvent) => {
   if (e.target === pitchThumb || pitchThumb.contains(e.target as Node)) return;
   const trackRect = pitchTrack.getBoundingClientRect();
@@ -966,7 +935,6 @@ pitchTrack?.addEventListener('pointerdown', (e: PointerEvent) => {
   smoothScrollTo(targetY);
 });
 
-// 4. Drag Thumb with real-time responsive positioning
 let isDraggingThumb = false;
 let dragStartY = 0;
 let dragStartScrollY = 0;
@@ -1009,154 +977,65 @@ const stopThumbDrag = (e: PointerEvent) => {
 pitchThumb?.addEventListener('pointerup', stopThumbDrag);
 pitchThumb?.addEventListener('pointercancel', stopThumbDrag);
 
-// Custom Saved Presets Management
-function getSavedCompositions(): Record<string, SavedComposition> {
-  try {
-    const raw = localStorage.getItem('harmonic_saved_presets') || localStorage.getItem('harmonic_saved_grooves');
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
+/**
+ * Keeps both Advanced Drawer and Studio Master FX controls synchronized with current engine/UI state.
+ */
+function syncMasterFxUI(): void {
+  const bpm = strokeManager.currentBpm;
+  if (bpmSlider) bpmSlider.value = bpm.toString();
+  if (bpmVal) bpmVal.textContent = `${bpm} BPM`;
+  if (studioMasterBpmSlider) studioMasterBpmSlider.value = bpm.toString();
+  if (studioMasterBpmVal) studioMasterBpmVal.textContent = `${bpm} BPM`;
+
+  const revPct = Math.round(soundEngine.reverbMix * 100);
+  if (spaceSlider) spaceSlider.value = revPct.toString();
+  if (spaceVal) spaceVal.textContent = `${revPct}%`;
+  if (studioMasterReverbSlider) studioMasterReverbSlider.value = revPct.toString();
+  if (studioMasterReverbVal) studioMasterReverbVal.textContent = `${revPct}%`;
+
+  const revType = soundEngine.reverbType;
+  if (reverbTypeSelect) reverbTypeSelect.value = revType;
+  if (studioReverbTypeSelect) studioReverbTypeSelect.value = revType;
+
+  const widthPct = Math.round(soundEngine.stereoWidth * 100);
+  const widthText = widthPct === 100 ? '100% (Stereo)' : (widthPct === 0 ? '0% (Mono)' : `${widthPct}%`);
+  if (stereoWidthSlider) stereoWidthSlider.value = widthPct.toString();
+  if (stereoWidthVal) stereoWidthVal.textContent = widthText;
+  if (studioStereoWidthSlider) studioStereoWidthSlider.value = widthPct.toString();
+  if (studioStereoWidthVal) studioStereoWidthVal.textContent = widthText;
+
+  const warmthPct = Math.round(soundEngine.tapeWarmth * 100);
+  const drawerWarmthText = warmthPct === 0 ? '0% (Clean)' : `${warmthPct}%`;
+  if (tapeWarmthSlider) tapeWarmthSlider.value = warmthPct.toString();
+  if (tapeWarmthVal) tapeWarmthVal.textContent = drawerWarmthText;
+  if (studioTapeWarmthSlider) studioTapeWarmthSlider.value = warmthPct.toString();
+  if (studioTapeWarmthVal) studioTapeWarmthVal.textContent = `${warmthPct}%`;
+
+  const duckPct = Math.round(soundEngine.duckingDepth * 100);
+  const drawerDuckText = duckPct === 0 ? '0% (Off)' : `${duckPct}%`;
+  if (duckingSlider) duckingSlider.value = duckPct.toString();
+  if (duckingVal) duckingVal.textContent = drawerDuckText;
+  if (studioDuckingSlider) studioDuckingSlider.value = duckPct.toString();
+  if (studioDuckingVal) studioDuckingVal.textContent = `${duckPct}%`;
+
+  if (studioScaleSelect && scaleSelect) studioScaleSelect.value = scaleSelect.value;
+  if (studioRootSelect && rootSelect) studioRootSelect.value = rootSelect.value;
+  if (studioXAxisSelect && xAxisSelect) studioXAxisSelect.value = xAxisSelect.value;
+  if (studioBreathingSelect && breathingSelect) studioBreathingSelect.value = breathingSelect.value;
+
+  studioDeckController.syncMasterSwingAndPerformanceUI(
+    strokeManager.swing,
+    beatGridVisible,
+    strokeManager.quantizedTriggering
+  );
 }
 
-function refreshSavedTemplatesDropdown(): void {
-  if (!savedTemplatesGroup) return;
-  const saved = getSavedCompositions();
-  const names = Object.keys(saved);
-  savedTemplatesGroup.innerHTML = '';
-  if (names.length === 0) {
-    const emptyOpt = document.createElement('option');
-    emptyOpt.value = '';
-    emptyOpt.disabled = true;
-    emptyOpt.textContent = '(No saved presets yet)';
-    savedTemplatesGroup.appendChild(emptyOpt);
-  } else {
-    names.forEach((name) => {
-      const opt = document.createElement('option');
-      opt.value = `custom:${name}`;
-      opt.textContent = name;
-      savedTemplatesGroup.appendChild(opt);
-    });
-  }
-  updatePresetDeleteButtons();
-}
-
-function updatePresetDeleteButtons(): void {
-  const store = getSavedCompositions();
-  const isCustomActive = !!(currentLoadedPresetName && store[currentLoadedPresetName]);
-
-  if (topDeletePresetBtn) {
-    topDeletePresetBtn.disabled = !isCustomActive;
-    if (isCustomActive && currentLoadedPresetName) {
-      topDeletePresetBtn.setAttribute('data-tooltip', `Delete Preset: Remove "${currentLoadedPresetName}" from saved presets`);
-    } else {
-      topDeletePresetBtn.setAttribute('data-tooltip', 'Delete Preset: Select or load a saved custom preset to delete');
-    }
-  }
-}
-
-function renderSavedPresetsManagerList(): void {
-  if (!savedPresetsListContainer) return;
-  const store = getSavedCompositions();
-  const names = Object.keys(store);
-
-  if (savedPresetsCountBadge) {
-    savedPresetsCountBadge.textContent = names.length.toString();
-  }
-
-  savedPresetsListContainer.innerHTML = '';
-
-  if (names.length === 0) {
-    const empty = document.createElement('div');
-    empty.className = 'saved-presets-empty-msg';
-    empty.textContent = 'No custom presets saved yet.';
-    savedPresetsListContainer.appendChild(empty);
-    return;
-  }
-
-  names.forEach((name) => {
-    const row = document.createElement('div');
-    row.className = 'saved-preset-item-row';
-
-    const info = document.createElement('div');
-    info.className = 'saved-preset-item-info';
-
-    const nameSpan = document.createElement('span');
-    nameSpan.className = 'saved-preset-item-name';
-    nameSpan.textContent = name;
-    info.appendChild(nameSpan);
-
-    if (currentLoadedPresetName === name) {
-      const activePill = document.createElement('span');
-      activePill.className = 'saved-preset-item-active-pill';
-      activePill.textContent = 'Active';
-      info.appendChild(activePill);
-    }
-
-    const actions = document.createElement('div');
-    actions.className = 'saved-preset-item-actions';
-
-    const loadBtn = document.createElement('button');
-    loadBtn.type = 'button';
-    loadBtn.className = 'saved-preset-item-load-btn has-tooltip';
-    loadBtn.setAttribute('data-tooltip', `Load preset "${name}"`);
-    loadBtn.textContent = 'Load';
-    loadBtn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const comp = store[name];
-      if (comp) {
-        await loadComposition(comp);
-        templateSelect.value = `custom:${name}`;
-        closeSavePresetModal();
-      }
-    });
-
-    const delBtn = document.createElement('button');
-    delBtn.type = 'button';
-    delBtn.className = 'saved-preset-item-del-btn has-tooltip';
-    delBtn.setAttribute('data-tooltip', `Delete preset "${name}"`);
-    delBtn.setAttribute('aria-label', `Delete preset ${name}`);
-    delBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
-    delBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      deleteCustomPreset(name);
-    });
-
-    actions.appendChild(loadBtn);
-    actions.appendChild(delBtn);
-
-    row.appendChild(info);
-    row.appendChild(actions);
-    savedPresetsListContainer.appendChild(row);
-  });
-}
-
-function deleteCustomPreset(presetName: string): boolean {
-  const store = getSavedCompositions();
-  if (!store[presetName]) return false;
-
-  const ok = confirm(`Delete preset "${presetName}"? This cannot be undone.`);
-  if (!ok) return false;
-
-  delete store[presetName];
-  localStorage.setItem('harmonic_saved_presets', JSON.stringify(store));
-  localStorage.setItem('harmonic_saved_grooves', JSON.stringify(store));
-
-  refreshSavedTemplatesDropdown();
-  renderSavedPresetsManagerList();
-
-  if (currentLoadedPresetName === presetName) {
-    currentLoadedPresetName = 'cathedralSolitude';
-    templateSelect.value = 'cathedralSolitude';
-    loadTemplate('cathedralSolitude', false);
-  }
-
-  updatePresetDeleteButtons();
-  if (statMode) statMode.textContent = `Preset Deleted: ${presetName}`;
-  return true;
-}
-
-async function loadComposition(comp: SavedComposition): Promise<void> {
+async function loadComposition(
+  comp: SavedComposition,
+  options?: { preserveAB?: boolean }
+): Promise<void> {
+  midiController.allNotesOff();
+  pendingSceneId = null;
   renderer.resize();
   prevCanvasWidth = renderer.width;
   prevCanvasHeight = renderer.height;
@@ -1173,23 +1052,39 @@ async function loadComposition(comp: SavedComposition): Promise<void> {
   }
   if (comp.bpm) {
     strokeManager.setBpm(comp.bpm);
-    bpmSlider.value = comp.bpm.toString();
-    bpmVal.textContent = `${comp.bpm} BPM`;
-    if (statTempo) statTempo.textContent = `${comp.bpm} BPM`;
   }
   if (comp.spaceReverb !== undefined) {
-    const spacePct = Math.round(comp.spaceReverb * 100);
-    spaceSlider.value = spacePct.toString();
-    spaceVal.textContent = `${spacePct}%`;
     soundEngine.setReverbMix(comp.spaceReverb);
   }
+  if (comp.reverbType) {
+    soundEngine.setReverbType(comp.reverbType);
+  }
+  if (typeof comp.stereoWidth === 'number') {
+    soundEngine.setStereoWidth(comp.stereoWidth);
+  }
+  if (typeof comp.tapeWarmth === 'number') {
+    soundEngine.setTapeWarmth(comp.tapeWarmth);
+  }
+  if (typeof comp.duckingDepth === 'number') {
+    soundEngine.setDuckingDepth(comp.duckingDepth);
+  }
   if (comp.octaveSpan !== undefined) {
-    octavesSlider.value = comp.octaveSpan.toString();
-    octavesVal.textContent = `${comp.octaveSpan} Oct`;
-    quantizer.updateConfig({ octaveSpan: comp.octaveSpan });
+    const clampedOct = Math.max(1, Math.min(8, comp.octaveSpan));
+    if (octavesSlider) {
+      const sliderMin = parseFloat(octavesSlider.min || '2');
+      const sliderMax = parseFloat(octavesSlider.max || '6');
+      octavesSlider.value = String(Math.max(sliderMin, Math.min(sliderMax, Math.round(clampedOct))));
+    }
+    if (octavesVal) {
+      octavesVal.textContent = Number.isInteger(clampedOct)
+        ? `${clampedOct} Oct`
+        : `${clampedOct.toFixed(1)} Oct`;
+    }
+    quantizer.updateConfig({ octaveSpan: clampedOct });
   }
   if (comp.breathingMode && breathingSelect) {
     breathingSelect.value = comp.breathingMode;
+    if (studioBreathingSelect) studioBreathingSelect.value = comp.breathingMode;
     strokeManager.setBreathingMode(comp.breathingMode);
     updateBreathingTooltip(comp.breathingMode);
   }
@@ -1214,99 +1109,94 @@ async function loadComposition(comp: SavedComposition): Promise<void> {
   if (comp.autoSmooth !== undefined) {
     inputHandler.setAutoSmooth(comp.autoSmooth);
     autoSmoothBtn.classList.toggle('active', comp.autoSmooth);
+    autoSmoothBtn.setAttribute('aria-pressed', comp.autoSmooth ? 'true' : 'false');
     autoSmoothBtn.textContent = comp.autoSmooth ? 'Smooth On' : 'Smooth Off';
+    writeStorageKey(STORAGE_KEYS.AUTO_SMOOTH, String(comp.autoSmooth));
   }
   if (comp.snapPitch !== undefined) {
     inputHandler.setSnapPitch(comp.snapPitch);
     snapPitchBtn.classList.toggle('active', comp.snapPitch);
+    snapPitchBtn.setAttribute('aria-pressed', comp.snapPitch ? 'true' : 'false');
     snapPitchBtn.textContent = comp.snapPitch ? 'Snap ON' : 'Snap Off';
-    if (statPitchSnap) {
-      statPitchSnap.textContent = comp.snapPitch ? 'Snap ON' : 'Snap Off';
-      statPitchSnap.style.color = comp.snapPitch ? '#2563eb' : 'inherit';
-    }
   }
   if (comp.theme) {
     setTheme(comp.theme === 'dark');
   }
 
+  strokeManager.setSwing(typeof comp.swing === 'number' ? comp.swing : 0);
+  if (typeof comp.beatGridVisible === 'boolean') {
+    beatGridVisible = comp.beatGridVisible;
+    writeStorageKey('harmonic_beat_grid', beatGridVisible ? '1' : '0');
+  }
+  if (typeof comp.quantizedTriggering === 'boolean') {
+    strokeManager.setQuantizedTriggering(comp.quantizedTriggering);
+  }
+
   if (typeof comp.scrollY === 'number') {
-    quantizer.scrollY = quantizer.clampScrollY(comp.scrollY, renderer.height);
+    quantizer.setScrollY(quantizer.clampScrollY(comp.scrollY, renderer.height));
   } else {
-    // If older file didn't store scrollY, reset scroll to default
     quantizer.resetScrollToDefault(renderer.height);
   }
+  targetScrollY = quantizer.scrollY;
   updatePitchNavigator();
 
   strokeManager.importComposition(comp, quantizer, renderer.height, renderer.width);
   if (soundEngine.isReady) {
     strokeManager.activateAudioVoices();
   }
+
+  if (comp.scenes && comp.scenes.length > 0) {
+    sceneManager.importScenes(comp.scenes);
+  } else {
+    sceneManager.importScenes([
+      {
+        id: `scene_${Date.now()}_1`,
+        name: comp.name ? `Scene 1: ${comp.name}` : 'Scene 1: Ambient Foundation',
+        durationSec: 30,
+        bpm: comp.bpm || strokeManager.currentBpm,
+        scaleId: comp.scaleId || scaleSelect.value,
+        rootId: comp.rootId || rootSelect.value,
+        spaceReverb: comp.spaceReverb ?? soundEngine.reverbMix,
+        xAxisModulationMode: comp.xAxisModulationMode || (xAxisSelect.value as XAxisModulationMode),
+        strokes: strokeManager.exportComposition().strokes,
+      },
+    ]);
+  }
+
+  if (!options?.preserveAB) {
+    abSnapshot.clear();
+    studioDeckController.updateABSnapshotButtons();
+  }
+
   currentLoadedPresetName = comp.name || 'Custom Preset';
   setCompositionDirty(false);
+  syncMasterFxUI();
   updateStats();
   updateTrackActionsVisibility();
-  renderLayerMixer();
-  updatePresetDeleteButtons();
+  studioDeckController.renderAllMixers();
+  studioDeckController.updateHistoryBadge();
+  sceneUiController.renderSceneCards();
+  presetModalController.updatePresetDeleteButtons();
 }
 
-// Initial populate of saved templates
-refreshSavedTemplatesDropdown();
-updatePresetDeleteButtons();
-
-function updateSaveModalButtonLabels(enteredName: string): void {
-  const store = getSavedCompositions();
-  const clean = enteredName.trim() || 'Preset';
-  const nextVer = getNextVersionName(clean, store);
-
-  if (overwritePresetBtn) {
-    overwritePresetBtn.textContent = `Overwrite "${clean}"`;
-  }
-  if (saveNewVersionBtn) {
-    saveNewVersionBtn.textContent = `Save as New Version ("${nextVer}")`;
-  }
-  if (saveCustomNameBtn) {
-    saveCustomNameBtn.textContent = `Save with Entered Name`;
-  }
-}
-
-function openSavePresetModal(forSaveOnly = true): void {
-  if (forSaveOnly && strokeManager.activeStrokes.length === 0) {
-    alert('Draw or create some musical lines first before saving a preset.');
-    return;
-  }
-  const activeName = currentLoadedPresetName || `Ambient Piece ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-  if (savePresetNameInput) {
-    savePresetNameInput.value = activeName;
-  }
-  updateSaveModalButtonLabels(activeName);
-  renderSavedPresetsManagerList();
-  if (savePresetModal) {
-    savePresetModal.classList.remove('hidden');
-    savePresetNameInput?.focus();
-    savePresetNameInput?.select();
-  }
-}
-
-function closeSavePresetModal(): void {
-  if (savePresetModal) {
-    savePresetModal.classList.add('hidden');
-  }
-}
-
-function executeSavePreset(nameToSave: string, downloadJson: boolean): void {
-  const cleanName = nameToSave.trim();
-  if (!cleanName) return;
-
+function buildCurrentCompositionExport(nameOverride?: string): SavedComposition {
   const comp = strokeManager.exportComposition(
-    cleanName,
-    scaleSelect.value,
-    rootSelect.value,
+    nameOverride || currentLoadedPresetName || 'Shared Score',
+    scaleSelect ? scaleSelect.value : 'dorian',
+    rootSelect ? rootSelect.value : 'D3',
     renderer.width,
     renderer.height
   );
-  comp.spaceReverb = parseFloat(spaceSlider.value) / 100;
-  comp.octaveSpan = parseInt(octavesSlider.value, 10);
+  comp.spaceReverb = soundEngine.reverbMix;
+  comp.reverbType = soundEngine.reverbType;
+  comp.stereoWidth = soundEngine.stereoWidth;
+  comp.tapeWarmth = soundEngine.tapeWarmth;
+  comp.duckingDepth = soundEngine.duckingDepth;
+  comp.octaveSpan = quantizer.getConfig().octaveSpan;
   comp.scrollY = quantizer.scrollY;
+  comp.swing = strokeManager.swing;
+  comp.beatGridVisible = beatGridVisible;
+  comp.quantizedTriggering = strokeManager.quantizedTriggering;
   if (xAxisSelect) {
     comp.xAxisModulationMode = xAxisSelect.value as XAxisModulationMode;
   }
@@ -1324,286 +1214,85 @@ function executeSavePreset(nameToSave: string, downloadJson: boolean): void {
   comp.snapPitch = inputHandler.isPitchSnapped;
   comp.theme = document.body.classList.contains('dark-mode') ? 'dark' : 'light';
 
-  // 1. Save to browser storage
-  const saved = getSavedCompositions();
-  saved[cleanName] = comp;
-  localStorage.setItem('harmonic_saved_presets', JSON.stringify(saved));
-  localStorage.setItem('harmonic_saved_grooves', JSON.stringify(saved)); // Backwards-compat
-  refreshSavedTemplatesDropdown();
-
-  templateSelect.value = `custom:${cleanName}`;
-  currentLoadedPresetName = cleanName;
-  setCompositionDirty(false);
-  renderLayerMixer();
-
-  // 2. Download JSON file if requested
-  if (downloadJson) {
-    const blob = new Blob([JSON.stringify(comp, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${cleanName.toLowerCase().replace(/[^a-z0-9_-]/g, '_')}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+  if (sceneManager.getScenes().length > 1) {
+    sceneManager.updateCurrentScene({
+      strokes: comp.strokes,
+      bpm: strokeManager.currentBpm,
+      scaleId: comp.scaleId,
+      rootId: comp.rootId,
+      spaceReverb: comp.spaceReverb,
+      xAxisModulationMode: comp.xAxisModulationMode,
+    });
+    comp.scenes = sceneManager.exportScenes();
+  } else {
+    comp.scenes = undefined;
   }
 
-  closeSavePresetModal();
-  updatePresetDeleteButtons();
-  renderSavedPresetsManagerList();
-  if (statMode) statMode.textContent = `Preset Saved: ${cleanName}`;
+  return comp;
 }
 
-// Save Preset Button opens modal
-saveTemplateBtn?.addEventListener('click', () => {
-  openSavePresetModal(true);
-});
-
-overwritePresetBtn?.addEventListener('click', () => {
-  const targetName = savePresetNameInput?.value.trim() || currentLoadedPresetName || 'Preset';
-  executeSavePreset(targetName, saveExportJsonCheck?.checked ?? false);
-});
-
-saveNewVersionBtn?.addEventListener('click', () => {
-  const targetName = savePresetNameInput?.value.trim() || currentLoadedPresetName || 'Preset';
-  const saved = getSavedCompositions();
-  const nextVer = getNextVersionName(targetName, saved);
-  executeSavePreset(nextVer, saveExportJsonCheck?.checked ?? false);
-});
-
-saveCustomNameBtn?.addEventListener('click', () => {
-  const targetName = savePresetNameInput?.value.trim() || currentLoadedPresetName || 'Preset';
-  executeSavePreset(targetName, saveExportJsonCheck?.checked ?? false);
-});
-
-closeSavePresetModalBtn?.addEventListener('click', closeSavePresetModal);
-savePresetModal?.querySelector('.modal-backdrop')?.addEventListener('click', closeSavePresetModal);
-
-savePresetNameInput?.addEventListener('input', () => {
-  updateSaveModalButtonLabels(savePresetNameInput.value);
-});
-
-savePresetNameInput?.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    executeSavePreset(savePresetNameInput.value, saveExportJsonCheck?.checked ?? false);
-  } else if (e.key === 'Escape') {
-    e.preventDefault();
-    closeSavePresetModal();
+// ==========================================================================
+// Composition Helpers & Wave 2 Modular Controllers
+// ==========================================================================
+function duplicateStrokeWithState(strokeId: string): DrawnStroke | null {
+  const source = strokeManager.getStroke(strokeId);
+  const newStroke = strokeManager.duplicateStroke(strokeId, quantizer, renderer.height);
+  if (newStroke && source) {
+    if (typeof source.distortion === 'number') {
+      strokeManager.setStrokeDistortion(newStroke.id, source.distortion, false);
+    }
+    if (typeof source.filterCutoff === 'number') {
+      strokeManager.setStrokeFilterCutoff(newStroke.id, source.filterCutoff, false);
+    }
+    if (typeof source.lofi === 'number') {
+      strokeManager.setStrokeLofi(newStroke.id, source.lofi, false);
+    }
+    if (typeof source.articulation === 'number') {
+      strokeManager.setStrokeArticulation(newStroke.id, source.articulation, false);
+    }
+    if (source.muted) {
+      strokeManager.setStrokeMuted(newStroke.id, true);
+    }
+    if (soundEngine.isReady) {
+      strokeManager.activateAudioVoices();
+    }
   }
-});
+  return newStroke;
+}
 
-// Quick Save Action (1-click overwrite or save)
-function executeQuickSave(): void {
-  if (strokeManager.activeStrokes.length === 0) {
-    alert('Draw or create some musical lines first before saving a preset.');
-    return;
-  }
-  const store = getSavedCompositions();
-  if (currentLoadedPresetName && store[currentLoadedPresetName]) {
-    executeSavePreset(currentLoadedPresetName, false);
-    if (quickSaveBtn) {
-      const orig = quickSaveBtn.textContent;
-      quickSaveBtn.textContent = 'Saved!';
-      setTimeout(() => {
-        quickSaveBtn.textContent = orig;
-      }, 1200);
+function toggleStrokeMuteWithQuantize(strokeId: string): void {
+  if (strokeManager.quantizedTriggering) {
+    strokeManager.queueToggleMute(strokeId);
+    if (strokeManager.paused) {
+      syncCompositionState();
+    } else {
+      studioDeckController.renderAllMixers();
     }
   } else {
-    openSavePresetModal();
+    strokeManager.toggleMute(strokeId);
+    syncCompositionState();
   }
 }
-quickSaveBtn?.addEventListener('click', executeQuickSave);
-
-// ==========================================================================
-// Layers Mixer Panel Logic & Selection Management
-// ==========================================================================
-let isInspectorCollapsed =
-  typeof localStorage !== 'undefined' ? localStorage.getItem('harmonic_inspector_collapsed') === 'true' : false;
-
-/**
- * Synchronizes the visual selection state (.selected) across all layer cards
- * in both Studio Deck and floating Layers Drawer to match strokeManager.selectedStrokeIds.
- */
-function updateMixerSelection(): void {
-  const selectedIds = new Set(strokeManager.selectedStrokeIds);
-  const allCards = document.querySelectorAll('.layer-card');
-  allCards.forEach((card) => {
-    const cardStrokeId = card.getAttribute('data-stroke-id');
-    const isSelected = !!cardStrokeId && selectedIds.has(cardStrokeId);
-    card.classList.toggle('selected', isSelected);
-  });
-}
-
-function createLayerCard(
-  stroke: any,
-  idx: number,
-  hasSolo: boolean
-): HTMLElement {
-  const card = document.createElement('div');
-  const isSelected = strokeManager.isStrokeSelected(stroke.id);
-  const isDimmed = (hasSolo && !stroke.soloed) || !!stroke.muted;
-
-  card.className = `layer-card${isSelected ? ' selected' : ''}${isDimmed ? ' dimmed' : ''}`;
-  card.setAttribute('data-stroke-id', stroke.id);
-
-  const inst = getInstrument(stroke.instrumentId);
-  const instName = inst.name;
-  const color = renderer.getStrokeColor(stroke);
-  const volPct = Math.round((stroke.volume ?? 1.0) * 100);
-  const revPct = Math.round((stroke.reverb ?? 0.4) * 100);
-
-  const totalSec = (stroke.timingMode === 'timer' || stroke.speedMode === 'timer')
-    ? (stroke.duration ?? 30)
-    : (stroke.lut.totalLength / Math.max(1, stroke.playhead.velocity || 100));
-  const timingTag = `${totalSec.toFixed(1)}s`;
-
-  card.innerHTML = `
-    <div class="layer-card-top">
-      <div class="layer-identity">
-        <span class="layer-dot" style="background: ${color}"></span>
-        <span class="layer-name" title="#${idx + 1} ${instName}">#${idx + 1} ${instName}</span>
-        <span class="layer-tag">${timingTag}</span>
-      </div>
-      <div class="layer-actions">
-        <button type="button" class="layer-btn${inputHandler.isRedrawing && strokeManager.selectedStrokeId === stroke.id ? ' active' : ''}" data-action="redraw" title="Re-draw line path (R)">↻</button>
-        <button type="button" class="layer-btn${stroke.muted ? ' active-mute' : ''}" data-action="mute" title="Mute line (M)">M</button>
-        <button type="button" class="layer-btn${stroke.soloed ? ' active-solo' : ''}" data-action="solo" title="Solo line (S)">S</button>
-        <button type="button" class="layer-btn" data-action="duplicate" title="Duplicate line (⌘D)">⧉</button>
-        <button type="button" class="layer-btn text-danger" data-action="delete" title="Delete line (Backspace)">✕</button>
-      </div>
-    </div>
-    <div class="layer-controls-row">
-      <div class="layer-slider-group">
-        <span class="layer-slider-label">Vol</span>
-        <input type="range" class="minimal-slider layer-vol-slider" min="0" max="100" step="1" value="${volPct}" />
-        <span class="layer-slider-val layer-vol-val">${volPct}%</span>
-      </div>
-      <div class="layer-slider-group">
-        <span class="layer-slider-label">Rev</span>
-        <input type="range" class="minimal-slider layer-rev-slider" min="0" max="100" step="1" value="${revPct}" />
-        <span class="layer-slider-val layer-rev-val">${revPct}%</span>
-      </div>
-    </div>
-  `;
-
-  // Select this stroke when clicking anywhere on the card or touching controls
-  card.addEventListener('pointerdown', (e) => {
-    const target = e.target as HTMLElement;
-    if (target.closest('button') || target.closest('input')) return;
-    if (studioTabBtnMaster?.classList.contains('active')) {
-      switchStudioDeckTab('mixer');
-    }
-    if (e.metaKey || e.ctrlKey) {
-      strokeManager.toggleSelectStroke(stroke.id);
-    } else {
-      strokeManager.selectStroke(stroke.id);
-    }
-    updateTrackActionsVisibility();
-    updateMixerSelection();
-  });
-
-  // Re-draw button
-  card.querySelector<HTMLButtonElement>('[data-action="redraw"]')?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    strokeManager.selectStroke(stroke.id);
-    if (inputHandler.appMode === 'redraw') {
-      setAppMode('draw');
-    } else {
-      setAppMode('redraw');
-    }
-  });
-
-  // Mute button
-  card.querySelector<HTMLButtonElement>('[data-action="mute"]')?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    strokeManager.toggleMute(stroke.id);
-    syncCompositionState();
-  });
-
-  // Solo button
-  card.querySelector<HTMLButtonElement>('[data-action="solo"]')?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    strokeManager.toggleSolo(stroke.id);
-    syncCompositionState();
-  });
-
-  // Duplicate button
-  card.querySelector<HTMLButtonElement>('[data-action="duplicate"]')?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    strokeManager.duplicateStroke(stroke.id);
-    syncCompositionState();
-  });
-
-  // Delete button
-  card.querySelector<HTMLButtonElement>('[data-action="delete"]')?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    strokeManager.removeStroke(stroke.id);
-    syncCompositionState();
-  });
-
-  // Volume slider
-  const volSlider = card.querySelector<HTMLInputElement>('.layer-vol-slider');
-  const volVal = card.querySelector<HTMLSpanElement>('.layer-vol-val');
-  volSlider?.addEventListener('input', (e) => {
-    e.stopPropagation();
-    const v = parseInt(volSlider.value, 10) / 100;
-    if (volVal) volVal.textContent = `${volSlider.value}%`;
-    strokeManager.setStrokeVolume(stroke.id, v);
-    setCompositionDirty(true);
-    if (stroke.id === strokeManager.selectedStrokeId && trackVolSlider && trackVolVal) {
-      trackVolSlider.value = volSlider.value;
-      trackVolVal.textContent = `${volSlider.value}%`;
-    }
-  });
-
-  // Reverb slider
-  const revSlider = card.querySelector<HTMLInputElement>('.layer-rev-slider');
-  const revVal = card.querySelector<HTMLSpanElement>('.layer-rev-val');
-  revSlider?.addEventListener('input', (e) => {
-    e.stopPropagation();
-    const r = parseInt(revSlider.value, 10) / 100;
-    if (revVal) revVal.textContent = `${revSlider.value}%`;
-    strokeManager.setStrokeReverb(stroke.id, r);
-    setCompositionDirty(true);
-    if (stroke.id === strokeManager.selectedStrokeId && trackReverbSlider && trackReverbVal) {
-      trackReverbSlider.value = revSlider.value;
-      trackReverbVal.textContent = `${revSlider.value}%`;
-    }
-  });
-
-  return card;
-}
-
-function renderLayerMixer(): void {
-  const strokes = strokeManager.activeStrokes;
-  if (layerCountBadge) {
-    layerCountBadge.textContent = strokes.length.toString();
-  }
-  if (typeof renderStudioMixer === 'function') {
-    renderStudioMixer();
-  }
-}
-
-// ==========================================================================
-// View Architecture Implementations (Studio Deck, Zen Canvas, Scene Arranger)
-// ==========================================================================
-
-const sceneManager = new SceneManager();
 
 const viewModeManager = new ViewModeManager({
   onViewChange: (mode: ViewMode) => {
     if (mode === 'studio') {
-      renderStudioMixer();
-      if (studioTabBtnScenes?.classList.contains('active')) {
-        renderSceneCards();
+      studioDeckController.renderAllMixers();
+      if (document.getElementById('studioTabBtnScenes')?.classList.contains('active')) {
+        sceneUiController.renderSceneCards();
+      }
+      if (document.getElementById('studioTabBtnMaster')?.classList.contains('active')) {
+        syncMasterFxUI();
+        studioDeckController.refreshMidiUi();
       }
     } else if (mode === 'zen') {
+      setDrawerOpen(false);
       armZenAutoDim();
     }
     updateTrackActionsVisibility();
     if (sceneManager.isSequencing()) {
       const prog = sceneManager.getSequenceProgress();
-      updateSeqMiniIndicator({
+      sceneUiController.updateSeqMiniIndicator({
         sceneChanged: false,
         currentScene: sceneManager.getCurrentScene(),
         nextScene: sceneManager.getNextScene(),
@@ -1618,6 +1307,129 @@ const viewModeManager = new ViewModeManager({
   },
 });
 
+const sceneUiController = new SceneUiController({
+  sceneManager,
+  strokeManager,
+  quantizer,
+  soundEngine,
+  getCanvasSize: () => ({ width: renderer.width, height: renderer.height }),
+  onLoadScene: (scene) => loadScene(scene),
+  onSwitchScene: (sceneId) => switchScene(sceneId),
+  onSyncCompositionState: () => {
+    setCompositionDirty(true);
+    updateStats();
+    studioDeckController.updateHistoryBadge();
+  },
+  onSwitchToScenesTab: () => {
+    viewModeManager.setMode('studio');
+    studioDeckController.switchStudioDeckTab('scenes');
+  },
+  getPendingSceneId: () => pendingSceneId,
+});
+
+const studioDeckController = new StudioDeckController({
+  strokeManager,
+  renderer,
+  quantizer,
+  soundEngine,
+  inputHandler,
+  viewModeManager,
+  midiController,
+  abSnapshot,
+  buildCurrentCompositionSnapshot: () => buildCurrentCompositionExport(),
+  onCompositionDirty: (dirty) => setCompositionDirty(dirty),
+  onSyncCompositionState: () => syncCompositionState(),
+  onUpdateTrackActionsVisibility: () => updateTrackActionsVisibility(),
+  onSetAppMode: (mode) => setAppMode(mode),
+  onDuplicateStroke: (strokeId) => duplicateStrokeWithState(strokeId),
+  onApplySnapshot: async (snapshot) => {
+    await loadComposition(snapshot, { preserveAB: true });
+  },
+  onBeatGridChange: (visible) => {
+    beatGridVisible = visible;
+    writeStorageKey('harmonic_beat_grid', visible ? '1' : '0');
+  },
+  onQuantizedChange: (enabled) => {
+    if (!enabled && pendingSceneId) {
+      pendingSceneId = null;
+    }
+    sceneUiController.renderSceneCards();
+  },
+  onMidiCcTargetApplied: () => {
+    syncMasterFxUI();
+    updatePitchNavigator();
+    updateTrackActionsVisibility();
+  },
+  onRenderSceneCards: () => sceneUiController.renderSceneCards(),
+});
+
+const presetModalController = new PresetModalController({
+  buildCurrentCompositionExport: (nameOverride) => buildCurrentCompositionExport(nameOverride),
+  loadComposition: (comp) => loadComposition(comp),
+  getCurrentCompositionName: () => currentLoadedPresetName,
+  setCurrentCompositionName: (name) => {
+    currentLoadedPresetName = name;
+  },
+  setCurrentLoadedTemplateId: (id) => {
+    currentLoadedTemplateId = id;
+  },
+  setCompositionDirty: (dirty) => setCompositionDirty(dirty),
+  getTemplates: () => TEMPLATES,
+  hasActiveStrokes: () => strokeManager.activeStrokes.length > 0,
+  onFallbackToTemplate: async (templateId) => {
+    await loadTemplate(templateId, false);
+  },
+  onPresetSaved: () => {
+    studioDeckController.renderAllMixers();
+  },
+});
+
+const recordExportController = new RecordExportController({
+  strokeManager,
+  quantizer,
+  soundEngine,
+  getCanvasSize: () => ({ width: renderer.width, height: renderer.height }),
+  getCompositionName: () =>
+    currentLoadedPresetName || (templateSelect?.value ? templateSelect.value : 'generative-drawing'),
+  onAudioStarted: () => ensureAudioUnlocked(),
+});
+
+studioDeckController.init();
+sceneUiController.init();
+presetModalController.init();
+recordExportController.init();
+
+studioDeckController.syncMasterSwingAndPerformanceUI(
+  strokeManager.swing,
+  beatGridVisible,
+  strokeManager.quantizedTriggering
+);
+
+const originalOpenRecordModal = recordExportController.openModal.bind(recordExportController);
+recordExportController.openModal = () => {
+  onboarding.notifyUserAction('tried_feature');
+  originalOpenRecordModal();
+};
+
+const originalUpdateSeqPlayBtn = sceneUiController.updateSequencePlayButton.bind(sceneUiController);
+sceneUiController.updateSequencePlayButton = () => {
+  originalUpdateSeqPlayBtn();
+  if (sceneManager.isSequencing()) {
+    onboarding.notifyUserAction('tried_feature');
+  }
+};
+
+strokeManager.onBarBoundary = () => {
+  if (pendingSceneId) {
+    const nextId = pendingSceneId;
+    pendingSceneId = null;
+    executeSwitchSceneImmediate(nextId);
+  }
+  sceneUiController.renderSceneCards();
+  studioDeckController.renderAllMixers();
+  studioDeckController.updateHistoryBadge();
+};
+
 viewModeManager.initDOM({
   app: appContainerEl,
   studioDeck: studioDeckEl,
@@ -1627,551 +1439,24 @@ viewModeManager.initDOM({
   pitchNav: pitchNavigator,
 });
 
-// Wire view mode buttons across the app
-document.querySelectorAll<HTMLElement>('[data-view-mode]').forEach((btn) => {
-  btn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const mode = btn.getAttribute('data-view-mode') as ViewMode;
-    if (mode) {
-      viewModeManager.setMode(mode);
-    }
-  });
-});
-
-// Studio Deck Tab Switching (Layers Mixer vs Master FX vs Scenes)
-function switchStudioDeckTab(tab: 'mixer' | 'master' | 'scenes'): void {
-  studioTabBtnMixer?.classList.toggle('active', tab === 'mixer');
-  studioTabBtnMaster?.classList.toggle('active', tab === 'master');
-  studioTabBtnScenes?.classList.toggle('active', tab === 'scenes');
-
-  if (studioTabMixer) studioTabMixer.style.display = tab === 'mixer' ? 'flex' : 'none';
-  if (studioTabMaster) studioTabMaster.style.display = tab === 'master' ? 'flex' : 'none';
-  if (studioTabScenes) studioTabScenes.style.display = tab === 'scenes' ? 'flex' : 'none';
-
-  if (tab === 'mixer') {
-    renderStudioMixer();
-  } else if (tab === 'scenes') {
-    renderSceneCards();
-  } else if (tab === 'master') {
-    // Synchronize master FX controls
-    if (studioMasterBpmSlider && studioMasterBpmVal) {
-      studioMasterBpmSlider.value = strokeManager.currentBpm.toString();
-      studioMasterBpmVal.textContent = `${strokeManager.currentBpm} BPM`;
-    }
-    if (studioMasterReverbSlider && studioMasterReverbVal) {
-      const revPct = Math.round(soundEngine.reverbMix * 100);
-      studioMasterReverbSlider.value = revPct.toString();
-      studioMasterReverbVal.textContent = `${revPct}%`;
-    }
-    if (studioReverbTypeSelect) studioReverbTypeSelect.value = soundEngine.reverbType;
-    if (studioStereoWidthSlider && studioStereoWidthVal) {
-      const widthPct = Math.round(soundEngine.stereoWidth * 100);
-      studioStereoWidthSlider.value = widthPct.toString();
-      studioStereoWidthVal.textContent = widthPct === 100 ? '100% (Stereo)' : (widthPct === 0 ? '0% (Mono)' : `${widthPct}%`);
-    }
-    if (studioTapeWarmthSlider && studioTapeWarmthVal) {
-      const warmthPct = Math.round(soundEngine.tapeWarmth * 100);
-      studioTapeWarmthSlider.value = warmthPct.toString();
-      studioTapeWarmthVal.textContent = warmthPct === 0 ? '0% (Clean)' : `${warmthPct}%`;
-    }
-    if (studioDuckingSlider && studioDuckingVal) {
-      const duckPct = Math.round(soundEngine.duckingDepth * 100);
-      studioDuckingSlider.value = duckPct.toString();
-      studioDuckingVal.textContent = duckPct === 0 ? '0% (Off)' : `${duckPct}%`;
-    }
-    if (studioScaleSelect) studioScaleSelect.value = scaleSelect.value;
-    if (studioRootSelect) studioRootSelect.value = rootSelect.value;
-    if (studioXAxisSelect) studioXAxisSelect.value = xAxisSelect.value;
-  }
-}
-
-studioTabBtnMixer?.addEventListener('click', () => switchStudioDeckTab('mixer'));
-studioTabBtnMaster?.addEventListener('click', () => switchStudioDeckTab('master'));
-studioTabBtnScenes?.addEventListener('click', () => switchStudioDeckTab('scenes'));
-
-// Studio Master FX Controls
-studioMasterBpmSlider?.addEventListener('input', () => {
-  if (!studioMasterBpmSlider) return;
-  const bpm = parseInt(studioMasterBpmSlider.value, 10);
-  if (studioMasterBpmVal) studioMasterBpmVal.textContent = `${bpm} BPM`;
-  strokeManager.setBpm(bpm);
-  bpmSlider.value = bpm.toString();
-  bpmVal.textContent = `${bpm} BPM`;
-  if (statTempo) statTempo.textContent = `${bpm} BPM`;
-  setCompositionDirty(true);
-});
-
-studioMasterReverbSlider?.addEventListener('input', () => {
-  if (!studioMasterReverbSlider) return;
-  const pct = parseInt(studioMasterReverbSlider.value, 10);
-  if (studioMasterReverbVal) studioMasterReverbVal.textContent = `${pct}%`;
-  soundEngine.setReverbMix(pct / 100);
-  if (spaceSlider) spaceSlider.value = pct.toString();
-  if (spaceVal) spaceVal.textContent = `${pct}%`;
-  setCompositionDirty(true);
-});
-
-studioReverbTypeSelect?.addEventListener('change', () => {
-  if (!studioReverbTypeSelect) return;
-  const type = studioReverbTypeSelect.value as ReverbType;
-  soundEngine.setReverbType(type);
-  if (reverbTypeSelect) reverbTypeSelect.value = type;
-  setCompositionDirty(true);
-});
-
-studioStereoWidthSlider?.addEventListener('input', () => {
-  if (!studioStereoWidthSlider) return;
-  const pct = parseInt(studioStereoWidthSlider.value, 10);
-  soundEngine.setStereoWidth(pct / 100);
-  const text = pct === 100 ? '100% (Stereo)' : (pct === 0 ? '0% (Mono)' : `${pct}%`);
-  if (studioStereoWidthVal) studioStereoWidthVal.textContent = text;
-  if (stereoWidthSlider) stereoWidthSlider.value = pct.toString();
-  if (stereoWidthVal) stereoWidthVal.textContent = text;
-  setCompositionDirty(true);
-});
-
-studioTapeWarmthSlider?.addEventListener('input', () => {
-  if (!studioTapeWarmthSlider) return;
-  const pct = parseInt(studioTapeWarmthSlider.value, 10);
-  soundEngine.setTapeWarmth(pct / 100);
-  const text = pct === 0 ? '0% (Clean)' : `${pct}%`;
-  if (studioTapeWarmthVal) studioTapeWarmthVal.textContent = text;
-  if (tapeWarmthSlider) tapeWarmthSlider.value = pct.toString();
-  if (tapeWarmthVal) tapeWarmthVal.textContent = text;
-  setCompositionDirty(true);
-});
-
-studioDuckingSlider?.addEventListener('input', () => {
-  if (!studioDuckingSlider) return;
-  const pct = parseInt(studioDuckingSlider.value, 10);
-  soundEngine.setDuckingDepth(pct / 100);
-  const text = pct === 0 ? '0% (Off)' : `${pct}%`;
-  if (studioDuckingVal) studioDuckingVal.textContent = text;
-  if (duckingSlider) duckingSlider.value = pct.toString();
-  if (duckingVal) duckingVal.textContent = text;
-  setCompositionDirty(true);
-});
-
-studioScaleSelect?.addEventListener('change', () => {
-  if (!studioScaleSelect) return;
-  const scaleKey = studioScaleSelect.value;
-  scaleSelect.value = scaleKey;
-  if (SCALES[scaleKey]) {
-    quantizer.updateConfig({ scale: SCALES[scaleKey] });
-    updatePitchNavigator();
-    setCompositionDirty(true);
-  }
-});
-
-studioRootSelect?.addEventListener('change', () => {
-  if (!studioRootSelect) return;
-  const rootKey = studioRootSelect.value;
-  rootSelect.value = rootKey;
-  if (ROOT_NOTES[rootKey]) {
-    quantizer.updateConfig({ root: ROOT_NOTES[rootKey] });
-    updatePitchNavigator();
-    setCompositionDirty(true);
-  }
-});
-
-studioXAxisSelect?.addEventListener('change', () => {
-  if (!studioXAxisSelect) return;
-  const mode = studioXAxisSelect.value as XAxisModulationMode;
-  xAxisSelect.value = mode;
-  strokeManager.setXAxisModulationMode(mode);
-  setCompositionDirty(true);
-});
-
-studioSyncBtn?.addEventListener('click', () => {
-  strokeManager.resyncAllPlayheads();
-});
-
-studioRandomizeBtn?.addEventListener('click', () => {
-  strokeManager.randomizeAllPlayheads();
-});
-
-studioMuteAllBtn?.addEventListener('click', () => {
-  strokeManager.activeStrokes.forEach((s) => strokeManager.setStrokeMuted(s.id, true));
-  setCompositionDirty(true);
-  updateStats();
-  updateTrackActionsVisibility();
-  renderLayerMixer();
-  renderStudioMixer();
-});
-
-studioUnmuteAllBtn?.addEventListener('click', () => {
-  strokeManager.activeStrokes.forEach((s) => strokeManager.setStrokeMuted(s.id, false));
-  setCompositionDirty(true);
-  updateStats();
-  updateTrackActionsVisibility();
-  renderLayerMixer();
-  renderStudioMixer();
-});
-
-// Render persistent Layer Mixer cards inside Studio Deck
-function renderStudioMixer(): void {
-  const strokes = strokeManager.activeStrokes;
-  if (studioLayerCount) {
-    studioLayerCount.textContent = strokes.length.toString();
-  }
-  if (!studioMixerList) return;
-
-  if (strokes.length === 0) {
-    studioMixerList.innerHTML = '<div class="mixer-empty-state">No lines drawn yet. Draw on the canvas to add ambient sound layers.</div>';
-    updateStudioDockedInspector();
-    return;
-  }
-
-  const hasSolo = strokeManager.hasSoloedStrokes;
-  studioMixerList.innerHTML = '';
-
-  const sortedStrokes = strokeManager.getStrokesSortedByFieldY();
-  sortedStrokes.forEach((stroke, idx) => {
-    studioMixerList!.appendChild(createLayerCard(stroke, idx, hasSolo));
-  });
-
-  updateStudioDockedInspector();
-  updateMixerSelection();
-}
-
-// Docked Inspector inside Studio Deck
-function updateStudioDockedInspector(): void {
-  const selectedId = strokeManager.selectedStrokeId;
-  if (!studioDockedInspector) return;
-
-  if (!selectedId) {
-    studioDockedInspector.classList.add('is-empty');
-    studioDockedInspector.classList.remove('has-selection', 'is-collapsed');
-    if (dockedInspectorToggleBtn) dockedInspectorToggleBtn.style.display = 'none';
-    if (studioInspectorContent) studioInspectorContent.style.display = 'none';
-    if (studioBadgeDot) studioBadgeDot.style.background = 'transparent';
-    if (strokeManager.selectedStrokeIds.length > 1) {
-      if (studioInspectorSub) studioInspectorSub.textContent = `${strokeManager.selectedStrokeIds.length} lines selected (Drag to move)`;
-      if (studioInspectorLabel) studioInspectorLabel.textContent = 'Multi-Selection';
-    } else {
-      if (studioInspectorSub) studioInspectorSub.textContent = 'Select a line to inspect';
-      if (studioInspectorLabel) studioInspectorLabel.textContent = 'Line Inspector';
-    }
-    return;
-  }
-
-  const stroke = strokeManager.activeStrokes.find((s) => s.id === selectedId);
-  if (!stroke) return;
-
-  studioDockedInspector.classList.remove('is-empty');
-  studioDockedInspector.classList.add('has-selection');
-  if (dockedInspectorToggleBtn) {
-    dockedInspectorToggleBtn.style.display = 'inline-flex';
-    dockedInspectorToggleBtn.textContent = isInspectorCollapsed ? '▲' : '▼';
-    dockedInspectorToggleBtn.setAttribute(
-      'title',
-      isInspectorCollapsed ? 'Expand Line Inspector' : 'Collapse Line Inspector (show more lines)'
-    );
-  }
-
-  if (isInspectorCollapsed) {
-    studioDockedInspector.classList.add('is-collapsed');
-    if (studioInspectorContent) studioInspectorContent.style.display = 'none';
-  } else {
-    studioDockedInspector.classList.remove('is-collapsed');
-    if (studioInspectorContent) studioInspectorContent.style.display = 'flex';
-  }
-
-  const sortedStrokes = strokeManager.getStrokesSortedByFieldY();
-  const idx = sortedStrokes.indexOf(stroke);
-  const inst = getInstrument(stroke.instrumentId);
-  const color = renderer.getStrokeColor(stroke);
-
-  if (studioInspectorLabel) studioInspectorLabel.textContent = inst.name;
-  if (studioInspectorSub) studioInspectorSub.textContent = `Line #${idx + 1} (${stroke.style})`;
-  if (studioBadgeDot) studioBadgeDot.style.background = color;
-
-  if (studioVoicingSelect) {
-    studioVoicingSelect.value = stroke.harmonizer ?? 'single';
-  }
-
-  const isTimer = stroke.timingMode === 'timer' || stroke.speedMode === 'timer';
-  if (studioTimingModeLabel) {
-    studioTimingModeLabel.textContent = isTimer ? 'Timer' : 'Speed';
-  }
-  studioTimingToggle?.querySelectorAll<HTMLButtonElement>('.seg-btn').forEach((b) => {
-    b.classList.toggle('active', (b.getAttribute('data-timing-mode') === 'timer') === isTimer);
-  });
-
-  if (studioTimingSlider && studioTimingVal) {
-    if (isTimer) {
-      studioTimingSlider.min = '1';
-      studioTimingSlider.max = '300';
-      studioTimingSlider.step = '1';
-      studioTimingSlider.value = (stroke.duration ?? 30).toString();
-      studioTimingVal.textContent = `${stroke.duration ?? 30}s`;
-    } else {
-      studioTimingSlider.min = '0.1';
-      studioTimingSlider.max = '4.0';
-      studioTimingSlider.step = '0.05';
-      studioTimingSlider.value = (stroke.speedMultiplier ?? 1.0).toString();
-      studioTimingVal.textContent = `${(stroke.speedMultiplier ?? 1.0).toFixed(2)}x`;
-    }
-  }
-
-  const studioTraversalRow = studioTraversalSwitch?.closest('.docked-row') as HTMLElement | null;
-  const studioWaveGroup = studioWaveShapeSelect?.closest('.docked-group') as HTMLElement | null;
-  if (studioTraversalRow) studioTraversalRow.style.display = stroke.isPoint ? 'none' : '';
-  if (studioWaveGroup) studioWaveGroup.style.display = stroke.isPoint ? 'none' : '';
-
-  const isBounce = stroke.traversal === 'bounce' || (stroke.traversal as string) === 'pingpong';
-  studioTraversalSwitch?.querySelectorAll<HTMLButtonElement>('.seg-btn').forEach((b) => {
-    b.classList.toggle('active', (b.getAttribute('data-track-traversal') === 'bounce') === isBounce);
-  });
-
-  if (studioWaveShapeSelect) {
-    studioWaveShapeSelect.value = stroke.waveParams?.shapeType ?? 'sine';
-  }
-  if (studioWaveAmpSlider && studioWaveAmpVal) {
-    const amp = stroke.waveParams?.amplitude ?? 0;
-    studioWaveAmpSlider.value = amp.toString();
-    studioWaveAmpVal.textContent = `${Math.round(amp)}px`;
-  }
-  if (studioWaveSineBtn) {
-    studioWaveSineBtn.classList.toggle('active', (stroke.waveParams?.amplitude ?? 0) > 0);
-  }
-
-  // Tone & Grit controls sync
-  const dist = typeof stroke.distortion === 'number' ? stroke.distortion : 0.0;
-  if (studioDistortionSlider && studioDistortionVal) {
-    studioDistortionSlider.value = Math.round(dist * 100).toString();
-    studioDistortionVal.textContent = `${Math.round(dist * 100)}%`;
-  }
-
-  const cutoff = typeof stroke.filterCutoff === 'number' ? stroke.filterCutoff : 1.0;
-  if (studioFilterSlider && studioFilterVal) {
-    studioFilterSlider.value = Math.round(cutoff * 100).toString();
-    studioFilterVal.textContent = `${Math.round(cutoff * 100)}%`;
-  }
-
-  const lofi = typeof stroke.lofi === 'number' ? stroke.lofi : 0.0;
-  if (studioLofiSlider && studioLofiVal) {
-    studioLofiSlider.value = Math.round(lofi * 100).toString();
-    studioLofiVal.textContent = `${Math.round(lofi * 100)}%`;
-  }
-
-  if (studioRedrawTrackBtn) {
-    studioRedrawTrackBtn.classList.toggle('active', inputHandler.isRedrawing);
-  }
-}
-
-// Studio Inspector Controls Events
-studioVoicingSelect?.addEventListener('change', () => {
-  if (!studioVoicingSelect || !strokeManager.selectedStrokeId) return;
-  const mode = studioVoicingSelect.value as HarmonizerMode;
-  strokeManager.setStrokeHarmonizer(strokeManager.selectedStrokeId, mode);
-  setCompositionDirty(true);
-  updateTrackActionsVisibility();
-});
-
-studioTimingToggle?.querySelectorAll<HTMLButtonElement>('.seg-btn').forEach((b) => {
-  b.addEventListener('click', () => {
-    if (!strokeManager.selectedStrokeId) return;
-    const mode = b.getAttribute('data-timing-mode') as 'speed' | 'timer';
-    strokeManager.setStrokeTimingMode(strokeManager.selectedStrokeId, mode);
-    if (studioTimingModeLabel) {
-      studioTimingModeLabel.textContent = mode === 'timer' ? 'Timer' : 'Speed';
-    }
-    setCompositionDirty(true);
-    updateTrackActionsVisibility();
-    renderStudioMixer();
-  });
-});
-
-studioTimingSlider?.addEventListener('input', () => {
-  if (!studioTimingSlider || !strokeManager.selectedStrokeId) return;
-  const stroke = strokeManager.activeStrokes.find((s) => s.id === strokeManager.selectedStrokeId);
-  if (!stroke) return;
-
-  const isTimer = stroke.timingMode === 'timer' || stroke.speedMode === 'timer';
-  if (isTimer) {
-    const val = parseInt(studioTimingSlider.value, 10);
-    if (studioTimingVal) studioTimingVal.textContent = `${val}s`;
-    strokeManager.setStrokeDuration(stroke.id, val);
-  } else {
-    const val = parseFloat(studioTimingSlider.value);
-    if (studioTimingVal) studioTimingVal.textContent = `${val.toFixed(2)}x`;
-    strokeManager.setStrokeSpeed(stroke.id, val);
-  }
-  setCompositionDirty(true);
-  renderLayerMixer();
-  renderStudioMixer();
-});
-
-studioTraversalSwitch?.querySelectorAll<HTMLButtonElement>('.seg-btn').forEach((b) => {
-  b.addEventListener('click', () => {
-    if (!strokeManager.selectedStrokeId) return;
-    const trav = b.getAttribute('data-track-traversal') as TraversalMode;
-    strokeManager.setStrokeTraversal(strokeManager.selectedStrokeId, trav);
-    setCompositionDirty(true);
-    updateTrackActionsVisibility();
-    renderStudioMixer();
-  });
-});
-
-studioWaveShapeSelect?.addEventListener('change', () => {
-  if (!studioWaveShapeSelect || !strokeManager.selectedStrokeId) return;
-  const shape = studioWaveShapeSelect.value as WaveShapeType;
-  const amp = studioWaveAmpSlider ? parseFloat(studioWaveAmpSlider.value) : 20;
-  strokeManager.restructureStrokeWave(strokeManager.selectedStrokeId, Math.max(10, amp), 2, shape, true);
-  setCompositionDirty(true);
-  updateTrackActionsVisibility();
-});
-
-studioWaveSineBtn?.addEventListener('click', () => {
-  if (!strokeManager.selectedStrokeId) return;
-  const stroke = strokeManager.activeStrokes.find((s) => s.id === strokeManager.selectedStrokeId);
-  if (!stroke) return;
-  const hasWave = (stroke.waveParams?.amplitude ?? 0) > 0;
-  if (hasWave) {
-    strokeManager.restructureStrokeWave(stroke.id, 0, 2, 'sine', true);
-  } else {
-    strokeManager.restructureStrokeWave(stroke.id, 20, 2, 'sine', true);
-  }
-  setCompositionDirty(true);
-  updateTrackActionsVisibility();
-});
-
-studioWaveAmpSlider?.addEventListener('input', () => {
-  if (!studioWaveAmpSlider || !strokeManager.selectedStrokeId) return;
-  const amp = parseFloat(studioWaveAmpSlider.value);
-  if (studioWaveAmpVal) studioWaveAmpVal.textContent = `${Math.round(amp)}px`;
-  const shape = (studioWaveShapeSelect?.value ?? 'sine') as WaveShapeType;
-  strokeManager.restructureStrokeWave(strokeManager.selectedStrokeId, amp, 2, shape, false);
-  setCompositionDirty(true);
-});
-
-// Studio Tone & Grit Event Listeners
-studioDistortionSlider?.addEventListener('input', () => {
-  if (strokeManager.selectedStrokeId && studioDistortionSlider && studioDistortionVal) {
-    const d = parseFloat(studioDistortionSlider.value) / 100;
-    studioDistortionVal.textContent = `${Math.round(d * 100)}%`;
-    if (trackDistortionSlider && trackDistortionVal) {
-      trackDistortionSlider.value = studioDistortionSlider.value;
-      trackDistortionVal.textContent = `${Math.round(d * 100)}%`;
-    }
-    strokeManager.setStrokeDistortion(strokeManager.selectedStrokeId, d, false);
-  }
-});
-
-studioDistortionSlider?.addEventListener('change', () => {
-  if (strokeManager.selectedStrokeId && studioDistortionSlider) {
-    const d = parseFloat(studioDistortionSlider.value) / 100;
-    strokeManager.setStrokeDistortion(strokeManager.selectedStrokeId, d, true);
-    setCompositionDirty(true);
-  }
-});
-
-studioFilterSlider?.addEventListener('input', () => {
-  if (strokeManager.selectedStrokeId && studioFilterSlider && studioFilterVal) {
-    const c = parseFloat(studioFilterSlider.value) / 100;
-    studioFilterVal.textContent = `${Math.round(c * 100)}%`;
-    if (trackFilterSlider && trackFilterVal) {
-      trackFilterSlider.value = studioFilterSlider.value;
-      trackFilterVal.textContent = `${Math.round(c * 100)}%`;
-    }
-    strokeManager.setStrokeFilterCutoff(strokeManager.selectedStrokeId, c, false);
-  }
-});
-
-studioFilterSlider?.addEventListener('change', () => {
-  if (strokeManager.selectedStrokeId && studioFilterSlider) {
-    const c = parseFloat(studioFilterSlider.value) / 100;
-    strokeManager.setStrokeFilterCutoff(strokeManager.selectedStrokeId, c, true);
-    setCompositionDirty(true);
-  }
-});
-
-studioLofiSlider?.addEventListener('input', () => {
-  if (strokeManager.selectedStrokeId && studioLofiSlider && studioLofiVal) {
-    const cr = parseFloat(studioLofiSlider.value) / 100;
-    studioLofiVal.textContent = `${Math.round(cr * 100)}%`;
-    if (trackLofiSlider && trackLofiVal) {
-      trackLofiSlider.value = studioLofiSlider.value;
-      trackLofiVal.textContent = `${Math.round(cr * 100)}%`;
-    }
-    strokeManager.setStrokeLofi(strokeManager.selectedStrokeId, cr, false);
-  }
-});
-
-studioLofiSlider?.addEventListener('change', () => {
-  if (strokeManager.selectedStrokeId && studioLofiSlider) {
-    const cr = parseFloat(studioLofiSlider.value) / 100;
-    strokeManager.setStrokeLofi(strokeManager.selectedStrokeId, cr, true);
-    setCompositionDirty(true);
-  }
-});
-
-studioRedrawTrackBtn?.addEventListener('click', () => {
-  if (strokeManager.selectedStrokeId) {
-    if (inputHandler.appMode === 'redraw') {
-      setAppMode('draw');
-    } else {
-      setAppMode('redraw');
-    }
-  }
-});
-
-studioDupTrackBtn?.addEventListener('click', () => {
-  if (strokeManager.selectedStrokeId) {
-    strokeManager.duplicateSelected(quantizer, renderer.height);
-    syncCompositionState();
-  }
-});
-
-studioDelTrackBtn?.addEventListener('click', () => {
-  if (strokeManager.selectedStrokeId) {
-    strokeManager.deleteSelected();
-    syncCompositionState();
-  }
-});
-
-studioDeselectTrackBtn?.addEventListener('click', () => {
-  strokeManager.selectStroke(null);
-  updateTrackActionsVisibility();
-  renderStudioMixer();
-});
-
-dockedInspectorToggleBtn?.addEventListener('click', (e) => {
-  e.stopPropagation();
-  isInspectorCollapsed = !isInspectorCollapsed;
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem('harmonic_inspector_collapsed', isInspectorCollapsed.toString());
-  }
-  updateStudioDockedInspector();
-});
-
-const dockedInspectorHeader = studioDockedInspector?.querySelector('.docked-inspector-header');
-dockedInspectorHeader?.addEventListener('click', (e) => {
-  const target = e.target as HTMLElement;
-  if (target.closest('button')) return;
-  if (strokeManager.selectedStrokeId) {
-    isInspectorCollapsed = !isInspectorCollapsed;
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('harmonic_inspector_collapsed', isInspectorCollapsed.toString());
-    }
-    updateStudioDockedInspector();
-  }
-});
-
+// ==========================================================================
 // Zen Mode Initialization
+// ==========================================================================
 function initZenMode(): void {
   if (zenSwatches) {
-    zenSwatches.innerHTML = '';
+    zenSwatches.textContent = '';
     const insts = Object.values(INSTRUMENTS);
-    insts.forEach((inst) => {
+    insts.forEach((inst, idx) => {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = `swatch-btn${inst.id === currentInstrumentId ? ' active' : ''}`;
+      btn.className = `swatch-btn has-tooltip${inst.id === currentInstrumentId ? ' active' : ''}`;
       btn.setAttribute('data-instrument', inst.id);
       btn.style.setProperty('--swatch-c', inst.color);
-      btn.title = inst.name;
-      btn.innerHTML = '<span class="swatch-dot"></span>';
+      btn.title = `${inst.name} (${idx + 1})`;
+      btn.setAttribute('data-tooltip', `${inst.name} (${idx + 1})`);
+      const dot = document.createElement('span');
+      dot.className = 'swatch-dot';
+      btn.appendChild(dot);
 
       btn.addEventListener('click', () => {
         selectInstrument(inst.id);
@@ -2183,10 +1468,7 @@ function initZenMode(): void {
   }
 
   zenPlayPauseBtn?.addEventListener('click', () => {
-    togglePlayPause();
-    if (zenPlayPauseText) {
-      zenPlayPauseText.textContent = strokeManager.paused ? 'Play' : 'Pause';
-    }
+    void togglePlayPause();
   });
 
   zenSyncBtn?.addEventListener('click', () => {
@@ -2218,18 +1500,11 @@ function initZenMode(): void {
         currentStyle = style;
         document.querySelectorAll<HTMLElement>('#zenStyleControl .seg-btn').forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
-        // sync top texture
         document.querySelectorAll<HTMLElement>('#strokeModeControl .seg-btn').forEach((b) => {
           b.classList.toggle('active', b.getAttribute('data-style') === style);
         });
       }
     });
-  });
-
-  // Zen Contextual Pill Handlers
-  zenContextCloseBtn?.addEventListener('click', () => {
-    strokeManager.selectStroke(null);
-    updateTrackActionsVisibility();
   });
 
   zenContextRedrawBtn?.addEventListener('click', () => {
@@ -2241,17 +1516,31 @@ function initZenMode(): void {
     }
   });
 
-  zenContextVolSlider?.addEventListener('input', () => {
-    if (!zenContextVolSlider || !strokeManager.selectedStrokeId) return;
-    const v = parseInt(zenContextVolSlider.value, 10) / 100;
-    strokeManager.setStrokeVolume(strokeManager.selectedStrokeId, v);
-    setCompositionDirty(true);
-  });
+  if (zenContextVolSlider) {
+    bindSliderUndo<{ strokeId: string; initialValue: number }>(zenContextVolSlider, {
+      captureInitial: () => {
+        const id = strokeManager.selectedStrokeId;
+        const s = id ? strokeManager.getStroke(id) : undefined;
+        return s ? { strokeId: s.id, initialValue: s.volume ?? 1.0 } : undefined;
+      },
+      onInput: (val) => {
+        if (!strokeManager.selectedStrokeId) return;
+        strokeManager.setStrokeVolume(strokeManager.selectedStrokeId, val / 100, false);
+        setCompositionDirty(true);
+      },
+      onCommit: (initial, val) => {
+        const v = Math.max(0, Math.min(1, val / 100));
+        strokeManager.setStrokeVolume(initial.strokeId, v, false);
+        strokeManager.commitStrokePropertyUndo(initial.strokeId, 'volume', initial.initialValue, v);
+        setCompositionDirty(true);
+        studioDeckController.updateHistoryBadge();
+      },
+    });
+  }
 
   zenContextMuteBtn?.addEventListener('click', () => {
     if (!strokeManager.selectedStrokeId) return;
-    strokeManager.toggleMute(strokeManager.selectedStrokeId);
-    syncCompositionState();
+    toggleStrokeMuteWithQuantize(strokeManager.selectedStrokeId);
   });
 
   zenContextSoloBtn?.addEventListener('click', () => {
@@ -2264,12 +1553,12 @@ function initZenMode(): void {
     if (!strokeManager.selectedStrokeId) return;
     const s = strokeManager.activeStrokes.find((st) => st.id === strokeManager.selectedStrokeId);
     if (s) {
-      const currentTrav = (s.traversal === 'bounce' || (s.traversal as string) === 'pingpong') ? 'bounce' : 'restart';
+      const currentTrav = s.traversal === 'bounce' || (s.traversal as string) === 'pingpong' ? 'bounce' : 'restart';
       const nextTrav = currentTrav === 'bounce' ? 'restart' : 'bounce';
       strokeManager.setStrokeTraversal(s.id, nextTrav);
       setCompositionDirty(true);
       updateTrackActionsVisibility();
-      renderStudioMixer();
+      studioDeckController.renderAllMixers();
     }
   });
 }
@@ -2292,7 +1581,6 @@ window.addEventListener('pointermove', () => {
   }
 });
 
-// Update Zen Contextual Pill
 function updateZenContextPill(stroke?: DrawnStroke): void {
   if (!zenContextPillEl) return;
   if (!stroke || viewModeManager.getMode() !== 'zen') {
@@ -2306,7 +1594,9 @@ function updateZenContextPill(stroke?: DrawnStroke): void {
   const idx = strokeManager.activeStrokes.indexOf(stroke);
 
   if (zenContextDot) zenContextDot.style.background = color;
-  if (zenContextName) zenContextName.textContent = stroke.isPoint ? `Dot #${idx + 1} ${inst.name}` : `#${idx + 1} ${inst.name}`;
+  if (zenContextName) {
+    zenContextName.textContent = stroke.isPoint ? `Dot #${idx + 1} ${inst.name}` : `#${idx + 1} ${inst.name}`;
+  }
   if (zenContextVolSlider) zenContextVolSlider.value = Math.round((stroke.volume ?? 1.0) * 100).toString();
   if (zenContextRedrawBtn) {
     zenContextRedrawBtn.classList.toggle('active', inputHandler.isRedrawing);
@@ -2317,232 +1607,21 @@ function updateZenContextPill(stroke?: DrawnStroke): void {
   if (zenContextTravBtn) zenContextTravBtn.style.display = stroke.isPoint ? 'none' : '';
 }
 
-// Scene Arranger Implementation
-function renderSceneCards(): void {
-  if (!sceneCardsList) return;
-  const scenes = sceneManager.getScenes();
-  const currentScene = sceneManager.getCurrentScene();
-  sceneCardsList.innerHTML = '';
-
-  scenes.forEach((scene) => {
-    const card = document.createElement('div');
-    const isActive = scene.id === currentScene.id;
-    card.className = `scene-card${isActive ? ' active' : ''}`;
-    card.setAttribute('data-scene-id', scene.id);
-    card.setAttribute('draggable', 'true');
-
-    const strokeCount = isActive ? strokeManager.activeStrokes.length : scene.strokes.length;
-
-    card.innerHTML = `
-      <div class="scene-card-top">
-        <span class="scene-card-name" contenteditable="true" spellcheck="false" title="Click to rename scene">${scene.name}</span>
-        ${isActive ? `<span class="scene-card-badge" id="badge_${scene.id}">Active</span>` : ''}
-      </div>
-      <div class="scene-card-meta">
-        <span class="scene-card-chip">${strokeCount} lines</span>
-        <label class="scene-card-chip scene-card-chip-input has-tooltip" data-tooltip="Hold Length: Duration in seconds before transitioning (5s - 300s)">
-          <input type="number" class="scene-card-duration-input" min="5" max="300" step="1" value="${scene.durationSec}" />s
-        </label>
-        <label class="scene-card-chip scene-card-chip-input has-tooltip" data-tooltip="Scene Tempo: BPM for this movement (10 - 240 BPM)">
-          <input type="number" class="scene-card-bpm-input" min="10" max="240" step="1" value="${scene.bpm || 32}" /> BPM
-        </label>
-      </div>
-      <div class="scene-progress-track" id="track_${scene.id}" title="Click along the countdown bar to speed up & audition morphing">
-        <div class="scene-progress-bar" id="progress_${scene.id}"></div>
-      </div>
-    `;
-
-    const nameEl = card.querySelector<HTMLElement>('.scene-card-name');
-    const trackEl = card.querySelector<HTMLElement>(`#track_${scene.id}`);
-    const durInput = card.querySelector<HTMLInputElement>('.scene-card-duration-input');
-    const bpmInput = card.querySelector<HTMLInputElement>('.scene-card-bpm-input');
-
-    // Interactive duration input
-    if (durInput) {
-      const applyDur = () => {
-        let val = parseInt(durInput.value, 10);
-        if (isNaN(val) || val < 5) val = 5;
-        if (val > 300) val = 300;
-        durInput.value = val.toString();
-        sceneManager.setSceneDuration(scene.id, val);
-        setCompositionDirty(true);
-      };
-      durInput.addEventListener('click', (e) => e.stopPropagation());
-      durInput.addEventListener('mousedown', (e) => e.stopPropagation());
-      durInput.addEventListener('focus', () => { card.setAttribute('draggable', 'false'); });
-      durInput.addEventListener('blur', () => {
-        card.setAttribute('draggable', 'true');
-        applyDur();
-      });
-      durInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          durInput.blur();
-        }
-      });
-    }
-
-    // Interactive BPM input
-    if (bpmInput) {
-      const applyBpm = () => {
-        let val = parseInt(bpmInput.value, 10);
-        if (isNaN(val) || val < 10) val = 10;
-        if (val > 240) val = 240;
-        bpmInput.value = val.toString();
-        sceneManager.setSceneBpm(scene.id, val);
-        if (scene.id === sceneManager.getCurrentScene().id) {
-          strokeManager.setBpm(val);
-          bpmSlider.value = val.toString();
-          bpmVal.textContent = `${val} BPM`;
-          if (statTempo) statTempo.textContent = `${val} BPM`;
-        }
-        setCompositionDirty(true);
-      };
-      bpmInput.addEventListener('click', (e) => e.stopPropagation());
-      bpmInput.addEventListener('mousedown', (e) => e.stopPropagation());
-      bpmInput.addEventListener('focus', () => { card.setAttribute('draggable', 'false'); });
-      bpmInput.addEventListener('blur', () => {
-        card.setAttribute('draggable', 'true');
-        applyBpm();
-      });
-      bpmInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          bpmInput.blur();
-        }
-      });
-    }
-
-    // Interactive countdown bar seeking: speed up to audition morphing!
-    trackEl?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const rect = trackEl.getBoundingClientRect();
-      const clickX = e.clientX - rect.left;
-      const ratio = Math.max(0, Math.min(0.99, clickX / rect.width));
-
-      // If clicking another scene's track, switch to that scene first
-      if (scene.id !== sceneManager.getCurrentScene().id) {
-        switchScene(scene.id);
-      }
-
-      // Automatically activate sequence if not yet running so morphing auditions right away
-      if (!sceneManager.isSequencing()) {
-        sceneManager.updateCurrentScene({
-          strokes: strokeManager.exportComposition().strokes,
-          bpm: strokeManager.currentBpm,
-        });
-        sceneManager.startSequence();
-        if (sceneSeqPlayText) sceneSeqPlayText.textContent = 'Stop Sequence';
-        scenePlaySeqBtn?.classList.add('active');
-      }
-
-      // Seek current scene forward
-      sceneManager.seekCurrentScene(ratio);
-
-      // Reflect seek ratio immediately on progress bar
-      const pBar = document.getElementById(`progress_${scene.id}`);
-      if (pBar) {
-        pBar.style.width = `${(ratio * 100).toFixed(1)}%`;
-      }
-    });
-
-    // Drag-and-drop reordering
-    card.addEventListener('dragstart', (e) => {
-      if (document.activeElement === nameEl || document.activeElement === durInput || document.activeElement === bpmInput) {
-        e.preventDefault();
-        return;
-      }
-      card.classList.add('dragging');
-      if (e.dataTransfer) {
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', scene.id);
-      }
-    });
-
-    card.addEventListener('dragend', () => {
-      card.classList.remove('dragging');
-      document.querySelectorAll('.scene-card').forEach((c) => c.classList.remove('drag-over'));
-    });
-
-    card.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      if (e.dataTransfer) {
-        e.dataTransfer.dropEffect = 'move';
-      }
-      card.classList.add('drag-over');
-    });
-
-    card.addEventListener('dragleave', () => {
-      card.classList.remove('drag-over');
-    });
-
-    card.addEventListener('drop', (e) => {
-      e.preventDefault();
-      card.classList.remove('drag-over');
-      const sourceId = e.dataTransfer?.getData('text/plain');
-      if (sourceId && sourceId !== scene.id) {
-        const reordered = sceneManager.reorderScene(sourceId, scene.id);
-        if (reordered) {
-          setCompositionDirty(true);
-          renderSceneCards();
-        }
-      }
-    });
-
-    // Click on card body to switch scene
-    card.addEventListener('click', (e) => {
-      const target = e.target as HTMLElement;
-      if (target.classList.contains('scene-card-name') || target.closest('.scene-progress-track') || target.closest('.scene-card-chip-input')) return;
-      if (scene.id !== sceneManager.getCurrentScene().id) {
-        switchScene(scene.id);
-      }
-    });
-
-    // Editable name blur event (disable drag while editing text)
-    nameEl?.addEventListener('focus', () => {
-      card.setAttribute('draggable', 'false');
-    });
-    nameEl?.addEventListener('blur', () => {
-      card.setAttribute('draggable', 'true');
-      if (nameEl.textContent) {
-        sceneManager.renameScene(scene.id, nameEl.textContent.trim());
-        setCompositionDirty(true);
-      }
-    });
-    nameEl?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        nameEl.blur();
-      }
-    });
-
-    sceneCardsList.appendChild(card);
-  });
-}
-
 function syncCompositionState(): void {
   setCompositionDirty(true);
   updateStats();
   updateTrackActionsVisibility();
-  renderLayerMixer();
-  renderStudioMixer();
-  try {
-    if (typeof sceneManager !== 'undefined') {
-      sceneManager.updateCurrentScene({
-        strokes: strokeManager.exportComposition().strokes,
-      });
-      if (typeof renderSceneCards === 'function') {
-        renderSceneCards();
-      }
-    }
-  } catch {
-    // sceneManager not initialized yet
-  }
+  studioDeckController.renderAllMixers();
+  studioDeckController.updateHistoryBadge();
+  sceneManager.updateCurrentScene({
+    strokes: strokeManager.exportComposition().strokes,
+  });
+  sceneUiController.renderSceneCards();
 }
 
-function switchScene(sceneId: string): void {
+function executeSwitchSceneImmediate(sceneId: string): void {
+  pendingSceneId = null;
   strokeManager.cancelSceneCrossfade();
-  // 1. Snapshot current canvas strokes into currently active scene
   sceneManager.updateCurrentScene({
     strokes: strokeManager.exportComposition().strokes,
     bpm: strokeManager.currentBpm,
@@ -2552,14 +1631,29 @@ function switchScene(sceneId: string): void {
     xAxisModulationMode: xAxisSelect.value as XAxisModulationMode,
   });
 
-  // 2. Select target scene
   const target = sceneManager.selectScene(sceneId);
   if (target) {
     loadScene(target);
   }
 }
 
+function switchScene(sceneId: string): void {
+  onboarding.notifyUserAction('tried_feature');
+  if (
+    strokeManager.quantizedTriggering &&
+    !strokeManager.paused &&
+    sceneId !== sceneManager.getCurrentScene().id
+  ) {
+    pendingSceneId = sceneId;
+    sceneUiController.renderSceneCards();
+    showToast('Scene queued for next bar');
+    return;
+  }
+  executeSwitchSceneImmediate(sceneId);
+}
+
 function loadScene(scene: SceneData): void {
+  pendingSceneId = null;
   strokeManager.cancelSceneCrossfade();
   const comp: SavedComposition = {
     version: 1,
@@ -2567,7 +1661,7 @@ function loadScene(scene: SceneData): void {
     timestamp: Date.now(),
     bpm: scene.bpm || 32,
     scaleId: scene.scaleId || 'dorian',
-    rootId: scene.rootId || 'D2',
+    rootId: scene.rootId || 'D3',
     spaceReverb: scene.spaceReverb ?? 0.65,
     xAxisModulationMode: scene.xAxisModulationMode || 'panAndTone',
     strokes: JSON.parse(JSON.stringify(scene.strokes || [])),
@@ -2588,358 +1682,32 @@ function loadScene(scene: SceneData): void {
     quantizer.updateConfig({ root: ROOT_NOTES[comp.rootId] });
     rootSelect.value = comp.rootId;
   }
+  if (comp.xAxisModulationMode && xAxisSelect) {
+    xAxisSelect.value = comp.xAxisModulationMode;
+  }
   if (comp.bpm) {
     strokeManager.setBpm(comp.bpm);
-    bpmSlider.value = comp.bpm.toString();
-    bpmVal.textContent = `${comp.bpm} BPM`;
-    if (statTempo) statTempo.textContent = `${comp.bpm} BPM`;
   }
   if (comp.spaceReverb !== undefined) {
     soundEngine.setReverbMix(comp.spaceReverb);
-    spaceSlider.value = Math.round(comp.spaceReverb * 100).toString();
-    spaceVal.textContent = `${Math.round(comp.spaceReverb * 100)}%`;
   }
 
+  syncMasterFxUI();
   updateStats();
   updateTrackActionsVisibility();
-  renderLayerMixer();
-  renderStudioMixer();
-  renderSceneCards();
-}
-
-// Scene Arranger Controls
-sceneAddBtn?.addEventListener('click', () => {
-  // Snapshot current
-  sceneManager.updateCurrentScene({
-    strokes: strokeManager.exportComposition().strokes,
-    bpm: strokeManager.currentBpm,
-  });
-  const newScene = sceneManager.addScene();
-  switchScene(newScene.id);
-});
-
-sceneDupBtn?.addEventListener('click', () => {
-  sceneManager.updateCurrentScene({
-    strokes: strokeManager.exportComposition().strokes,
-    bpm: strokeManager.currentBpm,
-  });
-  const dup = sceneManager.duplicateCurrentScene();
-  switchScene(dup.id);
-});
-
-sceneDelBtn?.addEventListener('click', () => {
-  const currentId = sceneManager.getCurrentScene().id;
-  const deleted = sceneManager.deleteScene(currentId);
-  if (deleted) {
-    loadScene(sceneManager.getCurrentScene());
-  }
-});
-
-sceneMorphSlider?.addEventListener('input', () => {
-  if (!sceneMorphSlider) return;
-  const s = parseInt(sceneMorphSlider.value, 10);
-  if (sceneMorphVal) sceneMorphVal.textContent = `${s}s`;
-  sceneManager.setMorphDuration(s);
-});
-
-sceneMorphBlendButtons.forEach((btn) => {
-  btn.addEventListener('click', () => {
-    const mode = btn.getAttribute('data-blend') as MorphCurveMode | null;
-    if (!mode) return;
-    sceneMorphBlendButtons.forEach((b) => b.classList.remove('active'));
-    btn.classList.add('active');
-    sceneManager.setMorphCurveMode(mode);
-    if (sceneMorphCurveSelect) {
-      sceneMorphCurveSelect.value = mode;
-    }
-  });
-});
-
-sceneMorphCurveSelect?.addEventListener('change', () => {
-  if (!sceneMorphCurveSelect) return;
-  const mode = sceneMorphCurveSelect.value as MorphCurveMode;
-  sceneManager.setMorphCurveMode(mode);
-  sceneMorphBlendButtons.forEach((b) => {
-    b.classList.toggle('active', b.getAttribute('data-blend') === mode);
-  });
-});
-
-scenePlaySeqBtn?.addEventListener('click', () => {
-  if (sceneManager.isSequencing()) {
-    sceneManager.stopSequence();
-    strokeManager.cancelSceneCrossfade();
-    if (seqMiniIndicator) seqMiniIndicator.style.display = 'none';
-    if (sceneSeqPlayText) sceneSeqPlayText.textContent = 'Play Sequence';
-    scenePlaySeqBtn.classList.remove('active');
-  } else {
-    // Snapshot current
-    sceneManager.updateCurrentScene({
-      strokes: strokeManager.exportComposition().strokes,
-      bpm: strokeManager.currentBpm,
-    });
-    sceneManager.startSequence();
-    if (sceneSeqPlayText) sceneSeqPlayText.textContent = 'Stop Sequence';
-    scenePlaySeqBtn.classList.add('active');
-  }
-  renderSceneCards();
-});
-
-// Click mini HUD indicator to jump straight to Scene Arranger, or click on track to seek!
-seqMiniIndicator?.addEventListener('click', (e) => {
-  const target = e.target as HTMLElement;
-  const miniTrack = target.closest('.seq-mini-bar-track') as HTMLElement | null;
-  if (miniTrack) {
-    const rect = miniTrack.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const ratio = Math.max(0, Math.min(0.99, clickX / rect.width));
-    sceneManager.seekCurrentScene(ratio);
-    return;
-  }
-  viewModeManager.setMode('studio');
-  switchStudioDeckTab('scenes');
-});
-
-function updateSeqMiniIndicator(seq: SceneSequenceTickResult): void {
-  if (!seqMiniIndicator) return;
-  const currentView = typeof viewModeManager !== 'undefined' ? viewModeManager.getMode() : 'studio';
-  const isScenesTabActive = currentView === 'studio' && studioTabBtnScenes?.classList.contains('active');
-  if (isScenesTabActive || !sceneManager.isSequencing()) {
-    seqMiniIndicator.style.display = 'none';
-    return;
-  }
-
-  seqMiniIndicator.style.display = 'flex';
-  seqMiniIndicator.classList.toggle('is-morphing', seq.isMorphing);
-
-  if (seqMiniName) {
-    if (seq.isMorphing && seq.nextScene) {
-      seqMiniName.textContent = `Morphing → ${seq.nextScene.name}`;
-    } else {
-      seqMiniName.textContent = seq.currentScene.name;
-    }
-  }
-
-  if (seqMiniState) {
-    seqMiniState.textContent = seq.isMorphing ? 'Morph' : 'Seq';
-  }
-
-  if (seqMiniProgressText) {
-    const pct = Math.round(seq.progressRatio * 100);
-    seqMiniProgressText.textContent = `${pct}%`;
-  }
-
-  if (seqMiniBarFill) {
-    seqMiniBarFill.style.width = `${(seq.progressRatio * 100).toFixed(1)}%`;
-  }
+  studioDeckController.renderAllMixers();
+  sceneUiController.renderSceneCards();
 }
 
 initZenMode();
 
-
-// ==========================================================================
-// Record & MP3 Export Handlers
-// ==========================================================================
-function openRecordModal(): void {
-  if (recordModal) {
-    recordModal.classList.remove('hidden');
-    switchRecordTab('simulate');
-    if (simProgressWrap) simProgressWrap.classList.add('hidden');
-    if (simProgressBar) simProgressBar.style.width = '0%';
-    if (startSimulateBtn) {
-      startSimulateBtn.disabled = false;
-      startSimulateBtn.textContent = 'Simulate & Convert to MP3';
-    }
-  }
-}
-
-function closeRecordModal(): void {
-  if (recordModal) {
-    recordModal.classList.add('hidden');
-  }
-}
-
-function switchRecordTab(tab: 'simulate' | 'live'): void {
-  if (tab === 'simulate') {
-    tabSimulateBtn?.classList.add('active');
-    tabLiveBtn?.classList.remove('active');
-    tabSimulatePane?.classList.remove('hidden');
-    tabLivePane?.classList.add('hidden');
-  } else {
-    tabLiveBtn?.classList.add('active');
-    tabSimulateBtn?.classList.remove('active');
-    tabLivePane?.classList.remove('hidden');
-    tabSimulatePane?.classList.add('hidden');
-  }
-}
-
-durationPillBtns.forEach((btn) => {
-  btn.addEventListener('click', () => {
-    durationPillBtns.forEach((b) => b.classList.remove('active'));
-    btn.classList.add('active');
-    const sec = btn.getAttribute('data-sec');
-    if (sec && simDurationInput) {
-      simDurationInput.value = sec;
-    }
-  });
-});
-
-simDurationInput?.addEventListener('input', () => {
-  const val = simDurationInput.value;
-  durationPillBtns.forEach((b) => {
-    b.classList.toggle('active', b.getAttribute('data-sec') === val);
-  });
-});
-
-tabSimulateBtn?.addEventListener('click', () => switchRecordTab('simulate'));
-tabLiveBtn?.addEventListener('click', () => switchRecordTab('live'));
-
-recordModalBtn?.addEventListener('click', openRecordModal);
-closeRecordModalBtn?.addEventListener('click', closeRecordModal);
-recordModal?.querySelector('.modal-backdrop')?.addEventListener('click', closeRecordModal);
-
-// Simulate & Convert to MP3
-startSimulateBtn?.addEventListener('click', async () => {
-  if (isSimulating) return;
-  if (strokeManager.activeStrokes.length === 0) {
-    alert('Draw or load some lines before simulating.');
-    return;
-  }
-
-  const duration = Math.max(5, Math.min(600, parseInt(simDurationInput?.value || '30', 10) || 30));
-  isSimulating = true;
-  if (startSimulateBtn) {
-    startSimulateBtn.disabled = true;
-    startSimulateBtn.textContent = 'Simulating & Converting...';
-  }
-  if (simProgressWrap) simProgressWrap.classList.remove('hidden');
-  if (simProgressBar) simProgressBar.style.width = '5%';
-  if (simProgressStatus) simProgressStatus.textContent = 'Starting offline simulation...';
-
-  try {
-    const presetName = currentLoadedPresetName || (templateSelect?.value ? templateSelect.value : 'generative-drawing');
-    const cleanPreset = presetName.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
-    const filename = `${cleanPreset}-${duration}s.mp3`;
-
-    await simulateAndExportMp3({
-      durationSeconds: duration,
-      strokeManager,
-      quantizer,
-      canvasWidth: renderer.width,
-      canvasHeight: renderer.height,
-      onProgress: (status, percent) => {
-        if (simProgressBar) simProgressBar.style.width = `${percent}%`;
-        if (simProgressStatus) simProgressStatus.textContent = `${status}`;
-      },
-    }, filename);
-
-    if (simProgressStatus) simProgressStatus.textContent = `Export complete! Downloaded ${filename}`;
-    setTimeout(() => {
-      closeRecordModal();
-    }, 1400);
-  } catch (err) {
-    console.error('Simulation export error:', err);
-    alert('An error occurred during MP3 simulation. Check browser console for details.');
-  } finally {
-    isSimulating = false;
-    if (startSimulateBtn) {
-      startSimulateBtn.disabled = false;
-      startSimulateBtn.textContent = 'Simulate & Convert to MP3';
-    }
-  }
-});
-
-// Start Live Recording
-startLiveRecBtn?.addEventListener('click', async () => {
-  await ensureAudioUnlocked();
-
-  closeRecordModal();
-
-  if (!liveRecorder) {
-    liveRecorder = new LiveRecorder();
-  }
-
-  if (liveRecorder.recording) {
-    liveRecorder.cancel();
-  }
-
-  if (liveRecTimer) liveRecTimer.textContent = '00:00';
-  if (liveRecordingBanner) liveRecordingBanner.classList.remove('hidden');
-
-  try {
-    liveRecorder.start(soundEngine, (elapsedSec) => {
-      const m = Math.floor(elapsedSec / 60).toString().padStart(2, '0');
-      const s = Math.floor(elapsedSec % 60).toString().padStart(2, '0');
-      if (liveRecTimer) liveRecTimer.textContent = `${m}:${s}`;
-    });
-  } catch (err) {
-    console.error('Live record start error:', err);
-    alert('Could not start live recording.');
-    liveRecordingBanner?.classList.add('hidden');
-  }
-});
-
-// Stop Live Recording & Export MP3
-stopLiveRecBtn?.addEventListener('click', async () => {
-  if (!liveRecorder || !liveRecorder.recording) return;
-
-  if (stopLiveRecBtn) {
-    stopLiveRecBtn.disabled = true;
-    stopLiveRecBtn.textContent = 'Encoding MP3...';
-  }
-
-  try {
-    const presetName = currentLoadedPresetName || (templateSelect?.value ? templateSelect.value : 'generative-drawing');
-    const cleanPreset = presetName.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
-    const now = new Date();
-    const timeStr = `${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`;
-    const filename = `${cleanPreset}-live-${timeStr}.mp3`;
-
-    const mp3Blob = await liveRecorder.stopAndExport();
-    downloadBlob(mp3Blob, filename);
-  } catch (err) {
-    console.error('Live record export error:', err);
-    alert('Could not export live recording MP3.');
-  } finally {
-    liveRecordingBanner?.classList.add('hidden');
-    if (stopLiveRecBtn) {
-      stopLiveRecBtn.disabled = false;
-      stopLiveRecBtn.textContent = 'Stop & Export MP3';
-    }
-  }
-});
-
-// Cancel Live Recording
-cancelLiveRecBtn?.addEventListener('click', () => {
-  if (liveRecorder) {
-    liveRecorder.cancel();
-  }
-  liveRecordingBanner?.classList.add('hidden');
-});
-
-// Load Groove File Button
+// Load Preset File Trigger Buttons (Drawer + Top Bar)
 loadTemplateFileBtn?.addEventListener('click', () => {
   loadFileInput?.click();
 });
 
 topLoadPresetBtn?.addEventListener('click', () => {
   loadFileInput?.click();
-});
-
-topSavePresetBtn?.addEventListener('click', () => {
-  if (strokeManager.activeStrokes.length === 0) {
-    alert('Draw or create some musical lines first before saving a preset.');
-    return;
-  }
-  openSavePresetModal(true);
-});
-
-topDeletePresetBtn?.addEventListener('click', () => {
-  if (currentLoadedPresetName) {
-    const store = getSavedCompositions();
-    if (store[currentLoadedPresetName]) {
-      deleteCustomPreset(currentLoadedPresetName);
-    }
-  }
 });
 
 loadFileInput?.addEventListener('change', async () => {
@@ -2950,23 +1718,23 @@ loadFileInput?.addEventListener('change', async () => {
     const text = await file.text();
     const comp = JSON.parse(text) as SavedComposition;
     if (!comp.strokes || !Array.isArray(comp.strokes)) {
-      alert('Invalid template file format: missing strokes array.');
+      showToast('Invalid template file format: missing strokes array.', 'error');
       return;
     }
     const compName = comp.name || file.name.replace(/\.json$/i, '');
     comp.name = compName;
-    const saved = getSavedCompositions();
-    saved[compName] = comp;
-    localStorage.setItem('harmonic_saved_presets', JSON.stringify(saved));
-    localStorage.setItem('harmonic_saved_grooves', JSON.stringify(saved));
-    refreshSavedTemplatesDropdown();
-    templateSelect.value = `custom:${compName}`;
+    if (!savePreset(comp)) {
+      showToast('Loaded file, but browser storage could not persist it.', 'error');
+    }
+    presetModalController.refreshSavedTemplatesDropdown();
+    currentLoadedTemplateId = `custom:${compName}`;
+    templateSelect.value = currentLoadedTemplateId;
     currentLoadedPresetName = compName;
     await loadComposition(comp);
     if (statMode) statMode.textContent = `Preset Loaded: ${compName}`;
   } catch (err) {
     console.error('Failed to parse groove template file:', err);
-    alert('Could not parse template JSON file.');
+    showToast('Could not parse template JSON file.', 'error');
   } finally {
     loadFileInput.value = '';
   }
@@ -2977,18 +1745,20 @@ async function loadTemplate(tId: string, initAudio = true): Promise<void> {
   const template = TEMPLATES[tId];
   if (!template) return;
 
+  midiController.allNotesOff();
+  pendingSceneId = null;
   renderer.resize();
   prevCanvasWidth = renderer.width;
   prevCanvasHeight = renderer.height;
 
   currentLoadedPresetName = template.name;
+  currentLoadedTemplateId = tId;
   templateSelect.value = tId;
 
   if (initAudio) {
     await ensureAudioUnlocked();
   }
 
-  // Update scale, root, and tempo to template recommendations
   if (SCALES[template.scaleId]) {
     quantizer.updateConfig({ scale: SCALES[template.scaleId] });
     scaleSelect.value = template.scaleId;
@@ -2998,20 +1768,14 @@ async function loadTemplate(tId: string, initAudio = true): Promise<void> {
     rootSelect.value = template.rootId;
   }
   strokeManager.setBpm(template.bpm);
-  bpmSlider.value = template.bpm.toString();
-  bpmVal.textContent = `${template.bpm} BPM`;
-  if (statTempo) statTempo.textContent = `${template.bpm} BPM`;
+  strokeManager.setSwing(0);
 
-  // Apply template effect settings
   if (template.spaceReverb !== undefined) {
-    const spacePct = Math.round(template.spaceReverb * 100);
-    spaceSlider.value = spacePct.toString();
-    spaceVal.textContent = `${spacePct}%`;
     soundEngine.setReverbMix(template.spaceReverb);
   }
   if (template.octaveSpan !== undefined) {
-    octavesSlider.value = template.octaveSpan.toString();
-    octavesVal.textContent = `${template.octaveSpan} Oct`;
+    if (octavesSlider) octavesSlider.value = template.octaveSpan.toString();
+    if (octavesVal) octavesVal.textContent = `${template.octaveSpan} Oct`;
     quantizer.updateConfig({ octaveSpan: template.octaveSpan });
   }
   if (template.xAxisModulation) {
@@ -3020,19 +1784,24 @@ async function loadTemplate(tId: string, initAudio = true): Promise<void> {
   }
   if (template.breathingMode && breathingSelect) {
     breathingSelect.value = template.breathingMode;
+    if (studioBreathingSelect) studioBreathingSelect.value = template.breathingMode;
     strokeManager.setBreathingMode(template.breathingMode);
     updateBreathingTooltip(template.breathingMode);
   } else if (breathingSelect) {
     breathingSelect.value = 'gentle';
+    if (studioBreathingSelect) studioBreathingSelect.value = 'gentle';
     strokeManager.setBreathingMode('gentle');
     updateBreathingTooltip('gentle');
   }
 
-  // Clear existing and set scroll to template's view register
   strokeManager.clearAll();
-  const templateScroll = template.initialScrollRatio !== undefined
-    ? quantizer.clampScrollY(template.initialScrollRatio * renderer.height, renderer.height)
-    : quantizer.getMaxScrollY(renderer.height);
+  abSnapshot.clear();
+  studioDeckController.updateABSnapshotButtons();
+
+  const templateScroll =
+    template.initialScrollRatio !== undefined
+      ? quantizer.clampScrollY(template.initialScrollRatio * renderer.height, renderer.height)
+      : quantizer.getMaxScrollY(renderer.height);
   quantizer.setScrollY(templateScroll);
   targetScrollY = templateScroll;
   updatePitchNavigator();
@@ -3066,17 +1835,19 @@ async function loadTemplate(tId: string, initAudio = true): Promise<void> {
     );
   }
 
+  strokeManager.clearHistory();
   strokeManager.randomizeAllPlayheads(quantizer, renderer.height);
   if (soundEngine.isReady) {
     strokeManager.activateAudioVoices();
   }
   currentLoadedPresetName = template.name;
   setCompositionDirty(false);
+  syncMasterFxUI();
   updateStats();
   updateTrackActionsVisibility();
-  renderLayerMixer();
+  studioDeckController.renderAllMixers();
+  studioDeckController.updateHistoryBadge();
 
-  // Keep initial/current scene synchronized with loaded preset strokes and render cards
   sceneManager.updateCurrentScene({
     name: `Scene 1: ${template.name}`,
     strokes: strokeManager.exportComposition().strokes,
@@ -3086,50 +1857,53 @@ async function loadTemplate(tId: string, initAudio = true): Promise<void> {
     spaceReverb: template.spaceReverb ?? 0.65,
     xAxisModulationMode: template.xAxisModulation || 'panAndTone',
   });
-  renderSceneCards();
-  updatePresetDeleteButtons();
+  sceneUiController.renderSceneCards();
+  presetModalController.updatePresetDeleteButtons();
 }
 
 templateSelect.addEventListener('change', async () => {
   const tId = templateSelect.value;
   if (!tId) return;
 
-  // Handle Action item: Open Preset File (.json)
   if (tId === '__open_file__') {
-    templateSelect.value = currentLoadedPresetName
-      ? (getSavedCompositions()[currentLoadedPresetName] ? `custom:${currentLoadedPresetName}` : (TEMPLATES[currentLoadedPresetName] ? currentLoadedPresetName : 'cathedralSolitude'))
-      : 'cathedralSolitude';
+    templateSelect.value = currentLoadedTemplateId;
     loadFileInput?.click();
     return;
   }
 
   if (isCompositionDirty && strokeManager.activeStrokes.length > 0) {
-    const ok = confirm(`You have unsaved changes in "${currentLoadedPresetName || 'current composition'}". Discard changes and load new preset?`);
+    const ok = await showConfirmDialog({
+      title: 'Discard Unsaved Changes?',
+      message: `You have unsaved changes in "${currentLoadedPresetName || 'current composition'}". Discard changes and load new preset?`,
+      confirmLabel: 'Discard & Load',
+      cancelLabel: 'Cancel',
+      danger: true,
+    });
     if (!ok) {
-      templateSelect.value = currentLoadedPresetName
-        ? (getSavedCompositions()[currentLoadedPresetName] ? `custom:${currentLoadedPresetName}` : (TEMPLATES[currentLoadedPresetName] ? currentLoadedPresetName : 'cathedralSolitude'))
-        : 'cathedralSolitude';
+      templateSelect.value = currentLoadedTemplateId;
       return;
     }
   }
 
-  // Check if it's a custom saved preset
   if (tId.startsWith('custom:')) {
-    const name = tId.replace('custom:', '');
-    currentLoadedPresetName = name;
-    const saved = getSavedCompositions();
-    if (saved[name]) {
-      await loadComposition(saved[name]);
-      templateSelect.value = `custom:${name}`;
+    const name = tId.slice('custom:'.length);
+    const match = loadSavedPresets().find((p) => p.name === name);
+    if (match) {
+      currentLoadedTemplateId = tId;
+      currentLoadedPresetName = name;
+      await loadComposition(match);
+      templateSelect.value = tId;
+    } else {
+      templateSelect.value = currentLoadedTemplateId;
     }
-    updatePresetDeleteButtons();
+    presetModalController.updatePresetDeleteButtons();
     return;
   }
 
   await loadTemplate(tId, true);
   setCompositionDirty(false);
-  renderLayerMixer();
-  updatePresetDeleteButtons();
+  studioDeckController.renderAllMixers();
+  presetModalController.updatePresetDeleteButtons();
 });
 
 // Color-Sound Instrument Swatch Selection
@@ -3140,26 +1914,28 @@ function selectInstrument(instrumentId: string): void {
   swatchButtons.forEach((btn) => {
     btn.classList.toggle('active', btn.getAttribute('data-instrument') === inst.id);
   });
+  document.querySelectorAll<HTMLElement>('#zenSwatches .swatch-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.getAttribute('data-instrument') === inst.id);
+  });
 
-  if (statInstrument) {
-    statInstrument.textContent = `${inst.icon} ${inst.name}`;
-  }
-
-  // When selecting drums, automatically switch to dotted texture
   if (inst.id === 'onyx') {
     currentStyle = 'dotted';
     strokeModeButtons.forEach((b) => {
       b.classList.toggle('active', b.getAttribute('data-style') === 'dotted');
     });
+    document.querySelectorAll<HTMLElement>('#zenStyleControl .seg-btn').forEach((b) => {
+      b.classList.toggle('active', b.getAttribute('data-zen-style') === 'dotted');
+    });
   }
 
-  // If a stroke is selected, re-voice that stroke immediately!
   if (strokeManager.selectedStrokeId) {
     strokeManager.revoiceStroke(strokeManager.selectedStrokeId, inst.id);
     if (inst.id === 'onyx') {
       strokeManager.setStrokeStyle(strokeManager.selectedStrokeId, 'dotted');
-      updateTrackActionsVisibility();
     }
+    setCompositionDirty(true);
+    updateTrackActionsVisibility();
+    studioDeckController.renderAllMixers();
   }
 }
 
@@ -3173,24 +1949,25 @@ swatchButtons.forEach((btn) => {
 // X-Axis Modulation Mode
 xAxisSelect.addEventListener('change', () => {
   const mode = xAxisSelect.value as XAxisModulationMode;
+  if (studioXAxisSelect) studioXAxisSelect.value = mode;
   strokeManager.setXAxisModulationMode(mode);
   setCompositionDirty(true);
 });
 
+// ==========================================================================
 // Global Floating Tooltip Popover & Contextual Hover Descriptions
+// ==========================================================================
 const DEFAULT_HELP = 'Hover over any setting for details';
 const floatingTooltip = document.getElementById('floatingTooltip') as HTMLDivElement | null;
 const toggleTooltipsBtn = document.getElementById('toggleTooltipsBtn') as HTMLButtonElement | null;
 
-// Tooltip enabled state (persisted across sessions in localStorage)
-let areTooltipsEnabled = typeof localStorage !== 'undefined'
-  ? localStorage.getItem('harmonic_tooltips_enabled') !== 'false'
-  : true;
+let areTooltipsEnabled = readStorageKey(STORAGE_KEYS.TOOLTIPS_ENABLED) !== 'false';
 
 function updateTooltipsToggleUI(): void {
   if (!toggleTooltipsBtn) return;
   toggleTooltipsBtn.textContent = areTooltipsEnabled ? 'Hints On' : 'Hints Off';
   toggleTooltipsBtn.classList.toggle('active', areTooltipsEnabled);
+  toggleTooltipsBtn.setAttribute('aria-pressed', areTooltipsEnabled ? 'true' : 'false');
   toggleTooltipsBtn.setAttribute(
     'data-tooltip',
     areTooltipsEnabled
@@ -3201,43 +1978,35 @@ function updateTooltipsToggleUI(): void {
 
 toggleTooltipsBtn?.addEventListener('click', () => {
   areTooltipsEnabled = !areTooltipsEnabled;
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem('harmonic_tooltips_enabled', areTooltipsEnabled.toString());
-  }
+  writeStorageKey(STORAGE_KEYS.TOOLTIPS_ENABLED, areTooltipsEnabled.toString());
   updateTooltipsToggleUI();
   if (!areTooltipsEnabled && floatingTooltip) {
     floatingTooltip.classList.remove('visible');
   }
 });
 
-// Initialize button label and state
 updateTooltipsToggleUI();
 
-function showTooltip(el: HTMLElement) {
+function showTooltip(el: HTMLElement): void {
   const text = el.getAttribute('data-tooltip');
   if (!text) return;
 
-  // Always update bottom-bar context help regardless of floating bubble setting
   if (contextHelp) {
     contextHelp.textContent = text;
     contextHelp.style.color = 'var(--text-primary)';
   }
 
-  // Floating popup bubble only displays when areTooltipsEnabled is true
   if (areTooltipsEnabled && floatingTooltip) {
     floatingTooltip.textContent = text;
     floatingTooltip.classList.add('visible');
 
-    // Measure after setting text content
     const rect = el.getBoundingClientRect();
     const tipWidth = floatingTooltip.offsetWidth || 220;
     const tipHeight = floatingTooltip.offsetHeight || 36;
 
-    // Center horizontally on target element, clamping within viewport margins
     let left = rect.left + rect.width / 2 - tipWidth / 2;
     left = Math.max(10, Math.min(window.innerWidth - tipWidth - 10, left));
 
-    // Place below element by default; if overflowing bottom of viewport, flip above
     let top = rect.bottom + 6;
     if (top + tipHeight > window.innerHeight - 8) {
       top = Math.max(8, rect.top - tipHeight - 6);
@@ -3248,7 +2017,7 @@ function showTooltip(el: HTMLElement) {
   }
 }
 
-function hideTooltip() {
+function hideTooltip(): void {
   if (contextHelp) {
     contextHelp.textContent = DEFAULT_HELP;
     contextHelp.style.color = 'var(--text-muted)';
@@ -3258,7 +2027,6 @@ function hideTooltip() {
   }
 }
 
-// Delegated hover listener to seamlessly support all elements (including dynamically created ones)
 document.addEventListener('mouseover', (e) => {
   const target = (e.target as HTMLElement)?.closest?.('[data-tooltip]') as HTMLElement | null;
   if (target) {
@@ -3279,53 +2047,49 @@ document.addEventListener('mouseout', (e) => {
 // ==========================================================================
 // Scroll-to-Modify Sliders and Number Inputs
 // ==========================================================================
-// Allows users to hover over any range slider or numeric value input and scroll
-// the mouse wheel / trackpad to quickly nudge and scrub values up/down.
-document.addEventListener('wheel', (e: WheelEvent) => {
-  const target = e.target as HTMLElement | null;
-  if (!target) return;
+document.addEventListener(
+  'wheel',
+  (e: WheelEvent) => {
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
 
-  const sliderOrNumber = target.closest('input[type="range"], input[type="number"]') as HTMLInputElement | null;
-  if (!sliderOrNumber || sliderOrNumber.disabled) return;
+    const sliderOrNumber = target.closest('input[type="range"], input[type="number"]') as HTMLInputElement | null;
+    if (!sliderOrNumber || sliderOrNumber.disabled) return;
 
-  // Prevent default page or parent container scrolling while modifying the slider
-  e.preventDefault();
-  e.stopPropagation();
+    e.preventDefault();
+    e.stopPropagation();
 
-  const min = sliderOrNumber.min !== '' ? parseFloat(sliderOrNumber.min) : 0;
-  const max = sliderOrNumber.max !== '' ? parseFloat(sliderOrNumber.max) : 100;
-  const step = sliderOrNumber.step !== '' && sliderOrNumber.step !== 'any' ? parseFloat(sliderOrNumber.step) : 1;
-  const currentVal = parseFloat(sliderOrNumber.value);
-  if (isNaN(currentVal)) return;
+    const min = sliderOrNumber.min !== '' ? parseFloat(sliderOrNumber.min) : 0;
+    const max = sliderOrNumber.max !== '' ? parseFloat(sliderOrNumber.max) : 100;
+    const step = sliderOrNumber.step !== '' && sliderOrNumber.step !== 'any' ? parseFloat(sliderOrNumber.step) : 1;
+    const currentVal = parseFloat(sliderOrNumber.value);
+    if (isNaN(currentVal)) return;
 
-  // Determine direction: scrolling up (deltaY < 0 or deltaX > 0) increases value;
-  // scrolling down (deltaY > 0 or deltaX < 0) decreases value.
-  const delta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? -e.deltaY : e.deltaX;
-  if (delta === 0) return;
+    const delta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? -e.deltaY : e.deltaX;
+    if (delta === 0) return;
 
-  // Determine number of decimal places to prevent floating point inaccuracy
-  const stepStr = step.toString();
-  const decimals = stepStr.includes('.') ? stepStr.split('.')[1].length : 0;
+    const stepStr = step.toString();
+    const decimals = stepStr.includes('.') ? stepStr.split('.')[1].length : 0;
 
-  // Multiplier: Holding Shift gives 5x speed for faster scrubbing, Alt gives 1x fine tune
-  const speedMultiplier = e.shiftKey ? 5 : 1;
-  const stepIncrement = (delta > 0 ? 1 : -1) * step * speedMultiplier;
+    const speedMultiplier = e.shiftKey ? 5 : 1;
+    const stepIncrement = (delta > 0 ? 1 : -1) * step * speedMultiplier;
 
-  let nextVal = currentVal + stepIncrement;
-  nextVal = Math.max(min, Math.min(max, nextVal));
-  if (decimals > 0) {
-    nextVal = parseFloat(nextVal.toFixed(decimals));
-  } else {
-    nextVal = Math.round(nextVal);
-  }
+    let nextVal = currentVal + stepIncrement;
+    nextVal = Math.max(min, Math.min(max, nextVal));
+    if (decimals > 0) {
+      nextVal = parseFloat(nextVal.toFixed(decimals));
+    } else {
+      nextVal = Math.round(nextVal);
+    }
 
-  if (nextVal !== currentVal) {
-    sliderOrNumber.value = nextVal.toString();
-    // Dispatch input and change events so all listeners update the audio, labels, and state
-    sliderOrNumber.dispatchEvent(new Event('input', { bubbles: true }));
-    sliderOrNumber.dispatchEvent(new Event('change', { bubbles: true }));
-  }
-}, { passive: false });
+    if (nextVal !== currentVal) {
+      sliderOrNumber.value = nextVal.toString();
+      sliderOrNumber.dispatchEvent(new Event('input', { bubbles: true }));
+      sliderOrNumber.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  },
+  { passive: false }
+);
 
 // Musical Scale and Root Listeners
 scaleSelect.addEventListener('change', () => {
@@ -3357,12 +2121,14 @@ strokeModeButtons.forEach((btn) => {
     const style = btn.getAttribute('data-style') as StrokeStyle;
     if (style) {
       currentStyle = style;
-      // If a stroke is selected, update that stroke's texture immediately!
+      document.querySelectorAll<HTMLElement>('#zenStyleControl .seg-btn').forEach((b) => {
+        b.classList.toggle('active', b.getAttribute('data-zen-style') === style);
+      });
       if (strokeManager.selectedStrokeId) {
         strokeManager.setStrokeStyle(strokeManager.selectedStrokeId, style);
         setCompositionDirty(true);
         updateTrackActionsVisibility();
-        renderLayerMixer();
+        studioDeckController.renderAllMixers();
       }
     }
   });
@@ -3372,8 +2138,9 @@ strokeModeButtons.forEach((btn) => {
 bpmSlider.addEventListener('input', () => {
   const bpm = parseInt(bpmSlider.value, 10);
   bpmVal.textContent = `${bpm} BPM`;
+  if (studioMasterBpmSlider) studioMasterBpmSlider.value = bpm.toString();
+  if (studioMasterBpmVal) studioMasterBpmVal.textContent = `${bpm} BPM`;
   strokeManager.setBpm(bpm);
-  if (statTempo) statTempo.textContent = `${bpm} BPM`;
   setCompositionDirty(true);
 });
 
@@ -3413,10 +2180,9 @@ tapeWarmthSlider?.addEventListener('input', () => {
   if (!tapeWarmthSlider) return;
   const pct = parseInt(tapeWarmthSlider.value, 10);
   soundEngine.setTapeWarmth(pct / 100);
-  const text = pct === 0 ? '0% (Clean)' : `${pct}%`;
-  if (tapeWarmthVal) tapeWarmthVal.textContent = text;
+  if (tapeWarmthVal) tapeWarmthVal.textContent = pct === 0 ? '0% (Clean)' : `${pct}%`;
   if (studioTapeWarmthSlider) studioTapeWarmthSlider.value = pct.toString();
-  if (studioTapeWarmthVal) studioTapeWarmthVal.textContent = text;
+  if (studioTapeWarmthVal) studioTapeWarmthVal.textContent = `${pct}%`;
   setCompositionDirty(true);
 });
 
@@ -3425,48 +2191,50 @@ duckingSlider?.addEventListener('input', () => {
   if (!duckingSlider) return;
   const pct = parseInt(duckingSlider.value, 10);
   soundEngine.setDuckingDepth(pct / 100);
-  const text = pct === 0 ? '0% (Off)' : `${pct}%`;
-  if (duckingVal) duckingVal.textContent = text;
+  if (duckingVal) duckingVal.textContent = pct === 0 ? '0% (Off)' : `${pct}%`;
   if (studioDuckingSlider) studioDuckingSlider.value = pct.toString();
-  if (studioDuckingVal) studioDuckingVal.textContent = text;
+  if (studioDuckingVal) studioDuckingVal.textContent = `${pct}%`;
   setCompositionDirty(true);
 });
 
-// Canvas Pitch Octaves Range Slider (Zooms pitch field resolution while preserving 100% pitch invariance)
-octavesSlider?.addEventListener('input', () => {
-  const newOct = parseInt(octavesSlider.value, 10);
+// Canvas Pitch Octaves Zoom Helper (shared by slider & 2-finger pinch zoom)
+function applyOctaveSpan(targetOctaveSpan: number): void {
+  const newOct = Math.max(1, Math.min(8, Math.round(targetOctaveSpan * 10) / 10));
   const oldOct = quantizer.getConfig().octaveSpan;
-  if (!newOct || !oldOct || newOct === oldOct) return;
-  octavesVal.textContent = `${newOct} Oct`;
+  if (!Number.isFinite(newOct) || !oldOct || Math.abs(newOct - oldOct) < 0.01) return;
+
+  if (octavesSlider) {
+    const sliderMin = parseFloat(octavesSlider.min || '2');
+    const sliderMax = parseFloat(octavesSlider.max || '6');
+    octavesSlider.value = String(Math.max(sliderMin, Math.min(sliderMax, Math.round(newOct))));
+  }
+  if (octavesVal) {
+    octavesVal.textContent = Number.isInteger(newOct) ? `${newOct} Oct` : `${newOct.toFixed(1)} Oct`;
+  }
 
   const viewportH = renderer.height;
   const oldWorldH = quantizer.getWorldHeight(viewportH);
   const oldActiveH = Math.max(1, oldWorldH - 2 * ScaleQuantizer.MARGIN_Y);
 
-  // Update quantizer config to new octaveSpan
   quantizer.updateConfig({ octaveSpan: newOct });
 
   const newWorldH = quantizer.getWorldHeight(viewportH);
   const newActiveH = Math.max(1, newWorldH - 2 * ScaleQuantizer.MARGIN_Y);
   const scaleFactor = newActiveH / oldActiveH;
 
-  // 1. Rescale all melodic strokes Y coordinates relative to MARGIN_Y
   strokeManager.scaleMelodicStrokesY(scaleFactor, ScaleQuantizer.MARGIN_Y);
 
-  // 2. Adjust active in-flight gesture points if any
   if (activeDrawingPoints.length > 0 && currentInstrumentId !== 'onyx') {
     for (const pt of activeDrawingPoints) {
       pt.y = ScaleQuantizer.MARGIN_Y + (pt.y - ScaleQuantizer.MARGIN_Y) * scaleFactor;
     }
   }
 
-  // 3. Anchor viewport scroll smoothly around current screen center
   const centerScreenY = viewportH * 0.5;
   const oldWorldCenterY = quantizer.scrollY + centerScreenY;
   const newWorldCenterY = ScaleQuantizer.MARGIN_Y + (oldWorldCenterY - ScaleQuantizer.MARGIN_Y) * scaleFactor;
 
-  // 4. Update quantizer scrollY clamped to valid bounds
-  quantizer.scrollY = quantizer.clampScrollY(newWorldCenterY - centerScreenY, viewportH);
+  quantizer.setScrollY(quantizer.clampScrollY(newWorldCenterY - centerScreenY, viewportH));
   targetScrollY = quantizer.scrollY;
 
   updatePitchNavigator();
@@ -3475,6 +2243,11 @@ octavesSlider?.addEventListener('input', () => {
     updateTrackActionsVisibility();
   }
   setCompositionDirty(true);
+}
+
+// Canvas Pitch Octaves Range Slider
+octavesSlider?.addEventListener('input', () => {
+  applyOctaveSpan(parseInt(octavesSlider.value, 10));
 });
 
 function updateScoreTimingStatus(): void {
@@ -3498,9 +2271,8 @@ function updateScoreTimingStatus(): void {
   }
 }
 
-// Track Inspector Volume / Timing / Traversal / Wave Reshape / Mute / Solo / Delete Controls
 function updateTrackActionsVisibility(): void {
-  updateMixerSelection();
+  studioDeckController.updateMixerSelection();
   updateScoreTimingStatus();
   const selectedId = strokeManager.selectedStrokeId;
   const currentView = typeof viewModeManager !== 'undefined' ? viewModeManager.getMode() : 'studio';
@@ -3510,310 +2282,30 @@ function updateTrackActionsVisibility(): void {
     const stroke = strokeManager.activeStrokes.find((s) => s.id === selectedId);
 
     if (currentView === 'studio') {
-      trackInspectorBar.style.display = 'none';
-      trackInspectorBar.classList.add('hidden');
-      updateStudioDockedInspector();
+      studioDeckController.updateStudioDockedInspector();
     } else if (currentView === 'zen') {
-      trackInspectorBar.style.display = 'none';
-      trackInspectorBar.classList.add('hidden');
       updateZenContextPill(stroke);
-    } else {
-      trackInspectorBar.style.display = 'flex';
-      trackInspectorBar.classList.remove('hidden');
     }
 
     if (stroke) {
-      // Dynamic inspector positioning:
-      // When a line is drawn high on screen (screenMinY < 170px), flip inspector to bottom of canvas
-      // so it never obscures the drawn notes.
-      let minY = Infinity;
-      for (const seg of stroke.path.segments) {
-        minY = Math.min(minY, seg.p0.y, seg.p1.y, seg.p2.y, seg.p3.y);
-      }
-      const screenMinY = quantizer.worldToScreenY(minY, renderer.height);
-
-      // Always clear inline top/bottom so CSS handles smooth positioning
-      trackInspectorBar.style.top = '';
-      trackInspectorBar.style.bottom = '';
-
-      if (isFinite(screenMinY) && screenMinY < 170) {
-        trackInspectorBar.classList.add('inspector-bottom');
-      } else {
-        trackInspectorBar.classList.remove('inspector-bottom');
-      }
-
-      // If the right Controls popover is open, offset the inspector bar to remain centered in open canvas
-      const isDrawerOpen = advancedDrawer && advancedDrawer.style.display !== 'none';
-      if (isDrawerOpen) {
-        trackInspectorBar.classList.add('inspector-with-drawer');
-      } else {
-        trackInspectorBar.classList.remove('inspector-with-drawer');
-      }
-
-      const inst = getInstrument(stroke.instrumentId);
-      trackLabel.textContent = stroke.isPoint ? `Dot: ${inst.name}` : `${inst.name}`;
-      const badgeColor = getInstrumentColor(inst, renderer.isDarkMode);
-      trackBadgeDot.style.background = badgeColor;
-      trackBadgeDot.style.boxShadow = `0 0 8px ${badgeColor}80`;
-
-      const vol = typeof stroke.volume === 'number' ? stroke.volume : 1.0;
-      trackVolSlider.value = Math.round(vol * 100).toString();
-      trackVolVal.textContent = `${Math.round(vol * 100)}%`;
-
-      const rev = typeof stroke.reverb === 'number' ? stroke.reverb : 0.4;
-      if (trackReverbSlider && trackReverbVal) {
-        trackReverbSlider.value = Math.round(rev * 100).toString();
-        trackReverbVal.textContent = `${Math.round(rev * 100)}%`;
-      }
-
-      const fluc = typeof stroke.fluctuation === 'number' ? stroke.fluctuation : strokeManager.defaultStrokeFluctuation;
-      if (trackFluctuationSlider && trackFluctuationVal) {
-        trackFluctuationSlider.value = fluc.toFixed(2);
-        trackFluctuationVal.textContent = fluc.toFixed(2);
-      }
-
-      const dist = typeof stroke.distortion === 'number' ? stroke.distortion : 0.0;
-      if (trackDistortionSlider && trackDistortionVal) {
-        trackDistortionSlider.value = Math.round(dist * 100).toString();
-        trackDistortionVal.textContent = `${Math.round(dist * 100)}%`;
-      }
-
-      const cutoff = typeof stroke.filterCutoff === 'number' ? stroke.filterCutoff : 1.0;
-      if (trackFilterSlider && trackFilterVal) {
-        trackFilterSlider.value = Math.round(cutoff * 100).toString();
-        trackFilterVal.textContent = `${Math.round(cutoff * 100)}%`;
-      }
-
-      const lofi = typeof stroke.lofi === 'number' ? stroke.lofi : 0.0;
-      if (trackLofiSlider && trackLofiVal) {
-        trackLofiSlider.value = Math.round(lofi * 100).toString();
-        trackLofiVal.textContent = `${Math.round(lofi * 100)}%`;
-      }
-
-      // Wave parameters sync (hidden for stationary dot notes)
-      const trackWaveControl = document.getElementById('trackWaveControl');
-      if (trackWaveControl) {
-        trackWaveControl.style.display = stroke.isPoint ? 'none' : '';
-      }
-
-      if (stroke.waveParams) {
-        waveSineBtn.classList.toggle('active', stroke.waveParams.amplitude > 0);
-        waveShapeSelect.value = stroke.waveParams.shapeType ?? 'sine';
-        waveAmpSlider.value = stroke.waveParams.amplitude.toString();
-        waveAmpVal.textContent = `${Math.round(stroke.waveParams.amplitude)}px`;
-        wavePeriodSlider.value = stroke.waveParams.periods.toString();
-        wavePeriodVal.textContent = `${stroke.waveParams.periods.toFixed(1)}x`;
-      } else {
-        waveSineBtn.classList.remove('active');
-        waveShapeSelect.value = 'sine';
-        waveAmpSlider.value = '0';
-        waveAmpVal.textContent = '0px';
-        wavePeriodSlider.value = '2';
-        wavePeriodVal.textContent = '2.0x';
-      }
-
-      // Texture buttons sync
-      trackTextureButtons.forEach((b) => {
-        b.classList.toggle('active', b.getAttribute('data-track-style') === stroke.style);
-      });
-
-      // Speed / Timing Mode sync
-      const strokeTiming = stroke.timingMode ?? (stroke.speedMode === 'timer' ? 'timer' : 'speed');
-      const strokeSpeed = stroke.speedMultiplier ?? 1.0;
-      const strokeDur = Math.round(stroke.duration ?? 30);
-
-      speedModeSpeedBtn?.classList.toggle('active', strokeTiming === 'speed');
-      speedModeTimerBtn?.classList.toggle('active', strokeTiming === 'timer');
-      if (speedModeBarsBtn) speedModeBarsBtn.classList.toggle('active', stroke.speedMode === 'bars');
-
-      if (trackSpeedControls) trackSpeedControls.style.display = strokeTiming === 'speed' ? 'flex' : 'none';
-      if (trackDurationGroup) trackDurationGroup.style.display = strokeTiming === 'timer' ? 'flex' : 'none';
-      if (trackBarsControls) trackBarsControls.style.display = stroke.speedMode === 'bars' ? 'block' : 'none';
-
-      if (trackSpeedSlider && trackSpeedVal) {
-        trackSpeedSlider.value = strokeSpeed.toFixed(2);
-        trackSpeedVal.textContent = `${strokeSpeed.toFixed(2)}x`;
-      }
-
-      speedPills.forEach((pill) => {
-        const pSpeed = parseFloat(pill.getAttribute('data-speed') || '1.0');
-        pill.classList.toggle('active', strokeTiming === 'speed' && Math.abs(pSpeed - strokeSpeed) < 0.04);
-      });
-
-      if (trackDurationSlider && trackDurationVal) {
-        trackDurationSlider.value = strokeDur.toString();
-        trackDurationVal.textContent = formatDurationSec(strokeDur);
-      }
-
-      durationPills.forEach((pill) => {
-        const pDur = parseInt(pill.getAttribute('data-duration') || '30', 10);
-        pill.classList.toggle('active', strokeTiming === 'timer' && pDur === strokeDur);
-      });
-
-      if (trackSyncSelect) {
-        trackSyncSelect.value = stroke.loopQuantize ?? '2bars';
-      }
-
-      // Traversal buttons sync (Restart vs Bounce) (hidden for stationary dot notes)
-      const trackTraversalCell = document.getElementById('trackTraversalControl')?.closest('.inspector-cell') as HTMLElement | null;
-      if (trackTraversalCell) {
-        trackTraversalCell.style.display = stroke.isPoint ? 'none' : '';
-      }
-
-      const currentTrav = (stroke.traversal === 'bounce' || (stroke.traversal as string) === 'pingpong') ? 'bounce' : 'restart';
-      trackTraversalButtons.forEach((b) => {
-        const tMode = b.getAttribute('data-track-traversal');
-        b.classList.toggle('active', tMode === currentTrav);
-      });
-
-      // Harmonizer voicing sync (Onyx percussion strokes don't use diatonic voicings)
-      if (trackHarmonizerControl && trackHarmonizerSelect) {
-        if (stroke.instrumentId === 'onyx') {
-          trackHarmonizerControl.style.display = 'none';
-        } else {
-          trackHarmonizerControl.style.display = 'flex';
-          trackHarmonizerSelect.value = stroke.harmonizer ?? 'single';
-        }
-      }
-
-      // Also sync top bar texture to reflect selected track
       strokeModeButtons.forEach((b) => {
         b.classList.toggle('active', b.getAttribute('data-style') === stroke.style);
       });
-
-      // Update statLoopSync chip in status bar
-      const timingLabel = strokeTiming === 'timer'
-        ? `Timer ${formatDurationSec(strokeDur)}`
-        : `${strokeSpeed.toFixed(2)}x Speed`;
-      const travName = currentTrav === 'bounce' ? 'Bounce ⇄' : 'Restart ↻';
-      if (statLoopSync) {
-        statLoopSync.textContent = stroke.isPoint
-          ? `${timingLabel} • Dot Note`
-          : `${timingLabel} • ${travName}`;
-      }
-
-      muteBtn.classList.toggle('active-mute', !!stroke.muted);
-      muteBtn.textContent = stroke.muted ? 'Unmute' : 'Mute';
-      soloBtn.classList.toggle('active-solo', !!stroke.soloed);
-      soloBtn.textContent = stroke.soloed ? 'Unsolo' : 'Solo';
-      redrawTrackBtn?.classList.toggle('active', inputHandler.isRedrawing);
     }
   } else {
     const selectedCount = strokeManager.selectedStrokeIds.length;
     if (selectedCount > 1) {
       if (statMode) statMode.textContent = `${selectedCount} Lines Selected (Drag Move • ←/→ Tempo)`;
-    } else {
-      if (statMode) statMode.textContent = inputHandler.appMode === 'live' ? 'Live Play' : 'Draw / Click to Select';
+    } else if (statMode) {
+      statMode.textContent = inputHandler.appMode === 'live' ? 'Live Play' : 'Draw / Click to Select';
     }
-    trackInspectorBar.style.display = 'none';
-    trackInspectorBar.classList.remove('inspector-bottom');
-    trackInspectorBar.classList.remove('inspector-with-drawer');
-    trackInspectorBar.classList.add('hidden');
-    trackInspectorBar.style.top = '';
-    trackInspectorBar.style.bottom = '';
-    updateStudioDockedInspector();
+    studioDeckController.updateStudioDockedInspector();
     updateZenContextPill();
-    // Restore top bar to global current style
     strokeModeButtons.forEach((b) => {
       b.classList.toggle('active', b.getAttribute('data-style') === currentStyle);
     });
-    const defSpeedMode = strokeManager.defaultSpeedModeSetting;
-    if (defSpeedMode === 'bars') {
-      const defSync = strokeManager.defaultLoopQuantizeMode;
-      const defSyncLabel = defSync === '1bar' ? '1 Bar'
-        : (defSync === '2bars' ? '2 Bars'
-        : (defSync === '4bars' ? '4 Bars'
-        : (defSync === '8bars' ? '8 Bars' : 'Freeform')));
-      if (statLoopSync) statLoopSync.textContent = `Default: ${defSyncLabel}`;
-    } else {
-      if (statLoopSync) statLoopSync.textContent = `Default: ${strokeManager.defaultSpeed.toFixed(2)}x Speed`;
-    }
   }
 }
-
-deselectTrackBtn?.addEventListener('click', () => {
-  strokeManager.selectStroke(null);
-  updateTrackActionsVisibility();
-});
-
-// Track Inspector Texture Event Listeners
-trackTextureButtons.forEach((btn) => {
-  btn.addEventListener('click', () => {
-    const selectedId = strokeManager.selectedStrokeId;
-    if (!selectedId) return;
-    const style = btn.getAttribute('data-track-style') as StrokeStyle;
-    if (style) {
-      strokeManager.setStrokeStyle(selectedId, style);
-      currentStyle = style;
-      updateTrackActionsVisibility();
-    }
-  });
-});
-
-// Speed / Timer Mode Buttons (Speed vs Timer)
-speedModeSpeedBtn?.addEventListener('click', () => {
-  const selectedId = strokeManager.selectedStrokeId;
-  if (!selectedId) return;
-  strokeManager.setStrokeTimingMode(selectedId, 'speed', renderer.width);
-  updateTrackActionsVisibility();
-});
-
-speedModeTimerBtn?.addEventListener('click', () => {
-  const selectedId = strokeManager.selectedStrokeId;
-  if (!selectedId) return;
-  strokeManager.setStrokeTimingMode(selectedId, 'timer', renderer.width);
-  updateTrackActionsVisibility();
-});
-
-speedModeBarsBtn?.addEventListener('click', () => {
-  const selectedId = strokeManager.selectedStrokeId;
-  if (!selectedId) return;
-  strokeManager.setStrokeSpeedMode(selectedId, 'bars');
-  updateTrackActionsVisibility();
-});
-
-// Track Inspector Speed Slider Event Listeners
-trackSpeedSlider?.addEventListener('input', () => {
-  if (strokeManager.selectedStrokeId) {
-    const spd = parseFloat(trackSpeedSlider.value);
-    if (trackSpeedVal) trackSpeedVal.textContent = `${spd.toFixed(2)}x`;
-    strokeManager.setStrokeSpeed(strokeManager.selectedStrokeId, spd, false);
-    speedPills.forEach((pill) => {
-      const pSpeed = parseFloat(pill.getAttribute('data-speed') || '1.0');
-      pill.classList.toggle('active', Math.abs(pSpeed - spd) < 0.04);
-    });
-  }
-});
-
-trackSpeedSlider?.addEventListener('change', () => {
-  if (strokeManager.selectedStrokeId) {
-    const spd = parseFloat(trackSpeedSlider.value);
-    strokeManager.setStrokeSpeed(strokeManager.selectedStrokeId, spd, true);
-    updateTrackActionsVisibility();
-  }
-});
-
-// Speed Preset Pills Event Listeners (¼x, ½x, 1x, 2x)
-speedPills.forEach((pill) => {
-  pill.addEventListener('click', () => {
-    const selectedId = strokeManager.selectedStrokeId;
-    if (!selectedId) return;
-    const spd = parseFloat(pill.getAttribute('data-speed') || '1.0');
-    strokeManager.setStrokeSpeed(selectedId, spd, true);
-    updateTrackActionsVisibility();
-  });
-});
-
-// Duration Preset Pills (10s, 30s, 1m, 2m)
-durationPills.forEach((pill) => {
-  pill.addEventListener('click', () => {
-    const selectedId = strokeManager.selectedStrokeId;
-    if (!selectedId) return;
-    const dur = parseInt(pill.getAttribute('data-duration') || '30', 10);
-    strokeManager.setStrokeDuration(selectedId, dur, true);
-    updateTrackActionsVisibility();
-  });
-});
 
 // General Timing Default (Sets default speed/timer for future drawn lines)
 generalSyncSelect?.addEventListener('change', () => {
@@ -3831,289 +2323,14 @@ convertAllSpeedBtn?.addEventListener('click', () => {
   setCompositionDirty(true);
   updateStats();
   updateTrackActionsVisibility();
-  renderLayerMixer();
-  renderStudioMixer();
+  studioDeckController.renderAllMixers();
+  studioDeckController.updateHistoryBadge();
   updateScoreTimingStatus();
 
-  // Subtle tactile pulse animation on button
   convertAllSpeedBtn.classList.add('active');
   setTimeout(() => {
     convertAllSpeedBtn.classList.remove('active');
   }, 400);
-});
-
-// Track Inspector Loop Sync Event Listener
-trackSyncSelect?.addEventListener('change', () => {
-  const selectedId = strokeManager.selectedStrokeId;
-  if (!selectedId || !trackSyncSelect) return;
-  const mode = trackSyncSelect.value as LoopQuantizeMode;
-  if (mode) {
-    strokeManager.setStrokeLoopQuantize(selectedId, mode);
-    updateTrackActionsVisibility();
-  }
-});
-
-// Track Inspector Traversal Event Listeners
-trackTraversalButtons.forEach((btn) => {
-  btn.addEventListener('click', () => {
-    const selectedId = strokeManager.selectedStrokeId;
-    if (!selectedId) return;
-    const mode = btn.getAttribute('data-track-traversal') as TraversalMode;
-    if (mode) {
-      strokeManager.setStrokeTraversal(selectedId, mode);
-      updateTrackActionsVisibility();
-    }
-  });
-});
-
-// Volume Slider Event Listeners
-trackVolSlider.addEventListener('input', () => {
-  if (strokeManager.selectedStrokeId) {
-    const vol = parseFloat(trackVolSlider.value) / 100;
-    trackVolVal.textContent = `${Math.round(vol * 100)}%`;
-    strokeManager.setStrokeVolume(strokeManager.selectedStrokeId, vol, false);
-  }
-});
-
-trackVolSlider.addEventListener('change', () => {
-  if (strokeManager.selectedStrokeId) {
-    const vol = parseFloat(trackVolSlider.value) / 100;
-    strokeManager.setStrokeVolume(strokeManager.selectedStrokeId, vol, true);
-  }
-});
-
-// Reverb Slider Event Listeners
-trackReverbSlider?.addEventListener('input', () => {
-  if (strokeManager.selectedStrokeId && trackReverbSlider && trackReverbVal) {
-    const rev = parseFloat(trackReverbSlider.value) / 100;
-    trackReverbVal.textContent = `${Math.round(rev * 100)}%`;
-    strokeManager.setStrokeReverb(strokeManager.selectedStrokeId, rev, false);
-  }
-});
-
-trackReverbSlider?.addEventListener('change', () => {
-  if (strokeManager.selectedStrokeId && trackReverbSlider) {
-    const rev = parseFloat(trackReverbSlider.value) / 100;
-    strokeManager.setStrokeReverb(strokeManager.selectedStrokeId, rev, true);
-  }
-});
-
-// Tone Fluctuation Slider Event Listeners
-trackFluctuationSlider?.addEventListener('input', () => {
-  if (strokeManager.selectedStrokeId && trackFluctuationSlider && trackFluctuationVal) {
-    const fluc = parseFloat(trackFluctuationSlider.value);
-    trackFluctuationVal.textContent = fluc.toFixed(2);
-    strokeManager.setStrokeFluctuation(strokeManager.selectedStrokeId, fluc, false);
-  }
-});
-
-trackFluctuationSlider?.addEventListener('change', () => {
-  if (strokeManager.selectedStrokeId && trackFluctuationSlider) {
-    const fluc = parseFloat(trackFluctuationSlider.value);
-    strokeManager.setStrokeFluctuation(strokeManager.selectedStrokeId, fluc, true);
-  }
-});
-
-// Distortion Slider Event Listeners
-trackDistortionSlider?.addEventListener('input', () => {
-  if (strokeManager.selectedStrokeId && trackDistortionSlider && trackDistortionVal) {
-    const dist = parseFloat(trackDistortionSlider.value) / 100;
-    trackDistortionVal.textContent = `${Math.round(dist * 100)}%`;
-    if (studioDistortionSlider && studioDistortionVal) {
-      studioDistortionSlider.value = trackDistortionSlider.value;
-      studioDistortionVal.textContent = `${Math.round(dist * 100)}%`;
-    }
-    strokeManager.setStrokeDistortion(strokeManager.selectedStrokeId, dist, false);
-  }
-});
-
-trackDistortionSlider?.addEventListener('change', () => {
-  if (strokeManager.selectedStrokeId && trackDistortionSlider) {
-    const dist = parseFloat(trackDistortionSlider.value) / 100;
-    strokeManager.setStrokeDistortion(strokeManager.selectedStrokeId, dist, true);
-    setCompositionDirty(true);
-  }
-});
-
-// Tone Filter Slider Event Listeners
-trackFilterSlider?.addEventListener('input', () => {
-  if (strokeManager.selectedStrokeId && trackFilterSlider && trackFilterVal) {
-    const cutoff = parseFloat(trackFilterSlider.value) / 100;
-    trackFilterVal.textContent = `${Math.round(cutoff * 100)}%`;
-    if (studioFilterSlider && studioFilterVal) {
-      studioFilterSlider.value = trackFilterSlider.value;
-      studioFilterVal.textContent = `${Math.round(cutoff * 100)}%`;
-    }
-    strokeManager.setStrokeFilterCutoff(strokeManager.selectedStrokeId, cutoff, false);
-  }
-});
-
-trackFilterSlider?.addEventListener('change', () => {
-  if (strokeManager.selectedStrokeId && trackFilterSlider) {
-    const cutoff = parseFloat(trackFilterSlider.value) / 100;
-    strokeManager.setStrokeFilterCutoff(strokeManager.selectedStrokeId, cutoff, true);
-    setCompositionDirty(true);
-  }
-});
-
-// Lo-Fi Crunch Slider Event Listeners
-trackLofiSlider?.addEventListener('input', () => {
-  if (strokeManager.selectedStrokeId && trackLofiSlider && trackLofiVal) {
-    const lofi = parseFloat(trackLofiSlider.value) / 100;
-    trackLofiVal.textContent = `${Math.round(lofi * 100)}%`;
-    if (studioLofiSlider && studioLofiVal) {
-      studioLofiSlider.value = trackLofiSlider.value;
-      studioLofiVal.textContent = `${Math.round(lofi * 100)}%`;
-    }
-    strokeManager.setStrokeLofi(strokeManager.selectedStrokeId, lofi, false);
-  }
-});
-
-trackLofiSlider?.addEventListener('change', () => {
-  if (strokeManager.selectedStrokeId && trackLofiSlider) {
-    const lofi = parseFloat(trackLofiSlider.value) / 100;
-    strokeManager.setStrokeLofi(strokeManager.selectedStrokeId, lofi, true);
-    setCompositionDirty(true);
-  }
-});
-
-// Duration Slider Event Listeners
-trackDurationSlider?.addEventListener('input', () => {
-  if (strokeManager.selectedStrokeId) {
-    const dur = parseInt(trackDurationSlider.value, 10);
-    trackDurationVal.textContent = formatDurationSec(dur);
-    strokeManager.setStrokeDuration(strokeManager.selectedStrokeId, dur, false);
-    durationPills.forEach((pill) => {
-      const pDur = parseInt(pill.getAttribute('data-duration') || '30', 10);
-      pill.classList.toggle('active', pDur === dur);
-    });
-  }
-});
-
-trackDurationSlider?.addEventListener('change', () => {
-  if (strokeManager.selectedStrokeId) {
-    const dur = parseInt(trackDurationSlider.value, 10);
-    strokeManager.setStrokeDuration(strokeManager.selectedStrokeId, dur, true);
-    updateTrackActionsVisibility();
-  }
-});
-
-// Wave Restructuring Event Listeners
-waveShapeSelect.addEventListener('change', () => {
-  const selectedId = strokeManager.selectedStrokeId;
-  if (!selectedId) return;
-
-  const stroke = strokeManager.activeStrokes.find((s) => s.id === selectedId);
-  if (!stroke) return;
-
-  const shape = waveShapeSelect.value as WaveShapeType;
-  const currentAmp = stroke.waveParams && stroke.waveParams.amplitude > 0 ? stroke.waveParams.amplitude : 35;
-  const currentPeriods = stroke.waveParams ? stroke.waveParams.periods : 2.0;
-
-  strokeManager.restructureStrokeWave(selectedId, currentAmp, currentPeriods, shape, true);
-  updateTrackActionsVisibility();
-});
-
-waveSineBtn.addEventListener('click', () => {
-  const selectedId = strokeManager.selectedStrokeId;
-  if (!selectedId) return;
-
-  const stroke = strokeManager.activeStrokes.find((s) => s.id === selectedId);
-  if (!stroke) return;
-
-  const shape = (waveShapeSelect.value as WaveShapeType) || 'sine';
-  const isCurrentlyWavy = stroke.waveParams && stroke.waveParams.amplitude > 0;
-  const targetAmp = isCurrentlyWavy ? 0 : 35;
-  const targetPeriods = stroke.waveParams ? stroke.waveParams.periods : 2.0;
-
-  strokeManager.restructureStrokeWave(selectedId, targetAmp, targetPeriods, shape, true);
-  updateTrackActionsVisibility();
-});
-
-waveAmpSlider.addEventListener('input', () => {
-  const selectedId = strokeManager.selectedStrokeId;
-  if (selectedId) {
-    const amp = parseFloat(waveAmpSlider.value);
-    const periods = parseFloat(wavePeriodSlider.value);
-    const shape = (waveShapeSelect.value as WaveShapeType) || 'sine';
-    waveAmpVal.textContent = `${Math.round(amp)}px`;
-    waveSineBtn.classList.toggle('active', amp > 0);
-    strokeManager.restructureStrokeWave(selectedId, amp, periods, shape, false);
-  }
-});
-
-waveAmpSlider.addEventListener('change', () => {
-  const selectedId = strokeManager.selectedStrokeId;
-  if (selectedId) {
-    const amp = parseFloat(waveAmpSlider.value);
-    const periods = parseFloat(wavePeriodSlider.value);
-    const shape = (waveShapeSelect.value as WaveShapeType) || 'sine';
-    strokeManager.restructureStrokeWave(selectedId, amp, periods, shape, true);
-  }
-});
-
-wavePeriodSlider.addEventListener('input', () => {
-  const selectedId = strokeManager.selectedStrokeId;
-  if (selectedId) {
-    const amp = parseFloat(waveAmpSlider.value);
-    const periods = parseFloat(wavePeriodSlider.value);
-    const shape = (waveShapeSelect.value as WaveShapeType) || 'sine';
-    wavePeriodVal.textContent = `${periods.toFixed(1)}x`;
-    strokeManager.restructureStrokeWave(selectedId, amp, periods, shape, false);
-  }
-});
-
-wavePeriodSlider.addEventListener('change', () => {
-  const selectedId = strokeManager.selectedStrokeId;
-  if (selectedId) {
-    const amp = parseFloat(waveAmpSlider.value);
-    const periods = parseFloat(wavePeriodSlider.value);
-    const shape = (waveShapeSelect.value as WaveShapeType) || 'sine';
-    strokeManager.restructureStrokeWave(selectedId, amp, periods, shape, true);
-  }
-});
-
-deleteTrackBtn.addEventListener('click', () => {
-  if (strokeManager.selectedStrokeId) {
-    strokeManager.deleteSelected();
-    syncCompositionState();
-  }
-});
-
-muteBtn.addEventListener('click', () => {
-  if (strokeManager.selectedStrokeId) {
-    strokeManager.toggleMute(strokeManager.selectedStrokeId);
-    syncCompositionState();
-  }
-});
-
-soloBtn.addEventListener('click', () => {
-  if (strokeManager.selectedStrokeId) {
-    strokeManager.toggleSolo(strokeManager.selectedStrokeId);
-    syncCompositionState();
-  }
-});
-
-redrawTrackBtn?.addEventListener('click', () => {
-  if (strokeManager.selectedStrokeId) {
-    if (inputHandler.appMode === 'redraw') {
-      setAppMode('draw');
-    } else {
-      setAppMode('redraw');
-    }
-  }
-});
-
-duplicateTrackBtn?.addEventListener('click', () => {
-  if (strokeManager.selectedStrokeId) {
-    const newStroke = strokeManager.duplicateSelected(quantizer, renderer.height);
-    if (newStroke) {
-      if (soundEngine.isReady) {
-        strokeManager.activateAudioVoices();
-      }
-      syncCompositionState();
-    }
-  }
 });
 
 // Play / Pause Toggle
@@ -4121,172 +2338,122 @@ async function togglePlayPause(): Promise<void> {
   await ensureAudioUnlocked();
   const isPaused = !strokeManager.paused;
   strokeManager.setPaused(isPaused);
-
   if (isPaused) {
-    if (playPauseIcon) playPauseIcon.textContent = '';
-    playPauseText.textContent = 'Play';
-    if (typeof document !== 'undefined' && document.hidden) {
+    midiController.allNotesOff();
+  }
+
+  if (playPauseIcon) playPauseIcon.textContent = '';
+  if (playPauseText) playPauseText.textContent = isPaused ? 'Play' : 'Pause';
+  if (zenPlayPauseText) zenPlayPauseText.textContent = isPaused ? 'Play' : 'Pause';
+
+  if (typeof document !== 'undefined' && document.hidden) {
+    if (isPaused) {
       stopBackgroundAudioTicker();
-    }
-  } else {
-    if (playPauseIcon) playPauseIcon.textContent = '';
-    playPauseText.textContent = 'Pause';
-    if (typeof document !== 'undefined' && document.hidden) {
+    } else {
       startBackgroundAudioTicker();
     }
   }
 }
 
-playPauseBtn.addEventListener('click', () => {
-  togglePlayPause();
+playPauseBtn?.addEventListener('click', () => {
+  void togglePlayPause();
 });
 
 // Undo Action
-undoBtn.addEventListener('click', () => {
+undoBtn?.addEventListener('click', () => {
   strokeManager.undo();
   syncCompositionState();
 });
 
-clearBtn.addEventListener('click', () => {
+clearBtn?.addEventListener('click', async () => {
   if (isCompositionDirty && strokeManager.activeStrokes.length > 0) {
-    const ok = confirm('You have unsaved changes in your composition. Are you sure you want to clear the canvas?');
+    const ok = await showConfirmDialog({
+      title: 'Clear Canvas?',
+      message: 'You have unsaved changes in your composition. Are you sure you want to clear the canvas?',
+      confirmLabel: 'Clear Canvas',
+      cancelLabel: 'Cancel',
+      danger: true,
+    });
     if (!ok) return;
   }
+  midiController.allNotesOff();
+  pendingSceneId = null;
   strokeManager.clearAll();
+  abSnapshot.clear();
+  studioDeckController.updateABSnapshotButtons();
+  currentLoadedTemplateId = '';
   templateSelect.value = '';
   currentLoadedPresetName = '';
   setCompositionDirty(false);
   updateStats();
   updateTrackActionsVisibility();
-  renderLayerMixer();
-  renderStudioMixer();
-  try {
-    if (typeof sceneManager !== 'undefined') {
-      sceneManager.updateCurrentScene({
-        strokes: [],
-      });
-      if (typeof renderSceneCards === 'function') {
-        renderSceneCards();
-      }
-    }
-  } catch {}
+  studioDeckController.renderAllMixers();
+  studioDeckController.updateHistoryBadge();
+  sceneManager.updateCurrentScene({
+    strokes: [],
+  });
+  sceneUiController.renderSceneCards();
+  presetModalController.updatePresetDeleteButtons();
 });
 
-// Global Toast Notification Helper
-function showToast(message: string, durationMs: number = 2400): void {
-  let toastEl = document.getElementById('appToast') as HTMLDivElement | null;
-  if (!toastEl) {
-    toastEl = document.createElement('div');
-    toastEl.id = 'appToast';
-    toastEl.className = 'app-toast';
-    document.body.appendChild(toastEl);
-  }
-  toastEl.textContent = message;
-  toastEl.classList.add('is-visible');
-  setTimeout(() => {
-    toastEl?.classList.remove('is-visible');
-  }, durationMs);
-}
+// Shortcuts Cheat Sheet & Math Modals (with Focus Traps + Onboarding Replay)
+let releaseShortcutsFocusTrap: (() => void) | null = null;
+let releaseInfoFocusTrap: (() => void) | null = null;
 
-// Shortcuts Cheat Sheet Modal Handlers
 function openShortcutsModal(): void {
-  shortcutsModal?.classList.remove('hidden');
+  if (!shortcutsModal) return;
+  shortcutsModal.classList.remove('hidden');
+  releaseShortcutsFocusTrap?.();
+  releaseShortcutsFocusTrap = activateModalFocusTrap(shortcutsModal);
 }
 
 function closeShortcutsModal(): void {
+  releaseShortcutsFocusTrap?.();
+  releaseShortcutsFocusTrap = null;
   shortcutsModal?.classList.add('hidden');
+}
+
+function openInfoModal(): void {
+  if (!infoModal) return;
+  infoModal.classList.remove('hidden');
+  releaseInfoFocusTrap?.();
+  releaseInfoFocusTrap = activateModalFocusTrap(infoModal);
+}
+
+function closeInfoModal(): void {
+  releaseInfoFocusTrap?.();
+  releaseInfoFocusTrap = null;
+  infoModal?.classList.add('hidden');
 }
 
 shortcutsBtn?.addEventListener('click', openShortcutsModal);
 closeShortcutsModalBtn?.addEventListener('click', closeShortcutsModal);
 shortcutsModal?.querySelector('.modal-backdrop')?.addEventListener('click', closeShortcutsModal);
 
-const PROD_BASE_URL = 'https://generative-music-drawing.vercel.app';
-
-function buildCurrentCompositionExport(): SavedComposition {
-  const comp = strokeManager.exportComposition(
-    currentLoadedPresetName || 'Shared Score',
-    scaleSelect ? scaleSelect.value : 'dorian',
-    rootSelect ? rootSelect.value : 'D2',
-    renderer.width,
-    renderer.height
-  );
-  comp.spaceReverb = soundEngine.reverbMix;
-  comp.octaveSpan = parseInt(octavesSlider.value, 10);
-  comp.scrollY = quantizer.scrollY;
-  if (xAxisSelect) {
-    comp.xAxisModulationMode = xAxisSelect.value as XAxisModulationMode;
-  }
-  if (breathingSelect) {
-    comp.breathingMode = breathingSelect.value as BreathingMode;
-  }
-  if (defaultHarmonizerSelect) {
-    comp.defaultHarmonizer = defaultHarmonizerSelect.value as HarmonizerMode;
-  }
-  if (generalSyncSelect) {
-    comp.defaultTiming = generalSyncSelect.value;
-  }
-  return comp;
-}
-
-// Shareable Composition Link - Stores to persistent DB on deployed app and returns clean URL
-async function createShareableLink(): Promise<string> {
-  const comp = buildCurrentCompositionExport();
-
-  // Try storing to API backend first
-  try {
-    const apiUrl = window.location.hostname.includes('vercel.app')
-      ? '/api/track'
-      : `${PROD_BASE_URL}/api/track`;
-
-    const resp = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(comp),
-    });
-
-    if (resp.ok) {
-      const result = await resp.json();
-      if (result && result.id) {
-        return `${PROD_BASE_URL}/?track=${encodeURIComponent(result.id)}`;
-      }
-    }
-  } catch (err) {
-    console.warn('API share save failed, using encoded fallback:', err);
-  }
-
-  // Fallback: direct deployed URL with clean score hash
-  const jsonStr = JSON.stringify(comp);
-  const encoded = encodeURIComponent(btoa(unescape(encodeURIComponent(jsonStr))));
-  return `${PROD_BASE_URL}/#score=${encoded}`;
-}
+replayTourBtn?.addEventListener('click', () => {
+  closeShortcutsModal();
+  onboarding.start(true);
+});
 
 shareLinkBtn?.addEventListener('click', async () => {
   try {
     showToast('Generating shareable link...');
-    const shareUrl = await createShareableLink();
+    const comp = buildCurrentCompositionExport();
+    const { url: shareUrl } = await createShareUrl(comp);
     if (navigator.clipboard && navigator.clipboard.writeText) {
       await navigator.clipboard.writeText(shareUrl);
       showToast('Score link copied to clipboard!');
     } else {
       prompt('Copy your score link:', shareUrl);
     }
-  } catch (err) {
-    showToast('Could not copy link to clipboard');
+  } catch {
+    showToast('Could not copy link to clipboard', 'error');
   }
 });
 
-infoBtn.addEventListener('click', () => {
-  infoModal.classList.remove('hidden');
-});
-
-closeModalBtn.addEventListener('click', () => {
-  infoModal.classList.add('hidden');
-});
-
-infoModal.querySelector('.modal-backdrop')?.addEventListener('click', () => {
-  infoModal.classList.add('hidden');
-});
+infoBtn?.addEventListener('click', openInfoModal);
+closeModalBtn?.addEventListener('click', closeInfoModal);
+infoModal?.querySelector('.modal-backdrop')?.addEventListener('click', closeInfoModal);
 
 // Master Playhead Synchronization & Randomization
 resyncBtn?.addEventListener('click', () => {
@@ -4294,7 +2461,8 @@ resyncBtn?.addEventListener('click', () => {
 });
 
 randomizePlayheadsBtn?.addEventListener('click', () => {
-  strokeManager.randomizeAllPlayheads();
+  strokeManager.clearHistory();
+  strokeManager.randomizeAllPlayheads(quantizer, renderer.height);
 });
 
 // Dark / Light Theme Mode
@@ -4311,28 +2479,25 @@ function setTheme(dark: boolean): void {
   if (onyxBtn) {
     onyxBtn.style.setProperty('--swatch-c', dark ? '#f4f4f5' : '#18181b');
   }
-  localStorage.setItem('harmonic_theme', dark ? 'dark' : 'light');
+  themeToggleBtn?.setAttribute('aria-pressed', dark ? 'true' : 'false');
+  writeStorageKey(STORAGE_KEYS.THEME, dark ? 'dark' : 'light');
   updateTrackActionsVisibility();
 }
 
-// Initial theme state from localStorage
-const savedTheme = localStorage.getItem('harmonic_theme');
-if (savedTheme === 'dark') {
-  setTheme(true);
-} else {
-  setTheme(false);
-}
+const savedTheme = readStorageKey(STORAGE_KEYS.THEME);
+setTheme(savedTheme === 'dark');
 
 themeToggleBtn?.addEventListener('click', () => {
   const isDark = document.body.classList.contains('dark-mode');
   setTheme(!isDark);
 });
 
-// Controls Popover Sidebar Toggle (Anchored on Right Side - Zero Canvas Resize, Zero Overlap)
+// Controls Popover Sidebar Toggle
 function setDrawerOpen(open: boolean): void {
   advancedDrawer.style.display = open ? 'block' : 'none';
   if (drawerToggleArrow) drawerToggleArrow.textContent = '';
   drawerToggleBtn?.classList.toggle('active', open);
+  drawerToggleBtn?.setAttribute('aria-expanded', open ? 'true' : 'false');
   updateTrackActionsVisibility();
 }
 
@@ -4347,7 +2512,6 @@ drawerCloseBtn?.addEventListener('click', (e: MouseEvent) => {
   setDrawerOpen(false);
 });
 
-// Click outside popover to close (standard popover behavior)
 document.addEventListener('pointerdown', (e: PointerEvent) => {
   if (advancedDrawer && advancedDrawer.style.display !== 'none') {
     const target = e.target as HTMLElement | null;
@@ -4384,8 +2548,9 @@ function handleResize(): void {
   prevCanvasWidth = newW;
   prevCanvasHeight = newH;
 
-  quantizer.clampScrollY(quantizer.scrollY, renderer.height);
-  targetScrollY = quantizer.scrollY;
+  const clamped = quantizer.clampScrollY(quantizer.scrollY, renderer.height);
+  quantizer.setScrollY(clamped);
+  targetScrollY = clamped;
   updatePitchNavigator();
   updateTrackActionsVisibility();
 }
@@ -4394,10 +2559,12 @@ fullscreenBtn?.addEventListener('click', toggleFullscreen);
 
 document.addEventListener('fullscreenchange', () => {
   handleResize();
-  fullscreenBtn.textContent = document.fullscreenElement ? 'Exit Fullscreen' : 'Fullscreen';
+  if (fullscreenBtn) {
+    fullscreenBtn.textContent = document.fullscreenElement ? 'Exit Fullscreen' : 'Fullscreen';
+  }
 });
 
-// Line Harmonizer Voicing Controls
+// Default Line Harmonizer Voicing Control
 defaultHarmonizerSelect?.addEventListener('change', () => {
   if (!defaultHarmonizerSelect) return;
   const mode = defaultHarmonizerSelect.value as HarmonizerMode;
@@ -4405,26 +2572,17 @@ defaultHarmonizerSelect?.addEventListener('change', () => {
   setCompositionDirty(true);
 });
 
-trackHarmonizerSelect?.addEventListener('change', () => {
-  const selectedId = strokeManager.selectedStrokeId;
-  if (!selectedId || !trackHarmonizerSelect) return;
-  const mode = trackHarmonizerSelect.value as HarmonizerMode;
-  strokeManager.setStrokeHarmonizer(selectedId, mode, true);
-  setCompositionDirty(true);
-  updateStats();
-  renderLayerMixer();
-});
-
-// Organic Timbral Breathing Control (Option 3)
+// Organic Timbral Breathing Control
 breathingSelect?.addEventListener('change', () => {
   if (!breathingSelect) return;
   const mode = breathingSelect.value as BreathingMode;
+  if (studioBreathingSelect) studioBreathingSelect.value = mode;
   strokeManager.setBreathingMode(mode);
   updateBreathingTooltip(mode);
   setCompositionDirty(true);
 });
 
-// Warn user if leaving with unsaved changes (production only; disabled in development to prevent intrusive reload prompts during code edits)
+// Warn user if leaving with unsaved changes (production only)
 if (typeof window !== 'undefined') {
   if (import.meta.hot) {
     import.meta.hot.on('vite:beforeFullReload', () => {
@@ -4433,6 +2591,7 @@ if (typeof window !== 'undefined') {
   }
 
   window.addEventListener('beforeunload', (e) => {
+    midiController.allNotesOff();
     if (!import.meta.env.DEV && isCompositionDirty && strokeManager.activeStrokes.length > 0) {
       e.preventDefault();
       e.returnValue = '';
@@ -4440,7 +2599,9 @@ if (typeof window !== 'undefined') {
   });
 }
 
-// Fast Forward & Rewind Scrubber State
+// ==========================================================================
+// Keyboard Shortcuts (via src/ui/shortcuts.ts)
+// ==========================================================================
 let isFastForwardHeld = false;
 let isRewindHeld = false;
 
@@ -4462,114 +2623,84 @@ function isRewindKey(e: KeyboardEvent): boolean {
   );
 }
 
-// Global Keyboard Shortcuts
-window.addEventListener('keydown', (e: KeyboardEvent) => {
-  const target = e.target as HTMLElement | null;
-  const isTextInput = target && (
-    (target.tagName === 'INPUT' && (target as HTMLInputElement).type !== 'range' && (target as HTMLInputElement).type !== 'checkbox') ||
-    target.tagName === 'TEXTAREA' ||
-    target.isContentEditable
-  );
-  if (isTextInput) {
-    return;
+function closeOpenOptionalModal(id: string): boolean {
+  const modal = document.getElementById(id);
+  if (modal && !modal.classList.contains('hidden')) {
+    modal.classList.add('hidden');
+    return true;
   }
+  return false;
+}
 
-  // Fast-forward (+) and Rewind (-) continuous scrub holding
-  if (isFastForwardKey(e)) {
-    e.preventDefault();
-    if (!isFastForwardHeld) {
-      isFastForwardHeld = true;
-      if (statMode) {
-        statMode.textContent = strokeManager.selectedStrokeId ? 'Fast Forwarding (4x)' : 'Fast Forwarding All (4x)';
-        statMode.style.color = '#2563eb';
-      }
+const keydownHandler = createKeydownHandler({
+  onEscape: () => {
+    if (isConfirmDialogOpen()) {
+      cancelConfirmDialog();
+      return true;
     }
-    return;
-  }
-
-  if (isRewindKey(e)) {
-    e.preventDefault();
-    if (!isRewindHeld) {
-      isRewindHeld = true;
-      if (statMode) {
-        statMode.textContent = strokeManager.selectedStrokeId ? 'Rewinding (4x)' : 'Rewinding All (4x)';
-        statMode.style.color = '#2563eb';
-      }
+    if (shortcutsModal && !shortcutsModal.classList.contains('hidden')) {
+      closeShortcutsModal();
+      return true;
     }
-    return;
-  }
-
-  // View Mode Shortcut: V cycles through Studio -> Zen -> Scenes -> Studio
-  if (e.key.toLowerCase() === 'v' && !e.metaKey && !e.ctrlKey) {
-    e.preventDefault();
-    viewModeManager.cycleNextMode();
-    return;
-  }
-
-  // Quick Save: Cmd+S / Ctrl+S
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's' && !e.shiftKey) {
-    e.preventDefault();
-    executeQuickSave();
-    return;
-  }
-
-  // Layers Mixer: M key switches Studio Deck to mixer tab
-  if (e.key.toLowerCase() === 'm' && !e.metaKey && !e.ctrlKey && !strokeManager.selectedStrokeId) {
-    e.preventDefault();
-    viewModeManager.setMode('studio');
-    switchStudioDeckTab('mixer');
-    return;
-  }
-
-  // Assisted Drawing Toggle: A key (without Cmd/Ctrl/Alt)
-  if (e.key.toLowerCase() === 'a' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-    e.preventDefault();
-    setAssistedDrawing(!assistedDrawingEnabled);
-    return;
-  }
-
-  // 1. Play / Pause toggle shortcuts: Spacebar or P
-  if (e.code === 'Space' || e.key.toLowerCase() === 'p') {
-    e.preventDefault();
-    if (document.activeElement instanceof HTMLElement && document.activeElement !== document.body) {
-      document.activeElement.blur();
+    if (presetModalController.isOpen()) {
+      presetModalController.closeSavePresetModal();
+      return true;
     }
-    togglePlayPause();
-    return;
-  }
-
-  // 2. Undo / Redo: Cmd+Z, Ctrl+Z, Cmd+Shift+Z, Ctrl+Y
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
-    e.preventDefault();
-    if (e.shiftKey) {
-      strokeManager.redo();
-    } else {
-      strokeManager.undo();
+    if (recordExportController.isOpen()) {
+      recordExportController.closeModal();
+      return true;
     }
+    if (infoModal && !infoModal.classList.contains('hidden')) {
+      closeInfoModal();
+      return true;
+    }
+    if (closeOpenOptionalModal('exportMp3Modal') || closeOpenOptionalModal('sceneArrangerModal')) {
+      return true;
+    }
+    if (inputHandler.isRedrawing || inputHandler.appMode === 'redraw') {
+      setAppMode('draw');
+      return true;
+    }
+    if (advancedDrawer && advancedDrawer.style.display !== 'none') {
+      setDrawerOpen(false);
+      return true;
+    }
+    if (strokeManager.selectedStrokeIds.length > 0) {
+      strokeManager.selectStroke(null);
+      updateTrackActionsVisibility();
+      studioDeckController.updateMixerSelection();
+      return true;
+    }
+    return false;
+  },
+  onUndo: () => {
+    strokeManager.undo();
     syncCompositionState();
-    return;
-  }
-
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y') {
-    e.preventDefault();
+  },
+  onRedo: () => {
     strokeManager.redo();
     syncCompositionState();
-    return;
-  }
-
-  // Copy: Cmd+C, Ctrl+C
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c') {
-    if (strokeManager.selectedStrokeId) {
-      e.preventDefault();
-      strokeManager.copySelected();
-      return;
+  },
+  onSave: () => {
+    presetModalController.openSavePresetModal(true);
+  },
+  onSelectAll: () => {
+    strokeManager.selectAllStrokes();
+    if (strokeManager.selectedStrokeIds.length > 0) {
+      onboarding.notifyUserAction('selected_stroke');
     }
-  }
-
-  // Paste: Cmd+V, Ctrl+V
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'v') {
+    updateTrackActionsVisibility();
+    studioDeckController.updateMixerSelection();
+  },
+  onCopy: () => {
+    if (strokeManager.selectedStrokeId) {
+      strokeManager.copySelected();
+      return true;
+    }
+    return false;
+  },
+  onPaste: () => {
     if (strokeManager.hasClipboard()) {
-      e.preventDefault();
       const newStroke = strokeManager.paste(quantizer, renderer.height);
       if (newStroke) {
         if (soundEngine.isReady) {
@@ -4577,86 +2708,51 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
         }
         syncCompositionState();
       }
-      return;
+      return true;
     }
-  }
-
-  // Select All: Cmd+A, Ctrl+A
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
-    const activeEl = document.activeElement;
-    if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || (activeEl as HTMLElement).isContentEditable)) {
-      return;
-    }
-    e.preventDefault();
-    strokeManager.selectAllStrokes();
-    updateTrackActionsVisibility();
-    updateMixerSelection();
-    return;
-  }
-
-  // Duplicate: Cmd+D, Ctrl+D
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'd') {
+    return false;
+  },
+  onDuplicate: () => {
     if (strokeManager.selectedStrokeId) {
-      e.preventDefault();
-      const newStroke = strokeManager.duplicateSelected(quantizer, renderer.height);
-      if (newStroke) {
-        if (soundEngine.isReady) {
-          strokeManager.activateAudioVoices();
-        }
-        syncCompositionState();
-      }
-      return;
-    }
-  }
-
-  // 3. Delete / Backspace: delete selected stroke(s)
-  if (e.key === 'Backspace' || e.key === 'Delete') {
-    if (strokeManager.selectedStrokeIds.length > 0) {
-      e.preventDefault();
-      strokeManager.deleteSelected();
+      duplicateStrokeWithState(strokeManager.selectedStrokeId);
       syncCompositionState();
-      return;
+      return true;
     }
-  }
-
-  // 4. Escape: Close modals, cancel redraw, close controls drawer, or deselect active stroke(s)
-  if (e.key === 'Escape') {
-    if (shortcutsModal && !shortcutsModal.classList.contains('hidden')) {
-      closeShortcutsModal();
-      return;
+    return false;
+  },
+  onRandomizePlayheads: () => {
+    strokeManager.clearHistory();
+  strokeManager.randomizeAllPlayheads(quantizer, renderer.height);
+  },
+  onFastForwardStart: () => {
+    if (!isFastForwardHeld) {
+      isFastForwardHeld = true;
+      if (statMode) {
+        statMode.textContent = strokeManager.selectedStrokeId ? 'Fast Forwarding (4x)' : 'Fast Forwarding All (4x)';
+        statMode.style.color = '#2563eb';
+      }
     }
-    if (recordModal && !recordModal.classList.contains('hidden')) {
-      closeRecordModal();
-      return;
+  },
+  onRewindStart: () => {
+    if (!isRewindHeld) {
+      isRewindHeld = true;
+      if (statMode) {
+        statMode.textContent = strokeManager.selectedStrokeId ? 'Rewinding (4x)' : 'Rewinding All (4x)';
+        statMode.style.color = '#2563eb';
+      }
     }
-    if (inputHandler.isRedrawing || inputHandler.appMode === 'redraw') {
-      setAppMode('draw');
-      return;
+  },
+  onPlayPause: () => {
+    if (document.activeElement instanceof HTMLElement && document.activeElement !== document.body) {
+      document.activeElement.blur();
     }
-    if (advancedDrawer && advancedDrawer.style.display !== 'none') {
-      setDrawerOpen(false);
-      return;
-    }
-    if (strokeManager.selectedStrokeIds.length > 0) {
-      strokeManager.selectStroke(null);
-      updateTrackActionsVisibility();
-      return;
-    }
-  }
-
-  // Question mark (?): open shortcuts modal
-  if ((e.key === '?' || (e.shiftKey && e.key === '/')) && !e.metaKey && !e.ctrlKey) {
-    e.preventDefault();
-    openShortcutsModal();
-    return;
-  }
-
-  // 5. Re-draw selected line / toggle Re-draw mode (R when lines exist) / Resync playheads (R when empty) / Randomize playheads (Shift+R)
-  if (e.key.toLowerCase() === 'r') {
-    e.preventDefault();
-    if (e.shiftKey) {
-      strokeManager.randomizeAllPlayheads();
-    } else if (strokeManager.activeStrokes.length > 0) {
+    void togglePlayPause();
+  },
+  onDrawMode: () => {
+    setAppMode('draw');
+  },
+  onRedrawOrResync: () => {
+    if (strokeManager.activeStrokes.length > 0) {
       if (inputHandler.appMode === 'redraw') {
         setAppMode('draw');
       } else {
@@ -4667,145 +2763,187 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
         setAppMode('redraw');
       }
     } else {
-      strokeManager.resyncAllPlayheads();
+      showToast('Draw a line first to use Re-draw mode');
     }
-    return;
-  }
-
-  // Live Play mode toggle shortcut: L
-  if (e.key.toLowerCase() === 'l') {
-    e.preventDefault();
-    const nextMode = inputHandler.appMode === 'draw' ? 'live' : 'draw';
+  },
+  onResyncPlayheads: () => {
+    strokeManager.resyncAllPlayheads();
+    showToast('Playheads synced to start');
+  },
+  onToggleLiveMode: () => {
+    const nextMode = inputHandler.appMode === 'live' ? 'draw' : 'live';
     setAppMode(nextMode);
-    return;
-  }
-
-  // 6. Fullscreen toggle shortcut: F
-  if (e.key.toLowerCase() === 'f') {
-    e.preventDefault();
+  },
+  onToggleFullscreen: () => {
     toggleFullscreen();
-    return;
-  }
-
-  // 7. Traversal toggle shortcut: T (Straight / Bounce)
-  if (e.key.toLowerCase() === 't' && !e.metaKey && !e.ctrlKey) {
-    e.preventDefault();
-    const targetStrokeId = strokeManager.selectedStrokeId || (strokeManager.activeStrokes.length === 1 ? strokeManager.activeStrokes[0].id : null);
+  },
+  onToggleBeatGrid: () => {
+    beatGridVisible = !beatGridVisible;
+    writeStorageKey('harmonic_beat_grid', beatGridVisible ? '1' : '0');
+    studioDeckController.syncMasterSwingAndPerformanceUI(
+      strokeManager.swing,
+      beatGridVisible,
+      strokeManager.quantizedTriggering
+    );
+    setCompositionDirty(true);
+    showToast(beatGridVisible ? 'Beat Grid On' : 'Beat Grid Off');
+  },
+  onToggleBarQuantize: () => {
+    const nextQuantized = !strokeManager.quantizedTriggering;
+    strokeManager.setQuantizedTriggering(nextQuantized);
+    if (!nextQuantized) {
+      pendingSceneId = null;
+    }
+    studioDeckController.syncMasterSwingAndPerformanceUI(
+      strokeManager.swing,
+      beatGridVisible,
+      nextQuantized
+    );
+    studioDeckController.renderAllMixers();
+    sceneUiController.renderSceneCards();
+    setCompositionDirty(true);
+    showToast(nextQuantized ? 'Next-Bar Quantize On' : 'Next-Bar Quantize Off');
+  },
+  onToggleTraversal: () => {
+    const targetStrokeId =
+      strokeManager.selectedStrokeId ||
+      (strokeManager.activeStrokes.length === 1 ? strokeManager.activeStrokes[0].id : null);
     if (targetStrokeId) {
       const stroke = strokeManager.activeStrokes.find((s) => s.id === targetStrokeId);
       if (stroke) {
         if (stroke.isPoint) return;
-        const currentTrav = (stroke.traversal === 'bounce' || (stroke.traversal as string) === 'pingpong') ? 'bounce' : 'restart';
+        const currentTrav =
+          stroke.traversal === 'bounce' || (stroke.traversal as string) === 'pingpong' ? 'bounce' : 'restart';
         const nextTrav: TraversalMode = currentTrav === 'bounce' ? 'restart' : 'bounce';
         strokeManager.setStrokeTraversal(stroke.id, nextTrav);
         setCompositionDirty(true);
         updateTrackActionsVisibility();
-        renderLayerMixer();
+        studioDeckController.renderAllMixers();
         return;
       }
     }
-    // If no stroke is selected, toggle the default traversal mode for future strokes
     const nextDefTrav: TraversalMode = strokeManager.mode === 'bounce' ? 'restart' : 'bounce';
     strokeManager.setTraversalMode(nextDefTrav);
-    return;
-  }
+  },
+  onMuteOrMixer: () => {
+    if (strokeManager.selectedStrokeId) {
+      toggleStrokeMuteWithQuantize(strokeManager.selectedStrokeId);
+    } else {
+      viewModeManager.setMode('studio');
+      studioDeckController.switchStudioDeckTab('mixer');
+    }
+  },
+  onSolo: () => {
+    if (strokeManager.selectedStrokeId) {
+      strokeManager.toggleSolo(strokeManager.selectedStrokeId);
+      syncCompositionState();
+    }
+  },
+  onToggleAssistedDrawing: () => {
+    setAssistedDrawing(!assistedDrawingEnabled);
+  },
+  onCycleViewMode: () => {
+    viewModeManager.cycleNextMode();
+  },
+  onSelectInstrumentIndex: (idx) => {
+    const instIds = Object.keys(INSTRUMENTS);
+    if (instIds[idx]) {
+      selectInstrument(instIds[idx]);
+    }
+  },
+  onDeleteSelected: () => {
+    if (strokeManager.selectedStrokeIds.length > 0) {
+      strokeManager.deleteSelected();
+      syncCompositionState();
+      return true;
+    }
+    return false;
+  },
+  onAdjustVolume: (direction, shiftKey) => {
+    const targetIds =
+      strokeManager.selectedStrokeIds.length > 0
+        ? strokeManager.selectedStrokeIds
+        : strokeManager.activeStrokes.length === 1
+          ? [strokeManager.activeStrokes[0].id]
+          : [];
+    if (targetIds.length === 0) return false;
 
-  // Save Preset shortcut: Cmd+S / Ctrl+S
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
-    e.preventDefault();
-    openSavePresetModal();
-    return;
-  }
-
-  // 8. Mute / Solo shortcuts: M = Mute, S = Solo
-  if (e.key.toLowerCase() === 'm' && strokeManager.selectedStrokeId) {
-    strokeManager.toggleMute(strokeManager.selectedStrokeId);
-    syncCompositionState();
-  } else if (e.key.toLowerCase() === 's' && strokeManager.selectedStrokeId) {
-    strokeManager.toggleSolo(strokeManager.selectedStrokeId);
-    syncCompositionState();
-  }
-
-  // 9. Number Keys 1 - 7: Quick select instruments
-  const instKeys = ['1', '2', '3', '4', '5', '6', '7'];
-  const instIds = Object.keys(INSTRUMENTS);
-  const keyIdx = instKeys.indexOf(e.key);
-  if (keyIdx !== -1 && instIds[keyIdx]) {
-    selectInstrument(instIds[keyIdx]);
-  }
-
-  // 10. Volume adjustment for selected stroke(s): [ or Down = -5%, ] or Up = +5% (hold Shift for +/-15%)
-  if (e.key === '[' || e.key === ']' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-    const targetIds = strokeManager.selectedStrokeIds.length > 0
-      ? strokeManager.selectedStrokeIds
-      : (strokeManager.activeStrokes.length === 1 ? [strokeManager.activeStrokes[0].id] : []);
-    if (targetIds.length > 0) {
-      e.preventDefault();
-      const step = e.shiftKey ? 0.15 : 0.05;
-      const delta = (e.key === ']' || e.key === 'ArrowUp') ? step : -step;
-      const updated = strokeManager.adjustStrokesVolume(targetIds, delta, true);
-      if (updated.length > 0) {
-        setCompositionDirty(true);
-        updateTrackActionsVisibility();
-        renderLayerMixer();
-        renderStudioMixer();
-        if (statMode) {
-          const avgPct = Math.round((updated.reduce((acc, s) => acc + (s.volume ?? 1), 0) / updated.length) * 100);
-          statMode.textContent = updated.length > 1
-            ? `Volume (${updated.length} Lines): ~${avgPct}%`
-            : `Line Volume: ${avgPct}%`;
-          statMode.style.color = '#2563eb';
-        }
+    const step = shiftKey ? 0.15 : 0.05;
+    const updated = strokeManager.adjustStrokesVolume(targetIds, direction * step, true);
+    if (updated.length > 0) {
+      setCompositionDirty(true);
+      updateTrackActionsVisibility();
+      studioDeckController.renderAllMixers();
+      if (statMode) {
+        const avgPct = Math.round((updated.reduce((acc, s) => acc + (s.volume ?? 1), 0) / updated.length) * 100);
+        statMode.textContent =
+          updated.length > 1 ? `Volume (${updated.length} Lines): ~${avgPct}%` : `Line Volume: ${avgPct}%`;
+        statMode.style.color = '#2563eb';
       }
     }
-  }
+    return true;
+  },
+  onAdjustTiming: (direction, shiftKey) => {
+    const targetIds =
+      strokeManager.selectedStrokeIds.length > 0
+        ? strokeManager.selectedStrokeIds
+        : strokeManager.activeStrokes.length === 1
+          ? [strokeManager.activeStrokes[0].id]
+          : [];
+    if (targetIds.length === 0) return false;
 
-  // 10b. Speed / Timing adjustment for selected stroke(s): Left = -0.1x / -5s, Right = +0.1x / +5s (hold Shift for 5x step)
-  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-    const targetIds = strokeManager.selectedStrokeIds.length > 0
-      ? strokeManager.selectedStrokeIds
-      : (strokeManager.activeStrokes.length === 1 ? [strokeManager.activeStrokes[0].id] : []);
-    if (targetIds.length > 0) {
-      e.preventDefault();
-      const mult = e.shiftKey ? 5 : 1;
-      const speedDelta = (e.key === 'ArrowRight' ? 0.1 : -0.1) * mult;
-      const durDelta = (e.key === 'ArrowRight' ? 5 : -5) * mult;
-      const updated = strokeManager.adjustStrokesTiming(targetIds, speedDelta, durDelta, true);
-      if (updated.length > 0) {
-        setCompositionDirty(true);
-        updateTrackActionsVisibility();
-        renderLayerMixer();
-        renderStudioMixer();
-        if (statMode) {
+    const mult = shiftKey ? 5 : 1;
+    const updated = strokeManager.adjustStrokesTempo(targetIds, direction, mult, true);
+    if (updated.length > 0) {
+      setCompositionDirty(true);
+      updateTrackActionsVisibility();
+      studioDeckController.renderAllMixers();
+      if (statMode) {
+        const isStrokeTimer = (s: DrawnStroke) => s.timingMode === 'timer' || s.speedMode === 'timer';
+        if (updated.length === 1) {
           const first = updated[0];
-          const isTimer = first.timingMode === 'timer' || first.speedMode === 'timer';
-          const valLabel = isTimer ? `${Math.round(first.duration ?? 30)}s` : `${(first.speedMultiplier ?? 1.0).toFixed(1)}x`;
-          statMode.textContent = updated.length > 1
-            ? `Tempo (${updated.length} Lines): ${valLabel}`
-            : `Line Tempo: ${valLabel}`;
-          statMode.style.color = '#2563eb';
+          const spd = first.speedMultiplier ?? 1.0;
+          const valLabel = isStrokeTimer(first)
+            ? `${Math.round(first.duration ?? 30)}s`
+            : `${Number.isInteger(Math.round(spd * 100) / 10) ? spd.toFixed(1) : spd.toFixed(2)}x`;
+          statMode.textContent = `Line Tempo: ${valLabel}`;
+        } else {
+          const dirLabel = direction > 0 ? 'Faster' : 'Slower';
+          const allTimer = updated.every(isStrokeTimer);
+          const allSpeed = updated.every((s) => !isStrokeTimer(s));
+          if (allTimer) {
+            const avgDur = Math.round(
+              updated.reduce((acc, s) => acc + (s.duration ?? 30), 0) / updated.length
+            );
+            statMode.textContent = `Tempo (${updated.length} Lines): ${dirLabel} (~${avgDur}s)`;
+          } else if (allSpeed) {
+            const avgSpd =
+              updated.reduce((acc, s) => acc + (s.speedMultiplier ?? 1.0), 0) / updated.length;
+            statMode.textContent = `Tempo (${updated.length} Lines): ${dirLabel} (~${avgSpd.toFixed(1)}x)`;
+          } else {
+            statMode.textContent = `Tempo (${updated.length} Lines): ${dirLabel}`;
+          }
         }
+        statMode.style.color = '#2563eb';
       }
     }
-  }
-
-  // 11. Frequency Field Scrolling: PageUp (Higher pitches), PageDown (Lower pitches), Home (Mid register)
-  if (e.key === 'PageUp') {
-    e.preventDefault();
+    return true;
+  },
+  onShowShortcuts: () => {
+    openShortcutsModal();
+  },
+  onScrollPitchUp: () => {
     smoothScrollBy(-quantizer.getPxPerOctave(renderer.height));
-    return;
-  }
-  if (e.key === 'PageDown') {
-    e.preventDefault();
+  },
+  onScrollPitchDown: () => {
     smoothScrollBy(quantizer.getPxPerOctave(renderer.height));
-    return;
-  }
-  if (e.key === 'Home') {
-    e.preventDefault();
+  },
+  onScrollPitchHome: () => {
     smoothScrollTo(quantizer.getDefaultScrollY(renderer.height));
-    return;
-  }
+  },
 });
+
+window.addEventListener('keydown', keydownHandler);
 
 window.addEventListener('keyup', (e: KeyboardEvent) => {
   if (isFastForwardKey(e) || e.key === '+' || e.key === '=' || e.code === 'Equal' || e.code === 'NumpadAdd') {
@@ -4833,9 +2971,12 @@ window.addEventListener('blur', () => {
   }
 });
 
-// Audio Unlock & Welcome Banner Dismissal on First Interaction
+// Audio Unlock & Welcome Banner Dismissal on First Interaction (self-cleaning)
 const unlockAudioOnGesture = async () => {
   await ensureAudioUnlocked();
+  if (soundEngine.isReady) {
+    removeAudioUnlockListeners();
+  }
   setTimeout(updateTrackActionsVisibility, 50);
 };
 window.addEventListener('pointerdown', unlockAudioOnGesture, { passive: true });
@@ -4847,7 +2988,6 @@ window.addEventListener('pointerup', () => {
   if (strokeManager.selectedStrokeId) {
     updateTrackActionsVisibility();
   }
-  // Auto-blur clicked buttons and range sliders so keyboard shortcuts (Space / P) are never trapped
   const active = document.activeElement;
   if (active instanceof HTMLElement && active !== document.body) {
     if (active.tagName === 'BUTTON' || (active.tagName === 'INPUT' && (active as HTMLInputElement).type === 'range')) {
@@ -4856,7 +2996,6 @@ window.addEventListener('pointerup', () => {
   }
 });
 
-// Auto-blur select dropdowns on change
 document.addEventListener('change', (e) => {
   const t = e.target as HTMLElement | null;
   if (t && t.tagName === 'SELECT') {
@@ -4866,13 +3005,152 @@ document.addEventListener('change', (e) => {
 
 window.addEventListener('resize', handleResize);
 
+const canvasContainerEl = document.getElementById('canvasContainer');
+if (canvasContainerEl && typeof ResizeObserver !== 'undefined') {
+  let resizeRafPending = false;
+  const canvasResizeObserver = new ResizeObserver((entries) => {
+    const entry = entries[entries.length - 1];
+    if (!entry) return;
+    const nextW = Math.round(entry.contentRect.width);
+    const nextH = Math.round(entry.contentRect.height);
+    if (nextW === Math.round(prevCanvasWidth) && nextH === Math.round(prevCanvasHeight)) {
+      return;
+    }
+    if (resizeRafPending) return;
+    resizeRafPending = true;
+    requestAnimationFrame(() => {
+      resizeRafPending = false;
+      handleResize();
+    });
+  });
+  canvasResizeObserver.observe(canvasContainerEl);
+}
+
 function updateStats(): void {
   const count = strokeManager.activeStrokes.length;
-  if (statStrokes) statStrokes.textContent = `${count} ${count === 1 ? 'stroke' : 'strokes'}`;
+  if (layerCountBadge) layerCountBadge.textContent = count.toString();
+  if (studioLayerCount) studioLayerCount.textContent = count.toString();
   updateAudioStatusChip();
 }
 
-// Animation & Sequencer Loop with Smooth Frame-Delta Filtering
+// ==========================================================================
+// Scene Sequence Progression & Animation Loop (Foreground + Background Audio)
+// ==========================================================================
+function processSceneSequenceTick(seq: SceneSequenceTickResult, updateDom: boolean): void {
+  if (seq.sceneChanged) {
+    if (strokeManager.isCrossfadingMorph) {
+      strokeManager.updateSceneCrossfade(1.0);
+      strokeManager.completeSceneCrossfade();
+    } else {
+      loadScene(seq.currentScene);
+    }
+
+    if (seq.currentScene.scaleId || seq.currentScene.rootId) {
+      const scaleKey = (seq.currentScene.scaleId || 'dorian') as keyof typeof SCALES;
+      const scaleObj = SCALES[scaleKey] || SCALES.dorian;
+      const rootKey = (seq.currentScene.rootId || 'D3') as keyof typeof ROOT_NOTES;
+      const rootObj = ROOT_NOTES[rootKey] || ROOT_NOTES.D3;
+      quantizer.updateConfig({ scale: scaleObj, root: rootObj });
+      if (updateDom) {
+        if (scaleSelect) scaleSelect.value = seq.currentScene.scaleId || 'dorian';
+        if (rootSelect) rootSelect.value = seq.currentScene.rootId || 'D3';
+        updatePitchNavigator();
+      }
+    }
+
+    strokeManager.setBpm(seq.currentScene.bpm || 32);
+    const targetRev = seq.currentScene.spaceReverb ?? 0.65;
+    soundEngine.setReverbMix(targetRev);
+    currentLoadedPresetName = seq.currentScene.name;
+
+    if (updateDom) {
+      syncMasterFxUI();
+      studioDeckController.renderAllMixers();
+      updateStats();
+      sceneUiController.renderSceneCards();
+    }
+  } else if (seq.isMorphing && seq.nextScene) {
+    if (!strokeManager.isCrossfadingMorph) {
+      const nextComp: SavedComposition = {
+        version: 1,
+        name: seq.nextScene.name,
+        timestamp: Date.now(),
+        bpm: seq.nextScene.bpm || 32,
+        scaleId: seq.nextScene.scaleId || 'dorian',
+        rootId: seq.nextScene.rootId || 'D3',
+        spaceReverb: seq.nextScene.spaceReverb ?? 0.65,
+        xAxisModulationMode: seq.nextScene.xAxisModulationMode || 'panAndTone',
+        strokes: JSON.parse(JSON.stringify(seq.nextScene.strokes || [])),
+      };
+      const morphCurve = sceneManager.getMorphCurveMode();
+      strokeManager.startSceneCrossfade(
+        nextComp,
+        quantizer,
+        renderer.height,
+        renderer.width,
+        morphCurve,
+        seq.nextScene.id
+      );
+    }
+
+    const { reverbBoost } = strokeManager.updateSceneCrossfade(seq.morphRatio);
+
+    const curBpm = seq.currentScene.bpm || 32;
+    const nextBpm = seq.nextScene.bpm || 32;
+    const interpolatedBpm = Math.round(curBpm + (nextBpm - curBpm) * seq.morphRatio);
+    if (strokeManager.currentBpm !== interpolatedBpm) {
+      strokeManager.setBpm(interpolatedBpm);
+      if (updateDom) {
+        bpmVal.textContent = `${interpolatedBpm} BPM`;
+        if (studioMasterBpmVal) studioMasterBpmVal.textContent = `${interpolatedBpm} BPM`;
+      }
+    }
+
+    const curRev = seq.currentScene.spaceReverb ?? 0.65;
+    const nextRev = seq.nextScene.spaceReverb ?? 0.65;
+    const baseRev = curRev + (nextRev - curRev) * seq.morphRatio;
+    const finalRev = Math.max(0, Math.min(1, baseRev + reverbBoost));
+    soundEngine.setReverbMix(finalRev);
+    if (updateDom) {
+      if (spaceVal) spaceVal.textContent = `${Math.round(finalRev * 100)}%`;
+      if (studioMasterReverbVal) studioMasterReverbVal.textContent = `${Math.round(finalRev * 100)}%`;
+    }
+  } else if (strokeManager.isCrossfadingMorph) {
+    strokeManager.cancelSceneCrossfade();
+  }
+
+  if (!updateDom) return;
+
+  const activeProgressBar = document.getElementById(`progress_${seq.currentScene.id}`);
+  if (activeProgressBar) {
+    activeProgressBar.style.width = `${(seq.progressRatio * 100).toFixed(1)}%`;
+  }
+
+  if (sceneCardsList) {
+    for (const child of Array.from(sceneCardsList.children)) {
+      if (child.getAttribute('data-scene-id') === seq.currentScene.id) {
+        child.classList.toggle('is-morphing', seq.isMorphing);
+        break;
+      }
+    }
+  }
+
+  const activeBadgeEl = document.getElementById(`badge_${seq.currentScene.id}`);
+  if (activeBadgeEl) {
+    if (seq.isMorphing) {
+      activeBadgeEl.className = 'scene-card-morph-badge';
+      const curveLabel =
+        sceneManager.getMorphCurveMode() === 'reverbWash' ? 'Atmospheric Morph' : 'Crossfade Overlap';
+      activeBadgeEl.textContent = `${curveLabel} ${Math.round(seq.morphRatio * 100)}%`;
+    } else {
+      activeBadgeEl.className = 'scene-card-badge';
+      activeBadgeEl.textContent = 'Active';
+    }
+  }
+
+  sceneUiController.updateSeqMiniIndicator(seq);
+}
+
 let lastTimeMs = 0;
 let smoothedDt = 1 / 60;
 let animFrameId: number | null = null;
@@ -4893,22 +3171,13 @@ function startBackgroundAudioTicker(): void {
     const dt = Math.max(0.005, Math.min(0.06, (now - bgLastTime) / 1000));
     bgLastTime = now;
 
-    // Advance strokes and audio playheads with ZERO canvas/GPU operations
     strokeManager.update(dt, renderer.width, renderer.height, quantizer);
 
-    // Advance scene sequencer if active
     if (typeof sceneManager !== 'undefined' && sceneManager.isSequencing() && !strokeManager.paused) {
       const seq = sceneManager.tickSequence(dt);
-      if (seq.sceneChanged) {
-        if (strokeManager.isCrossfadingMorph) {
-          strokeManager.updateSceneCrossfade(1.0);
-          strokeManager.completeSceneCrossfade();
-        } else {
-          loadScene(seq.currentScene);
-        }
-      }
+      processSceneSequenceTick(seq, false);
     }
-  }, 25); // 40Hz audio clock tick rate (Web Audio schedules sample-accurate events internally)
+  }, 25);
 }
 
 function stopBackgroundAudioTicker(): void {
@@ -4930,6 +3199,11 @@ function handleVisibilityChange(): void {
     stopBackgroundAudioTicker();
     lastTimeMs = performance.now();
     smoothedDt = 1 / 60;
+    syncMasterFxUI();
+    updatePitchNavigator();
+    studioDeckController.renderAllMixers();
+    sceneUiController.renderSceneCards();
+    updateTrackActionsVisibility();
     if (animFrameId === null) {
       animFrameId = requestAnimationFrame(animationLoop);
     }
@@ -4941,7 +3215,6 @@ if (typeof document !== 'undefined') {
 }
 
 function animationLoop(nowMs: number): void {
-  // If tab is in background, bypass all GPU canvas operations and run background audio ticker
   if (typeof document !== 'undefined' && document.hidden) {
     animFrameId = null;
     startBackgroundAudioTicker();
@@ -4955,18 +3228,15 @@ function animationLoop(nowMs: number): void {
   const rawDt = (nowMs - lastTimeMs) / 1000;
   lastTimeMs = nowMs;
 
-  // Filter delta-time: if huge stutter or tab backgrounded (>120ms), reset smooth baseline
   if (rawDt > 0.12) {
     smoothedDt = 1 / 60;
   } else {
-    // Clamp minor frame-timing variances and smooth with exponential moving average
     const clampedDt = Math.max(0.001, Math.min(0.064, rawDt));
     smoothedDt = smoothedDt * 0.75 + clampedDt * 0.25;
   }
 
   // 0. Smooth Kinetic Inertial Scrolling for Pitch Register
   if (isScrollAnimating || Math.abs(targetScrollY - quantizer.scrollY) > 0.05) {
-    // Damped exponential lerp (lambda = 16 for silky fast response with natural momentum decay)
     const lerpFactor = 1 - Math.exp(-16 * smoothedDt);
     quantizer.scrollY += (targetScrollY - quantizer.scrollY) * lerpFactor;
     if (Math.abs(targetScrollY - quantizer.scrollY) < 0.05) {
@@ -4984,164 +3254,109 @@ function animationLoop(nowMs: number): void {
     strokeManager.scrubStroke(strokeManager.selectedStrokeId, 4.0, smoothedDt, renderer.width, renderer.height, quantizer);
   } else if (isRewindHeld && !isFastForwardHeld) {
     const rewindRate = strokeManager.paused ? -4.0 : -5.0;
-    strokeManager.scrubStroke(strokeManager.selectedStrokeId, rewindRate, smoothedDt, renderer.width, renderer.height, quantizer);
+    strokeManager.scrubStroke(
+      strokeManager.selectedStrokeId,
+      rewindRate,
+      smoothedDt,
+      renderer.width,
+      renderer.height,
+      quantizer
+    );
   }
 
   // 1b. Update Scene Arranger progression sequence if active
   if (typeof sceneManager !== 'undefined' && sceneManager.isSequencing()) {
-    // Only advance sequence timer when playing (not paused)!
     if (!strokeManager.paused) {
       const seq = sceneManager.tickSequence(smoothedDt);
-
-      if (seq.sceneChanged) {
-        if (strokeManager.isCrossfadingMorph) {
-          strokeManager.updateSceneCrossfade(1.0);
-          strokeManager.completeSceneCrossfade();
-        } else {
-          loadScene(seq.currentScene);
-        }
-
-        // Update quantizer scale and root to the new scene
-        if (seq.currentScene.scaleId || seq.currentScene.rootId) {
-          const scaleKey = (seq.currentScene.scaleId || 'dorian') as keyof typeof SCALES;
-          const scaleObj = SCALES[scaleKey] || SCALES.dorian;
-          const rootKey = (seq.currentScene.rootId || 'D2') as keyof typeof ROOT_NOTES;
-          const rootObj = ROOT_NOTES[rootKey] || ROOT_NOTES.D2;
-          quantizer.updateConfig({
-            scale: scaleObj,
-            root: rootObj,
-          });
-          if (scaleSelect) scaleSelect.value = seq.currentScene.scaleId || 'dorian';
-          if (rootSelect) rootSelect.value = seq.currentScene.rootId || 'D2';
-          updatePitchNavigator();
-        }
-
-        // Finalize BPM and Reverb
-        strokeManager.setBpm(seq.currentScene.bpm || 32);
-        bpmSlider.value = (seq.currentScene.bpm || 32).toString();
-        bpmVal.textContent = `${seq.currentScene.bpm || 32} BPM`;
-        if (statTempo) statTempo.textContent = `${seq.currentScene.bpm || 32} BPM`;
-
-        const targetRev = seq.currentScene.spaceReverb ?? 0.65;
-        soundEngine.setReverbMix(targetRev);
-        if (spaceSlider) spaceSlider.value = Math.round(targetRev * 100).toString();
-        if (spaceVal) spaceVal.textContent = `${Math.round(targetRev * 100)}%`;
-
-        currentLoadedPresetName = seq.currentScene.name;
-        renderStudioMixer();
-        renderLayerMixer();
-        updateStats();
-        renderSceneCards();
-      } else if (seq.isMorphing && seq.nextScene) {
-        // 1. Start overlapping crossfade if not yet started
-        if (!strokeManager.isCrossfadingMorph) {
-          const nextComp: SavedComposition = {
-            version: 1,
-            name: seq.nextScene.name,
-            timestamp: Date.now(),
-            bpm: seq.nextScene.bpm || 32,
-            scaleId: seq.nextScene.scaleId || 'dorian',
-            rootId: seq.nextScene.rootId || 'D2',
-            spaceReverb: seq.nextScene.spaceReverb ?? 0.65,
-            xAxisModulationMode: seq.nextScene.xAxisModulationMode || 'panAndTone',
-            strokes: JSON.parse(JSON.stringify(seq.nextScene.strokes || [])),
-          };
-          const morphCurve = sceneManager.getMorphCurveMode();
-          strokeManager.startSceneCrossfade(
-            nextComp,
-            quantizer,
-            renderer.height,
-            renderer.width,
-            morphCurve,
-            seq.nextScene.id
-          );
-        }
-
-        // 2. Update crossfade gains each frame (equal power / reverb wash / linear)
-        const { reverbBoost } = strokeManager.updateSceneCrossfade(seq.morphRatio);
-
-        // 3. Smoothly interpolate BPM
-        const curBpm = seq.currentScene.bpm || 32;
-        const nextBpm = seq.nextScene.bpm || 32;
-        const interpolatedBpm = Math.round(curBpm + (nextBpm - curBpm) * seq.morphRatio);
-        if (strokeManager.currentBpm !== interpolatedBpm) {
-          strokeManager.setBpm(interpolatedBpm);
-          bpmVal.textContent = `${interpolatedBpm} BPM`;
-          if (statTempo) statTempo.textContent = `${interpolatedBpm} BPM`;
-        }
-
-        // 4. Smoothly interpolate Space Reverb + add reverbBoost if in reverbWash mode
-        const curRev = seq.currentScene.spaceReverb ?? 0.65;
-        const nextRev = seq.nextScene.spaceReverb ?? 0.65;
-        const baseRev = curRev + (nextRev - curRev) * seq.morphRatio;
-        const finalRev = Math.max(0, Math.min(1, baseRev + reverbBoost));
-        soundEngine.setReverbMix(finalRev);
-        if (spaceVal) spaceVal.textContent = `${Math.round(finalRev * 100)}%`;
-      } else {
-        if (strokeManager.isCrossfadingMorph) {
-          strokeManager.cancelSceneCrossfade();
-        }
-      }
-
-      // Update active scene progress bar
-      const activeProgressBar = document.getElementById(`progress_${seq.currentScene.id}`);
-      if (activeProgressBar) {
-        activeProgressBar.style.width = `${(seq.progressRatio * 100).toFixed(1)}%`;
-      }
-
-      // Update card morph state & badge
-      const activeCardEl = document.querySelector(`.scene-card[data-scene-id="${seq.currentScene.id}"]`);
-      if (activeCardEl) {
-        activeCardEl.classList.toggle('is-morphing', seq.isMorphing);
-      }
-      const activeBadgeEl = document.getElementById(`badge_${seq.currentScene.id}`);
-      if (activeBadgeEl) {
-        if (seq.isMorphing) {
-          activeBadgeEl.className = 'scene-card-morph-badge';
-          const curveLabel = sceneManager.getMorphCurveMode() === 'reverbWash' ? 'Atmospheric Morph' : 'Crossfade Overlap';
-          activeBadgeEl.textContent = `${curveLabel} ${Math.round(seq.morphRatio * 100)}%`;
-        } else {
-          activeBadgeEl.className = 'scene-card-badge';
-          activeBadgeEl.textContent = 'Active';
-        }
-      }
-
-      // Update Minimalist HUD Indicator for other views (Studio & Zen)
-      updateSeqMiniIndicator(seq);
+      processSceneSequenceTick(seq, true);
     }
-  } else {
-    if (seqMiniIndicator) seqMiniIndicator.style.display = 'none';
+  } else if (seqMiniIndicator) {
+    seqMiniIndicator.style.display = 'none';
   }
 
-  // 2. Clear canvas to warm paper tone
-  renderer.clear();
+  // 2. Static Cache Key (clear, guidelines, drum zones, base strokes + active redraw / selected badge)
+  const showDrumZones =
+    currentInstrumentId === 'onyx' ||
+    strokeManager.activeStrokes.some((s) => s.instrumentId === 'onyx' && (s.selected || s.hovered));
 
-  // 3. Render modal scale guidelines (Root and 5th highlighted, chord tones accented)
-  renderer.drawGuidelines(quantizer.getGuidelines(renderer.height));
+  const hasSolo = strokeManager.hasSoloedStrokes;
+  const isMultiSelection = strokeManager.selectedStrokeIds.length > 1;
+  const isRedraw = inputHandler.isRedrawing || inputHandler.appMode === 'redraw';
+  const redrawingId = inputHandler.activeRedrawStrokeId || (isRedraw ? strokeManager.selectedStrokeId : null);
+  const activeRedrawKey = activeDrawingPoints.length > 0 && redrawingId ? redrawingId : '';
+  const qConfig = quantizer.getConfig();
 
-  // 3b. Render drum tier zone guides when Onyx is active or selected
-  const showDrumZones = currentInstrumentId === 'onyx' || strokeManager.activeStrokes.some((s) => s.instrumentId === 'onyx' && (s.selected || s.hovered));
-  renderer.drawDrumZones(showDrumZones, quantizer);
+  let singleSelProgressKey = '';
+  if (!isMultiSelection && strokeManager.selectedStrokeId) {
+    const selStroke = strokeManager.getStroke(strokeManager.selectedStrokeId);
+    if (selStroke) {
+      const totalLen = Math.max(1, selStroke.lut.totalLength);
+      const progressPct = Math.round((selStroke.playhead.currentDistance / totalLen) * 100);
+      const speedKey =
+        selStroke.timingMode === 'timer' || selStroke.speedMode === 'timer'
+          ? `t${Math.round(selStroke.duration ?? 30)}`
+          : `s${(selStroke.speedMultiplier ?? 1).toFixed(2)}`;
+      const travKey = selStroke.traversal ?? 'restart';
+      const pitchKey =
+        (selStroke.isPoint || selStroke.instrumentId === 'onyx') && selStroke.playhead.lastPitch
+          ? `${selStroke.playhead.lastPitch.noteName}:${Math.round(selStroke.playhead.lastPitch.frequency)}`
+          : '';
+      singleSelProgressKey = `${selStroke.id}:${progressPct}:${speedKey}:${travKey}:${pitchKey}`;
+    }
+  }
 
-  // 4. Render 4-beat visual measure tracker along the top
+  const staticCacheKey = [
+    Math.round(renderer.width),
+    Math.round(renderer.height),
+    renderer.isDarkMode ? 1 : 0,
+    Math.round(quantizer.scrollY * 10),
+    qConfig.scale.id,
+    qConfig.root.name,
+    qConfig.octaveSpan,
+    showDrumZones ? 1 : 0,
+    hasSolo ? 1 : 0,
+    isMultiSelection ? 1 : 0,
+    strokeManager.sceneVersion,
+    activeRedrawKey,
+    singleSelProgressKey,
+  ].join('|');
+
+  renderer.renderStaticLayer(staticCacheKey, () => {
+    renderer.clear();
+    renderer.drawGuidelines(quantizer.getGuidelines(renderer.height));
+    renderer.drawDrumZones(showDrumZones, quantizer);
+    renderer.drawWorldLayer(quantizer.scrollY, () => {
+      for (const stroke of strokeManager.activeStrokes) {
+        const isBeingRedrawn = activeDrawingPoints.length > 0 && redrawingId === stroke.id;
+        renderer.drawStroke(stroke, hasSolo, isMultiSelection, isBeingRedrawn);
+      }
+    });
+  });
+
+  // 4. Beat Grid & 4-beat visual measure tracker
+  renderer.drawBeatGrid(strokeManager.measureProgress, beatGridVisible);
   renderer.drawBeatTracker(strokeManager.measureProgress, strokeManager.measureBeatIndex);
 
-  // 5. Render active strokes & playheads
-  const hasSolo = strokeManager.hasSoloedStrokes;
+  // Audio band energies computed once per frame for reactive spectrum + playheads
+  const freqData = soundEngine.isReady ? soundEngine.getFrequencyData() : null;
+  const bands = soundEngine.isReady ? soundEngine.getBandEnergies() : null;
 
-  // 5. Render active strokes & playheads in world coordinate layer (scrolls smoothly with frequency field)
+  // 5. Render dynamic playheads & active drawing gesture in world coordinate layer
   renderer.drawWorldLayer(quantizer.scrollY, () => {
-    const isMultiSelection = strokeManager.selectedStrokeIds.length > 1;
-    const isRedraw = inputHandler.isRedrawing || inputHandler.appMode === 'redraw';
-    const redrawingId = inputHandler.activeRedrawStrokeId || (isRedraw ? strokeManager.selectedStrokeId : null);
-
     for (const stroke of strokeManager.activeStrokes) {
-      const isBeingRedrawn = activeDrawingPoints.length > 0 && redrawingId === stroke.id;
-      renderer.drawStroke(stroke, hasSolo, isMultiSelection, isBeingRedrawn);
-      renderer.drawPlayhead(stroke, nowMs, hasSolo);
+      let bandBoost = 0;
+      if (bands) {
+        if (stroke.instrumentId === 'onyx') {
+          bandBoost = bands.low;
+        } else if (stroke.style === 'dotted') {
+          bandBoost = bands.high;
+        } else {
+          bandBoost = bands.mid;
+        }
+      }
+      renderer.drawPlayhead(stroke, nowMs, hasSolo, bandBoost);
     }
 
-    // Active in-flight gesture
     if (activeDrawingPoints.length > 0) {
       let gestureColor = getInstrumentColor(currentInstrumentId, renderer.isDarkMode);
       if (isRedraw && redrawingId) {
@@ -5154,7 +3369,7 @@ function animationLoop(nowMs: number): void {
     }
   });
 
-  // 5c. Disappearing live trail (Live Play mode with dynamic reverb, release & trail lifetime)
+  // 5c. Disappearing live trail
   if (inputHandler.liveTrail.length > 0) {
     inputHandler.pruneLiveTrail(nowMs, inputHandler.liveTrailLifetime);
     if (inputHandler.liveTrail.length > 0) {
@@ -5172,69 +3387,57 @@ function animationLoop(nowMs: number): void {
   // 6. Update & Draw Dynamic Particle Sparks
   renderer.updateAndDrawParticles(smoothedDt);
 
-  // 7. Audio-Reactive Ambient Spectrum & Glow
-  if (soundEngine.isReady) {
-    const freqData = soundEngine.getFrequencyData();
-    const masterEnergy = soundEngine.getMasterEnergy();
-    renderer.drawAudioReactiveSpectrum(freqData, masterEnergy);
+  // 7. Audio-Reactive Ambient Spectrum & Glow (multi-band + master)
+  if (freqData && bands) {
+    renderer.drawAudioReactiveSpectrum(freqData, bands.master, bands);
   }
+
+  // 8. Canvas Marquee Selection Box & Empty-Canvas Ghost Hint
+  renderer.drawMarqueeSelection(inputHandler.marqueeRect);
+  renderer.drawEmptyCanvasGhostHint(
+    nowMs,
+    strokeManager.activeStrokes.length === 0 && activeDrawingPoints.length === 0
+  );
 
   animFrameId = requestAnimationFrame(animationLoop);
 }
 
-// Wire Spark Emitter to StrokeManager Trigger Hits
 strokeManager.onTriggerSpark = (x: number, y: number, color: string, count = 6, _instrumentId?: string) => {
   const screenY = quantizer.worldToScreenY(y, renderer.height);
   renderer.spawnSparks(x, screenY, color, count);
 };
 
-// Also emit sparks when drawing live wand notes
 inputHandler.onLiveTrigger = (x: number, y: number, color: string) => {
   renderer.spawnSparks(x, y, color, 8, 1.2);
 };
 
 // URL Composition Loader (?track=... or #score=...)
 async function checkSharedCompositionUrl(): Promise<boolean> {
-  // 1. Check for ?track=<id> query parameter (Database-backed track)
   const urlParams = new URLSearchParams(window.location.search);
   const trackId = urlParams.get('track');
   if (trackId) {
-    try {
-      showToast('Loading shared track...');
-      const apiUrl = window.location.hostname.includes('vercel.app')
-        ? `/api/track?id=${encodeURIComponent(trackId)}`
-        : `${PROD_BASE_URL}/api/track?id=${encodeURIComponent(trackId)}`;
-
-      const resp = await fetch(apiUrl);
-      if (resp.ok) {
-        const json = await resp.json();
-        const scoreData = (json && json.data) ? json.data : json;
-        if (scoreData && Array.isArray(scoreData.strokes)) {
-          await loadComposition(scoreData);
-          showToast(`Loaded score "${scoreData.name || 'Shared Score'}"`);
-          return true;
-        }
-      }
-    } catch (err) {
-      console.warn('Failed to load track from DB:', err);
+    showToast('Loading shared track...');
+    const scoreData = await fetchSharedTrack(trackId);
+    if (scoreData) {
+      currentLoadedTemplateId = '';
+      await loadComposition(scoreData);
+      showToast(`Loaded score "${scoreData.name || 'Shared Score'}"`);
+      return true;
     }
+    showToast('Could not load shared track.', 'error');
   }
 
-  // 2. Fallback to #score=<encoded> hash if present
   const hash = window.location.hash;
   if (hash.startsWith('#score=')) {
-    try {
-      const encoded = hash.replace('#score=', '');
-      const jsonStr = decodeURIComponent(escape(atob(decodeURIComponent(encoded))));
-      const parsedComp = JSON.parse(jsonStr) as SavedComposition;
-      if (parsedComp && Array.isArray(parsedComp.strokes)) {
-        await loadComposition(parsedComp);
-        showToast(`Loaded score "${parsedComp.name || 'Shared Score'}"`);
-        return true;
-      }
-    } catch (e) {
-      console.error('Failed to unpack URL score:', e);
+    const encoded = hash.slice('#score='.length);
+    const parsedComp = decodeCompositionBase64Url(encoded);
+    if (parsedComp) {
+      currentLoadedTemplateId = '';
+      await loadComposition(parsedComp);
+      showToast(`Loaded score "${parsedComp.name || 'Shared Score'}"`);
+      return true;
     }
+    showToast('Shared score link could not be decoded.', 'error');
   }
 
   return false;
@@ -5252,7 +3455,7 @@ updateBreathingTooltip();
 (async () => {
   const loadedFromUrl = await checkSharedCompositionUrl();
   if (!loadedFromUrl) {
-    loadTemplate('cathedralSolitude', false);
+    await loadTemplate('cathedralSolitude', false);
   }
   targetScrollY = quantizer.scrollY;
   updateStats();

@@ -2,6 +2,7 @@ import { Mp3Encoder } from '@breezystack/lamejs';
 import { SoundEngine, soundEngine } from './audioContext';
 import { StrokeManager } from '../engine/strokeManager';
 import { ScaleQuantizer } from './scaleQuantizer';
+import type { Mp3WorkerRequest, Mp3WorkerResponse } from './mp3Worker';
 
 /**
  * Converts Float32 audio samples in [-1.0, 1.0] to signed 16-bit PCM integer samples [-32768, 32767].
@@ -66,6 +67,78 @@ export function encodePcmToMp3(
 }
 
 /**
+ * Encodes stereo Float32 PCM channels asynchronously in a Web Worker when available,
+ * falling back seamlessly to synchronous encoding when Workers are unavailable or fail.
+ */
+export async function encodePcmToMp3Async(
+  left: Float32Array,
+  right: Float32Array,
+  sampleRate = 44100,
+  kbps = 192,
+  onProgress?: (percent: number) => void
+): Promise<Blob> {
+  if (typeof Worker === 'undefined') {
+    return encodePcmToMp3(left, right, sampleRate, kbps, onProgress);
+  }
+
+  let worker: Worker;
+  try {
+    worker = new Worker(new URL('./mp3Worker.ts', import.meta.url), { type: 'module' });
+  } catch {
+    return encodePcmToMp3(left, right, sampleRate, kbps, onProgress);
+  }
+
+  return new Promise<Blob>((resolve) => {
+    let settled = false;
+
+    const fallback = () => {
+      if (settled) return;
+      settled = true;
+      try {
+        worker.terminate();
+      } catch {}
+      resolve(encodePcmToMp3(left, right, sampleRate, kbps, onProgress));
+    };
+
+    worker.onmessage = (event: MessageEvent<Mp3WorkerResponse>) => {
+      const msg = event.data;
+      if (!msg) return;
+      if (msg.type === 'progress') {
+        if (onProgress) onProgress(msg.percent);
+      } else if (msg.type === 'done') {
+        if (settled) return;
+        settled = true;
+        try {
+          worker.terminate();
+        } catch {}
+        resolve(new Blob(msg.chunks, { type: 'audio/mp3' }));
+      } else if (msg.type === 'error') {
+        fallback();
+      }
+    };
+
+    worker.onerror = () => {
+      fallback();
+    };
+
+    try {
+      // Copy channels before transferring so caller buffers (or shared mono channels) remain intact
+      const leftCopy = new Float32Array(left);
+      const rightCopy = new Float32Array(right);
+      const req: Mp3WorkerRequest = {
+        left: leftCopy,
+        right: rightCopy,
+        sampleRate,
+        kbps,
+      };
+      worker.postMessage(req, [leftCopy.buffer, rightCopy.buffer]);
+    } catch {
+      fallback();
+    }
+  });
+}
+
+/**
  * Programmatically triggers a browser download for a Blob file.
  */
 export function downloadBlob(blob: Blob, filename: string): void {
@@ -112,6 +185,7 @@ export class LiveRecorder {
   private _isRecording = false;
   private workletNode: AudioWorkletNode | null = null;
   private scriptNode: ScriptProcessorNode | null = null;
+  private sourceNode: AudioNode | null = null;
   private dummyGain: GainNode | null = null;
   private leftChunks: Float32Array[] = [];
   private rightChunks: Float32Array[] = [];
@@ -169,20 +243,24 @@ export class LiveRecorder {
     this.startTime = performance.now();
 
     let workletAttached = false;
+    let workletPending = false;
     if (typeof AudioWorkletNode !== 'undefined' && ctx.audioWorklet) {
       if (LiveRecorder.workletModuleLoaded.has(ctx)) {
         try {
           this.attachWorklet(engine, ctx);
           workletAttached = true;
         } catch {
+          this.disconnectNodes();
           workletAttached = false;
         }
       } else {
+        workletPending = true;
         LiveRecorder.preloadWorklet(ctx).then(() => {
           if (this._isRecording && !this.workletNode && !this.scriptNode) {
             try {
               this.attachWorklet(engine, ctx);
             } catch {
+              this.disconnectNodes();
               this.attachScriptProcessor(engine, ctx);
             }
           }
@@ -190,7 +268,7 @@ export class LiveRecorder {
       }
     }
 
-    if (!workletAttached && (!ctx.audioWorklet || typeof AudioWorkletNode === 'undefined')) {
+    if (!workletAttached && !workletPending) {
       this.attachScriptProcessor(engine, ctx);
     }
 
@@ -218,7 +296,8 @@ export class LiveRecorder {
       this.totalSamples += left.length;
     };
 
-    engine.masterOutputNode!.connect(this.workletNode);
+    this.sourceNode = engine.masterOutputNode!;
+    this.sourceNode.connect(this.workletNode);
     this.workletNode.connect(this.dummyGain);
     this.dummyGain.connect(ctx.destination);
   }
@@ -238,7 +317,8 @@ export class LiveRecorder {
       this.totalSamples += inLeft.length;
     };
 
-    engine.masterOutputNode!.connect(this.scriptNode);
+    this.sourceNode = engine.masterOutputNode!;
+    this.sourceNode.connect(this.scriptNode);
     this.scriptNode.connect(this.dummyGain);
     this.dummyGain.connect(ctx.destination);
   }
@@ -276,7 +356,7 @@ export class LiveRecorder {
     this.leftChunks = [];
     this.rightChunks = [];
 
-    return encodePcmToMp3(left, right, this.sampleRate, 192, onProgress);
+    return encodePcmToMp3Async(left, right, this.sampleRate, 192, onProgress);
   }
 
   /**
@@ -298,6 +378,11 @@ export class LiveRecorder {
     if (this.workletNode) {
       try {
         this.workletNode.port.onmessage = null;
+        if (this.sourceNode) {
+          try {
+            this.sourceNode.disconnect(this.workletNode);
+          } catch {}
+        }
         this.workletNode.disconnect();
       } catch {}
       this.workletNode = null;
@@ -305,6 +390,11 @@ export class LiveRecorder {
     if (this.scriptNode) {
       try {
         this.scriptNode.onaudioprocess = null;
+        if (this.sourceNode) {
+          try {
+            this.sourceNode.disconnect(this.scriptNode);
+          } catch {}
+        }
         this.scriptNode.disconnect();
       } catch {}
       this.scriptNode = null;
@@ -315,6 +405,7 @@ export class LiveRecorder {
       } catch {}
       this.dummyGain = null;
     }
+    this.sourceNode = null;
   }
 }
 
@@ -357,7 +448,10 @@ export async function simulateCompositionToAudioBuffer(
   // Clone current composition into offline StrokeManager
   const compData = strokeManager.exportComposition('Offline Simulation', undefined, undefined, canvasWidth, canvasHeight);
   const simManager = new StrokeManager(offlineEngine);
-  simManager.importComposition(compData, quantizer, canvasHeight, canvasWidth);
+  simManager.importComposition(compData, quantizer, canvasHeight, canvasWidth, {
+    preserveIds: true,
+    randomizePlayheads: false,
+  });
 
   // Synchronize initial playhead positions and mute/solo states with live manager
   const liveStrokes = strokeManager.activeStrokes;
@@ -366,6 +460,8 @@ export async function simulateCompositionToAudioBuffer(
     const liveS = liveStrokes.find((s) => s.id === simS.id) ?? liveStrokes[i];
     if (liveS) {
       simS.playhead.currentDistance = liveS.playhead.currentDistance;
+      simS.playhead.lastTriggerDistance = liveS.playhead.lastTriggerDistance;
+      simS.playhead.triggerDistanceAccum = liveS.playhead.triggerDistanceAccum;
       simS.playhead.direction = liveS.playhead.direction;
       simS.muted = liveS.muted;
       simS.soloed = liveS.soloed;
@@ -409,7 +505,7 @@ export async function simulateAndExportMp3(
   const left = buffer.getChannelData(0);
   const right = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : left;
 
-  const mp3Blob = encodePcmToMp3(
+  const mp3Blob = await encodePcmToMp3Async(
     left,
     right,
     buffer.sampleRate,

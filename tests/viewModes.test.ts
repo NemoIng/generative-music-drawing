@@ -78,6 +78,12 @@ describe('View Modes: Studio (Layers, Master FX, Scenes) and Zen Canvas', () => 
       const zenModes = Array.from(zenButtons || []).map((b) => b.getAttribute('data-view-mode'));
       expect(zenModes).toEqual(['studio', 'zen']);
 
+      // Zen dock view buttons list (V) instead of stale (1)/(2) instrument keys
+      expect(zenButtons?.[0].getAttribute('title')).toContain('(V)');
+      expect(zenButtons?.[1].getAttribute('title')).toContain('(V)');
+      expect(zenButtons?.[0].getAttribute('title')).not.toContain('(1)');
+      expect(zenButtons?.[1].getAttribute('title')).not.toContain('(2)');
+
       const zenContextPill = doc.getElementById('zenContextPill');
       expect(zenContextPill).toBeDefined();
       expect(zenContextPill?.classList.contains('zen-context-pill')).toBe(true);
@@ -228,6 +234,45 @@ describe('View Modes: Studio (Layers, Master FX, Scenes) and Zen Canvas', () => 
       expect(vmm.getMode()).toBe('zen');
 
       expect(vmm.toggleStudioZen()).toBe('studio');
+      expect(vmm.getMode()).toBe('studio');
+    });
+
+    it('switches between Studio and Zen when clicking [data-view-mode] buttons in top bar and Zen dock, and cleans up on destroy()', () => {
+      const app = doc.getElementById('app') as HTMLElement;
+      const studioDeck = doc.getElementById('studioDeck') as HTMLElement;
+      const zenDock = doc.getElementById('zenPillDock') as HTMLElement;
+      const topBar = doc.querySelector('.top-bar') as HTMLElement;
+      const bottomBar = doc.querySelector('.bottom-bar') as HTMLElement;
+
+      const changeFn = vi.fn();
+      const vmm = new ViewModeManager({
+        onResizeRequired: vi.fn(),
+        onViewChange: changeFn,
+      });
+
+      vmm.initDOM({ app, studioDeck, zenDock, topBar, bottomBar });
+
+      const topZenBtn = doc.querySelector<HTMLButtonElement>('#viewModeControl [data-view-mode="zen"]')!;
+      const zenStudioBtn = doc.querySelector<HTMLButtonElement>('#zenViewModeControl [data-view-mode="studio"]')!;
+
+      topZenBtn.click();
+      expect(vmm.getMode()).toBe('zen');
+      expect(app.classList.contains('view-zen')).toBe(true);
+      expect(studioDeck.style.display).toBe('none');
+      expect(zenDock.style.display).toBe('flex');
+      expect(topZenBtn.getAttribute('aria-pressed')).toBe('true');
+      expect(changeFn).toHaveBeenCalledWith('zen');
+
+      zenStudioBtn.click();
+      expect(vmm.getMode()).toBe('studio');
+      expect(app.classList.contains('view-studio')).toBe(true);
+      expect(studioDeck.style.display).toBe('flex');
+      expect(zenDock.style.display).toBe('none');
+      expect(zenStudioBtn.getAttribute('aria-pressed')).toBe('true');
+      expect(changeFn).toHaveBeenCalledWith('studio');
+
+      vmm.destroy();
+      topZenBtn.click();
       expect(vmm.getMode()).toBe('studio');
     });
   });

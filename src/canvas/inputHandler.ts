@@ -3,8 +3,9 @@ import { fitSplineFromPoints } from '../math/curveFit';
 import { soundEngine } from '../audio/audioContext';
 import { StrokeManager } from '../engine/strokeManager';
 import { ScaleQuantizer } from '../audio/scaleQuantizer';
-import { DroneVoice, PulseVoice } from '../audio/synthVoice';
+import { DroneVoice, PulseVoice, XAxisModulationMode } from '../audio/synthVoice';
 import { DrumSynth } from '../audio/drumSynth';
+import { DrumZone, resolveDrumZone } from '../audio/drumMapping';
 import { getInstrument } from '../audio/instruments';
 import { StrokeStyle } from '../engine/types';
 
@@ -31,11 +32,15 @@ export interface InputHandlerOptions {
   onSelectStroke?: (strokeId: string | null) => void;
   onStrokeTranslateEnd?: () => void;
   onPointerDown?: () => void;
+  onMarqueeSelect?: (rect: { x1: number; y1: number; x2: number; y2: number }) => void;
+  onDuplicateDragStart?: (strokeIds: string[]) => string[];
+  onPinchOctaveZoom?: (scaleFactor: number) => void;
+  onTwoFingerScrollY?: (deltaY: number) => void;
   strokeManager: StrokeManager;
   getQuantizer: () => ScaleQuantizer;
   getCurrentInstrument?: () => string;
   getCurrentStyle?: () => StrokeStyle;
-  getXAxisModulation?: () => string;
+  getXAxisModulation?: () => XAxisModulationMode;
 }
 
 export class InputHandler {
@@ -44,9 +49,13 @@ export class InputHandler {
   private getQuantizer: () => ScaleQuantizer;
   private getCurrentInstrument?: () => string;
   private getCurrentStyle?: () => StrokeStyle;
-  private getXAxisModulation?: () => string;
+  private getXAxisModulation?: () => XAxisModulationMode;
   private onPointerDownCallback?: () => void;
   private onStrokeTranslateEnd?: () => void;
+  private onMarqueeSelect?: (rect: { x1: number; y1: number; x2: number; y2: number }) => void;
+  private onDuplicateDragStart?: (strokeIds: string[]) => string[];
+  private onPinchOctaveZoom?: (scaleFactor: number) => void;
+  private onTwoFingerScrollY?: (deltaY: number) => void;
   private shape: DrawShape = 'curve';
   private snapPitch = false;
   private autoSmooth = true;
@@ -64,6 +73,7 @@ export class InputHandler {
   private liveDroneVoice: DroneVoice | null = null;
   private isLivePointerDown = false;
   private lastLivePoint: Point2D | null = null;
+  private livePointerSessionId = 0;
 
   // Drawing state
   private isDrawing = false;
@@ -72,11 +82,23 @@ export class InputHandler {
 
   // Selected line dragging / repositioning state
   private isDragging = false;
+  private isDuplicateDragging = false;
   private draggedStrokeId: string | null = null;
   private dragStartPoint: Point2D | null = null;
   private lastDragPoint: Point2D | null = null;
   private dragAccumDx = 0;
   private dragAccumDy = 0;
+
+  // Marquee multi-selection state
+  private isMarqueeSelecting = false;
+  private marqueeStartScreen: Point2D | null = null;
+  private marqueeCurrentScreen: Point2D | null = null;
+  private marqueeStartWorld: Point2D | null = null;
+  private marqueeCurrentWorld: Point2D | null = null;
+
+  // Multi-touch pinch zoom & two-finger scroll state
+  private activePinchDist: number | null = null;
+  private activeTwoFingerMidY: number | null = null;
 
   private onStrokeComplete: (path: SplinePath, isPoint?: boolean) => void;
   private onStrokeRedraw?: (strokeId: string, path: SplinePath) => void;
@@ -103,8 +125,32 @@ export class InputHandler {
     this.onSelectStroke = options.onSelectStroke;
     this.onStrokeTranslateEnd = options.onStrokeTranslateEnd;
     this.onPointerDownCallback = options.onPointerDown;
+    this.onMarqueeSelect = options.onMarqueeSelect;
+    this.onDuplicateDragStart = options.onDuplicateDragStart;
+    this.onPinchOctaveZoom = options.onPinchOctaveZoom;
+    this.onTwoFingerScrollY = options.onTwoFingerScrollY;
 
     this.initEvents();
+  }
+
+  public get marqueeRect(): { x1: number; y1: number; x2: number; y2: number } | null {
+    if (!this.isMarqueeSelecting || !this.marqueeStartScreen || !this.marqueeCurrentScreen) {
+      return null;
+    }
+    return {
+      x1: this.marqueeStartScreen.x,
+      y1: this.marqueeStartScreen.y,
+      x2: this.marqueeCurrentScreen.x,
+      y2: this.marqueeCurrentScreen.y,
+    };
+  }
+
+  private resetMarqueeState(): void {
+    this.isMarqueeSelecting = false;
+    this.marqueeStartScreen = null;
+    this.marqueeCurrentScreen = null;
+    this.marqueeStartWorld = null;
+    this.marqueeCurrentWorld = null;
   }
 
   public get isRedrawing(): boolean {
@@ -161,6 +207,8 @@ export class InputHandler {
   public setAppMode(mode: AppMode): void {
     if (this.mode === mode) return;
     this.mode = mode;
+    this.resetMarqueeState();
+    this.isDuplicateDragging = false;
     if (mode === 'live') {
       this.strokeManager.selectStroke(null);
       this.strokeManager.setHoveredStroke(null);
@@ -173,6 +221,7 @@ export class InputHandler {
       this.redrawingStrokeId = null;
       this.onRedrawStateChange?.(false);
     } else if (mode === 'redraw') {
+      this.livePointerSessionId++;
       if (this.liveDroneVoice) {
         try { this.liveDroneVoice.stop(0.2); } catch {}
         this.liveDroneVoice = null;
@@ -188,6 +237,7 @@ export class InputHandler {
       this.isRedrawArmed = true;
       this.onRedrawStateChange?.(true);
     } else {
+      this.livePointerSessionId++;
       if (this.liveDroneVoice) {
         try { this.liveDroneVoice.stop(0.2); } catch {}
         this.liveDroneVoice = null;
@@ -293,6 +343,91 @@ export class InputHandler {
     return this.currentPoints;
   }
 
+  private handleTouchStart(e: TouchEvent): void {
+    if (!e.touches || e.touches.length <= 1) {
+      e.preventDefault?.();
+      this.activePinchDist = null;
+      this.activeTwoFingerMidY = null;
+      return;
+    }
+
+    if (e.touches.length === 2) {
+      e.preventDefault?.();
+      const t0 = e.touches[0];
+      const t1 = e.touches[1];
+      this.activePinchDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+      this.activeTwoFingerMidY = (t0.clientY + t1.clientY) * 0.5;
+      return;
+    }
+
+    this.activePinchDist = null;
+    this.activeTwoFingerMidY = null;
+  }
+
+  private handleTouchMove(e: TouchEvent): void {
+    if (!e.touches || e.touches.length <= 1) {
+      e.preventDefault?.();
+      this.activePinchDist = null;
+      this.activeTwoFingerMidY = null;
+      return;
+    }
+
+    if (e.touches.length === 2) {
+      e.preventDefault?.();
+      const t0 = e.touches[0];
+      const t1 = e.touches[1];
+      const currDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+      const currMidY = (t0.clientY + t1.clientY) * 0.5;
+
+      if (this.activePinchDist !== null && this.activePinchDist > 0) {
+        const scaleFactor = currDist / this.activePinchDist;
+        if (Math.abs(scaleFactor - 1) > 0.03) {
+          this.onPinchOctaveZoom?.(scaleFactor);
+          this.activePinchDist = currDist;
+        }
+      } else {
+        this.activePinchDist = currDist;
+      }
+
+      if (this.activeTwoFingerMidY !== null) {
+        const deltaMidY = this.activeTwoFingerMidY - currMidY;
+        if (Math.abs(deltaMidY) > 1.5) {
+          this.onTwoFingerScrollY?.(deltaMidY);
+          this.activeTwoFingerMidY = currMidY;
+        }
+      } else {
+        this.activeTwoFingerMidY = currMidY;
+      }
+      return;
+    }
+
+    this.activePinchDist = null;
+    this.activeTwoFingerMidY = null;
+  }
+
+  private handleTouchEnd(e: TouchEvent): void {
+    if (!e.touches || e.touches.length < 2) {
+      this.activePinchDist = null;
+      this.activeTwoFingerMidY = null;
+    }
+  }
+
+  private handleTouchEvent = (e: TouchEvent): void => {
+    if (e.type === 'touchstart') {
+      this.handleTouchStart(e);
+    } else if (e.type === 'touchmove') {
+      this.handleTouchMove(e);
+    } else if (e.type === 'touchend' || e.type === 'touchcancel') {
+      this.handleTouchEnd(e);
+    } else if (!e.touches || e.touches.length === 0) {
+      this.handleTouchEnd(e);
+    } else if (e.touches.length === 2 && (this.activePinchDist !== null || this.activeTwoFingerMidY !== null)) {
+      this.handleTouchMove(e);
+    } else {
+      this.handleTouchStart(e);
+    }
+  };
+
   private initEvents(): void {
     const el = this.canvas;
     el.style.cursor = 'crosshair';
@@ -303,17 +438,32 @@ export class InputHandler {
     window.addEventListener('pointercancel', this.handlePointerUp);
     el.addEventListener('pointerleave', this.handlePointerLeave);
 
-    el.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
-    el.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+    el.addEventListener('touchstart', this.handleTouchEvent, { passive: false });
+    el.addEventListener('touchmove', this.handleTouchEvent, { passive: false });
+    el.addEventListener('touchend', this.handleTouchEvent, { passive: false });
+    el.addEventListener('touchcancel', this.handleTouchEvent, { passive: false });
   }
 
   public destroy(): void {
+    this.livePointerSessionId++;
+    if (this.liveDroneVoice) {
+      try { this.liveDroneVoice.stop(0.05); } catch {}
+      this.liveDroneVoice = null;
+    }
+    this.resetMarqueeState();
+    this.isDuplicateDragging = false;
+    this.activePinchDist = null;
+    this.activeTwoFingerMidY = null;
     const el = this.canvas;
     el.removeEventListener('pointerdown', this.handlePointerDown);
     window.removeEventListener('pointermove', this.handlePointerMove);
     window.removeEventListener('pointerup', this.handlePointerUp);
     window.removeEventListener('pointercancel', this.handlePointerUp);
     el.removeEventListener('pointerleave', this.handlePointerLeave);
+    el.removeEventListener('touchstart', this.handleTouchEvent);
+    el.removeEventListener('touchmove', this.handleTouchEvent);
+    el.removeEventListener('touchend', this.handleTouchEvent);
+    el.removeEventListener('touchcancel', this.handleTouchEvent);
   }
 
   private getCanvasPoint(e: PointerEvent, applySnap: boolean = true): Point2D {
@@ -325,7 +475,7 @@ export class InputHandler {
 
     // Magnetic Pitch Snapping (only applied when drawing a new line)
     if (applySnap && this.snapPitch) {
-      const guidelines = quantizer.getAllGuidelines(rect.height);
+      const guidelines = quantizer.getGuidelines(rect.height);
       let closestY = y;
       let minDiff = 20;
 
@@ -342,16 +492,61 @@ export class InputHandler {
     return { x, y };
   }
 
+  private getDrumDisplayFrequency(zone: DrumZone, tomFreq: number): number {
+    switch (zone) {
+      case 'kick':
+        return 55;
+      case 'snare':
+        return 180;
+      case 'clap':
+        return 1250;
+      case 'tom':
+        return tomFreq;
+      case 'hihat':
+        return 8000;
+    }
+  }
+
+  private triggerLiveDrum(
+    zone: DrumZone,
+    tomFreq: number,
+    volume: number,
+    screenX: number,
+    canvasWidth: number,
+    xAxisMod: XAxisModulationMode,
+    reverb: number
+  ): void {
+    switch (zone) {
+      case 'kick':
+        DrumSynth.triggerKick(volume, screenX, canvasWidth, xAxisMod, 0, reverb);
+        break;
+      case 'snare':
+        DrumSynth.triggerSnare(volume * 0.95, screenX, canvasWidth, xAxisMod, 0, reverb);
+        break;
+      case 'clap':
+        DrumSynth.triggerClap(volume * 0.9, screenX, canvasWidth, xAxisMod, 0, reverb);
+        break;
+      case 'tom':
+        DrumSynth.triggerTom(tomFreq, volume * 0.9, screenX, canvasWidth, xAxisMod, 0, reverb);
+        break;
+      case 'hihat':
+        DrumSynth.triggerHiHat(true, volume * 0.9, screenX, canvasWidth, xAxisMod, 0, reverb);
+        break;
+    }
+  }
+
   private handlePointerDown = (e: PointerEvent): void => {
     // Only respond to primary (left) mouse clicks / touches
     if (e.button !== undefined && e.button !== 0) return;
 
     this.onPointerDownCallback?.();
 
+    let initPromise: Promise<void> | null = null;
     if (!soundEngine.isReady) {
-      soundEngine.init().then(() => {
+      initPromise = soundEngine.init().then(() => {
         this.strokeManager.activateAudioVoices();
-      }).catch(() => {});
+      });
+      initPromise.catch(() => {});
     }
 
     const rect = this.canvas.getBoundingClientRect();
@@ -366,62 +561,66 @@ export class InputHandler {
     // ========================================================
     if (this.mode === 'live') {
       this.isLivePointerDown = true;
+      const sessionId = ++this.livePointerSessionId;
       const instId = this.getCurrentInstrument?.() || 'indigo';
       const instrument = getInstrument(instId);
       const style = this.getCurrentStyle?.() || 'solid';
       const LIVE_REVERB = this.liveReverb;
       const LIVE_VOLUME = this.liveVolume;
       const isScaleSnapped = this.snapPitch || this.liveSnapToScale;
-      const xAxisMod = (this.getXAxisModulation?.() as any) || 'panAndTone';
+      const xAxisMod: XAxisModulationMode = this.getXAxisModulation?.() ?? 'panAndTone';
 
       let noteName = '';
       let frequency = 0;
 
-      if (instId === 'onyx') {
-        const pitch = quantizer.quantizeContinuous(worldPt.y, rect.height);
-        const drumFreq = pitch.frequency;
-        if (drumFreq < 260) {
-          DrumSynth.triggerKick(LIVE_VOLUME, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
-          noteName = 'Kick';
-          frequency = 55;
-        } else if (drumFreq < 650) {
-          DrumSynth.triggerSnare(LIVE_VOLUME * 0.95, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
-          noteName = 'Snare';
-          frequency = 180;
-        } else if (drumFreq < 2200) {
-          const tomFreq = Math.max(100, Math.min(220, 100 + ((drumFreq - 650) / 1550) * 120));
-          DrumSynth.triggerTom(tomFreq, LIVE_VOLUME * 0.9, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
-          noteName = 'Tom';
-          frequency = tomFreq;
-        } else {
-          DrumSynth.triggerHiHat(true, LIVE_VOLUME * 0.9, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
-          noteName = 'HiHat';
-          frequency = 8000;
-        }
-      } else {
-        const pitch = isScaleSnapped
-          ? quantizer.quantizeDiscrete(worldPt.y, rect.height)
-          : quantizer.quantizeContinuous(worldPt.y, rect.height);
-        noteName = pitch.noteName;
-        frequency = pitch.frequency;
+      const drum = instId === 'onyx'
+        ? resolveDrumZone(quantizer.quantizeContinuous(worldPt.y, rect.height).frequency, false)
+        : null;
+      const melodicPitch = instId !== 'onyx'
+        ? (isScaleSnapped
+            ? quantizer.quantizeDiscrete(worldPt.y, rect.height)
+            : quantizer.quantizeContinuous(worldPt.y, rect.height))
+        : null;
 
-        if (style === 'dotted') {
-          PulseVoice.trigger(pitch.frequency, false, LIVE_VOLUME, instrument, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
-        } else if (style === 'striped') {
-          PulseVoice.triggerRatchet(pitch.frequency, LIVE_VOLUME * 0.95, instrument, screenX, rect.width, xAxisMod, LIVE_REVERB);
-        } else {
-          // Solid legato live voice
-          if (this.liveDroneVoice) {
-            try { this.liveDroneVoice.stop(0.05); } catch {}
+      if (drum) {
+        noteName = drum.label;
+        frequency = this.getDrumDisplayFrequency(drum.zone, drum.tomFreq);
+      } else if (melodicPitch) {
+        noteName = melodicPitch.noteName;
+        frequency = melodicPitch.frequency;
+      }
+
+      const triggerInitialLive = (isAsync: boolean) => {
+        if (drum) {
+          this.triggerLiveDrum(drum.zone, drum.tomFreq, LIVE_VOLUME, screenX, rect.width, xAxisMod, LIVE_REVERB);
+        } else if (melodicPitch) {
+          let targetPitch = melodicPitch;
+          if (isAsync && style === 'solid' && this.lastLivePoint) {
+            const latestY = quantizer.screenToWorldY(this.lastLivePoint.y, rect.height);
+            targetPitch = isScaleSnapped
+              ? quantizer.quantizeDiscrete(latestY, rect.height)
+              : quantizer.quantizeContinuous(latestY, rect.height);
           }
-          try {
-            this.liveDroneVoice = new DroneVoice();
-            this.liveDroneVoice.start(pitch.frequency, instrument, LIVE_VOLUME, LIVE_REVERB);
-          } catch {
-            this.liveDroneVoice = null;
+
+          if (style === 'dotted') {
+            PulseVoice.trigger(targetPitch.frequency, false, LIVE_VOLUME, instrument, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
+          } else if (style === 'striped') {
+            PulseVoice.triggerRatchet(targetPitch.frequency, LIVE_VOLUME * 0.95, instrument, screenX, rect.width, xAxisMod, LIVE_REVERB);
+          } else {
+            // Solid legato live voice
+            if (this.liveDroneVoice) {
+              try { this.liveDroneVoice.stop(0.05); } catch {}
+            }
+            try {
+              this.liveDroneVoice = new DroneVoice();
+              this.liveDroneVoice.start(targetPitch.frequency, instrument, LIVE_VOLUME, LIVE_REVERB);
+            } catch {
+              this.liveDroneVoice = null;
+            }
           }
         }
-      }
+        this.onLiveTrigger?.(screenX, screenY, instrument.color);
+      };
 
       this.lastLivePoint = { x: screenX, y: screenY };
       this.liveTrailPoints.push({
@@ -434,6 +633,16 @@ export class InputHandler {
         frequency,
       });
 
+      if (!initPromise) {
+        triggerInitialLive(false);
+      } else {
+        initPromise.then(() => {
+          if (this.mode !== 'live' || this.livePointerSessionId !== sessionId) return;
+          if (instId !== 'onyx' && style === 'solid' && !this.isLivePointerDown) return;
+          triggerInitialLive(true);
+        }).catch(() => {});
+      }
+
       this.canvas.style.cursor = 'crosshair';
       return;
     }
@@ -441,7 +650,35 @@ export class InputHandler {
     // ========================================================
     // B. DRAW & RE-DRAW MODE: Score drawing and line selection
     // ========================================================
-    const isRedrawAttempt = this.mode === 'redraw' || this.isRedrawArmed || e.altKey;
+    const directHit = this.strokeManager.hitTest(screenPt, 22, worldPt);
+    const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+
+    // Alt/Option + Drag ON a stroke: duplicate and drag immediately
+    if (e.altKey && !this.isRedrawArmed && this.mode !== 'redraw' && directHit && this.onDuplicateDragStart) {
+      const sourceIds = this.strokeManager.isStrokeSelected(directHit.id)
+        ? this.strokeManager.selectedStrokeIds
+        : [directHit.id];
+      const newIds = this.onDuplicateDragStart(sourceIds);
+      if (newIds.length > 0) {
+        this.draggedStrokeId = newIds[0];
+        this.dragStartPoint = worldPt;
+        this.lastDragPoint = worldPt;
+        this.isDragging = true;
+        this.isDuplicateDragging = true;
+        this.dragAccumDx = 0;
+        this.dragAccumDy = 0;
+        this.isDrawing = false;
+        this.canvas.style.cursor = 'copy';
+        return;
+      }
+    }
+
+    // In Re-draw mode, clicking directly on a stroke moves/selects it (unless Alt forces redraw);
+    // Cmd/Ctrl+Drag on empty space still marquee-selects instead of redrawing.
+    const shouldMoveInRedraw = this.mode === 'redraw' && !e.altKey && Boolean(directHit);
+    const shouldMarqueeInRedraw =
+      this.mode === 'redraw' && !e.altKey && !directHit && isCmdOrCtrl && Boolean(this.onMarqueeSelect);
+    const isRedrawAttempt = !shouldMoveInRedraw && !shouldMarqueeInRedraw && (this.mode === 'redraw' || this.isRedrawArmed || e.altKey);
     if (isRedrawAttempt) {
       let targetId = this.strokeManager.selectedStrokeId;
       if (!targetId && this.strokeManager.activeStrokes.length > 0) {
@@ -460,6 +697,7 @@ export class InputHandler {
         this.currentPoints = [drawPt];
         this.draggedStrokeId = null;
         this.isDragging = false;
+        this.isDuplicateDragging = false;
         this.onDrawChange?.(this.currentPoints);
         this.canvas.style.cursor = 'crosshair';
         return;
@@ -467,7 +705,7 @@ export class InputHandler {
     }
 
     // Hit test lines across world score coordinates (both melodic and drum strokes)
-    const hit = this.strokeManager.hitTest(screenPt, 22, worldPt);
+    const hit = directHit;
 
     if (hit) {
       const isCmdOrCtrl = e.metaKey || e.ctrlKey;
@@ -482,6 +720,7 @@ export class InputHandler {
           this.dragStartPoint = worldPt;
           this.lastDragPoint = worldPt;
           this.isDragging = false;
+          this.isDuplicateDragging = false;
           this.dragAccumDx = 0;
           this.dragAccumDy = 0;
           this.isDrawing = false;
@@ -489,6 +728,7 @@ export class InputHandler {
         } else {
           this.draggedStrokeId = null;
           this.isDragging = false;
+          this.isDuplicateDragging = false;
           this.canvas.style.cursor = 'default';
         }
         return;
@@ -509,6 +749,7 @@ export class InputHandler {
       this.dragStartPoint = hitPt;
       this.lastDragPoint = hitPt;
       this.isDragging = false;
+      this.isDuplicateDragging = false;
       this.dragAccumDx = 0;
       this.dragAccumDy = 0;
       this.isDrawing = false;
@@ -522,6 +763,19 @@ export class InputHandler {
         this.strokeManager.selectStroke(null);
         this.onSelectStroke?.(null);
       }
+    } else if (this.onMarqueeSelect) {
+      // Cmd/Ctrl + Drag on empty canvas: marquee multi-selection
+      this.isMarqueeSelecting = true;
+      this.marqueeStartScreen = screenPt;
+      this.marqueeCurrentScreen = screenPt;
+      this.marqueeStartWorld = worldPt;
+      this.marqueeCurrentWorld = worldPt;
+      this.isDrawing = false;
+      this.draggedStrokeId = null;
+      this.isDragging = false;
+      this.isDuplicateDragging = false;
+      this.canvas.style.cursor = 'crosshair';
+      return;
     }
 
     // Clicked on empty canvas: initialize drawing gesture
@@ -531,6 +785,7 @@ export class InputHandler {
     this.currentPoints = [drawPt];
     this.draggedStrokeId = null;
     this.isDragging = false;
+    this.isDuplicateDragging = false;
     this.onDrawChange?.(this.currentPoints);
     this.canvas.style.cursor = 'crosshair';
   };
@@ -559,7 +814,7 @@ export class InputHandler {
       const LIVE_REVERB = this.liveReverb;
       const LIVE_VOLUME = this.liveVolume;
       const isScaleSnapped = this.snapPitch || this.liveSnapToScale;
-      const xAxisMod = (this.getXAxisModulation?.() as any) || 'panAndTone';
+      const xAxisMod: XAxisModulationMode = this.getXAxisModulation?.() ?? 'panAndTone';
       const dist = this.lastLivePoint
         ? Math.hypot(screenX - this.lastLivePoint.x, screenY - this.lastLivePoint.y)
         : 0;
@@ -569,19 +824,12 @@ export class InputHandler {
 
       if (instId === 'onyx') {
         const pitch = quantizer.quantizeContinuous(worldPt.y, rect.height);
-        const drumFreq = pitch.frequency;
-        if (drumFreq < 260) noteName = 'Kick';
-        else if (drumFreq < 650) noteName = 'Snare';
-        else if (drumFreq < 2200) noteName = 'Tom';
-        else noteName = 'HiHat';
+        const drum = resolveDrumZone(pitch.frequency, false);
+        noteName = drum.label;
+        frequency = this.getDrumDisplayFrequency(drum.zone, drum.tomFreq);
 
         if (dist >= 35) {
-          if (drumFreq < 260) DrumSynth.triggerKick(LIVE_VOLUME, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
-          else if (drumFreq < 650) DrumSynth.triggerSnare(LIVE_VOLUME * 0.95, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
-          else if (drumFreq < 2200) {
-            const tomFreq = Math.max(100, Math.min(220, 100 + ((drumFreq - 650) / 1550) * 120));
-            DrumSynth.triggerTom(tomFreq, LIVE_VOLUME * 0.9, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
-          } else DrumSynth.triggerHiHat(true, LIVE_VOLUME * 0.9, screenX, rect.width, xAxisMod, 0, LIVE_REVERB);
+          this.triggerLiveDrum(drum.zone, drum.tomFreq, LIVE_VOLUME, screenX, rect.width, xAxisMod, LIVE_REVERB);
           this.lastLivePoint = { x: screenX, y: screenY };
           this.onLiveTrigger?.(screenX, screenY, instrument.color);
         }
@@ -663,6 +911,13 @@ export class InputHandler {
     // ========================================================
     // B. DRAW MODE: Normal pointer move
     // ========================================================
+    if (this.isMarqueeSelecting) {
+      this.marqueeCurrentScreen = screenPt;
+      this.marqueeCurrentWorld = worldPt;
+      this.canvas.style.cursor = 'crosshair';
+      return;
+    }
+
     // 1. If dragging an existing selected stroke to reposition it (moves all selected strokes together)
     if (this.draggedStrokeId) {
       const rawPt = worldPt;
@@ -685,7 +940,7 @@ export class InputHandler {
           this.dragAccumDx += dx;
           this.dragAccumDy += dy;
           this.lastDragPoint = rawPt;
-          this.canvas.style.cursor = 'grabbing';
+          this.canvas.style.cursor = this.isDuplicateDragging ? 'copy' : 'grabbing';
         }
       }
       return;
@@ -727,9 +982,17 @@ export class InputHandler {
     }
 
     // 3. Hover state over canvas (no pointer buttons pressed)
+    const isOffCanvasTarget = e.target !== undefined && e.target !== this.canvas;
+    const isOutsideCanvas =
+      screenX < 0 || screenX > rect.width || screenY < 0 || screenY > rect.height;
+    if (isOffCanvasTarget || isOutsideCanvas) {
+      this.strokeManager.setHoveredStroke(null);
+      return;
+    }
+
     const hit = this.strokeManager.hitTest(screenPt, 22, worldPt);
     this.strokeManager.setHoveredStroke(hit ? hit.id : null);
-    this.canvas.style.cursor = hit ? 'pointer' : 'crosshair';
+    this.canvas.style.cursor = hit ? (this.mode === 'redraw' ? 'grab' : 'pointer') : 'crosshair';
   };
 
   private handlePointerLeave = (): void => {
@@ -743,7 +1006,7 @@ export class InputHandler {
       return;
     }
 
-    if (!this.isDrawing && !this.isDragging) {
+    if (!this.isDrawing && !this.isDragging && !this.isMarqueeSelecting) {
       this.strokeManager.setHoveredStroke(null);
     }
   };
@@ -758,6 +1021,32 @@ export class InputHandler {
         this.liveDroneVoice = null;
       }
       this.canvas.style.cursor = 'crosshair';
+      return;
+    }
+
+    // 0. Finalize marquee multi-selection
+    if (this.isMarqueeSelecting) {
+      const startWorld = this.marqueeStartWorld;
+      let endWorld = this.marqueeCurrentWorld;
+      if (e && typeof e.clientX === 'number' && typeof e.clientY === 'number') {
+        const rect = this.canvas.getBoundingClientRect();
+        const screenX = e.clientX - rect.left;
+        const screenY = e.clientY - rect.top;
+        const quantizer = this.getQuantizer();
+        endWorld = { x: screenX, y: quantizer.screenToWorldY(screenY, rect.height) };
+      }
+
+      this.resetMarqueeState();
+      this.canvas.style.cursor = 'crosshair';
+
+      if (startWorld && endWorld) {
+        this.onMarqueeSelect?.({
+          x1: startWorld.x,
+          y1: startWorld.y,
+          x2: endWorld.x,
+          y2: endWorld.y,
+        });
+      }
       return;
     }
 
@@ -776,6 +1065,7 @@ export class InputHandler {
         this.onStrokeTranslateEnd?.();
       }
       this.isDragging = false;
+      this.isDuplicateDragging = false;
       this.draggedStrokeId = null;
       this.lastDragPoint = null;
       this.dragStartPoint = null;
@@ -791,6 +1081,7 @@ export class InputHandler {
         this.strokeManager.selectStroke(this.draggedStrokeId);
         this.onSelectStroke?.(this.draggedStrokeId);
       }
+      this.isDuplicateDragging = false;
       this.draggedStrokeId = null;
       this.lastDragPoint = null;
       this.dragStartPoint = null;

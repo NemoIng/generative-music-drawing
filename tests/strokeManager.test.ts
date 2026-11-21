@@ -5,7 +5,9 @@ import { SavedComposition } from '../src/engine/types';
 import { ScaleQuantizer } from '../src/audio/scaleQuantizer';
 import { INSTRUMENTS, DEFAULT_INSTRUMENT } from '../src/audio/instruments';
 import { DroneVoice, PulseVoice } from '../src/audio/synthVoice';
+import { DrumSynth } from '../src/audio/drumSynth';
 import { soundEngine } from '../src/audio/audioContext';
+import { BoundedHistory } from '../src/engine/history';
 
 describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, and Undo/Redo', () => {
   const dummyPath: SplinePath = {
@@ -1122,8 +1124,12 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
     expect(stroke.path.segments[0].p3.y).toBeCloseTo(520, 2);
   });
 
-  it('scaleMelodicStrokesY preserves Onyx drum machine strokes without scaling Y', () => {
+  it('scaleMelodicStrokesY scales Onyx drum machine strokes vertically so physical frequency remains invariant on Octave View zoom', () => {
     const sm = new StrokeManager();
+    const quantizer = new ScaleQuantizer({ octaveSpan: 4 });
+    quantizer.setScrollEnabled(true);
+    const viewportHeight = 800;
+
     const drumPath: SplinePath = {
       segments: [
         {
@@ -1136,10 +1142,24 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
       isClosed: false,
     };
     const drumStroke = sm.addStroke(drumPath, 'solid', 'onyx', 100);
+    const initialFreq = quantizer.quantizeContinuous(drumStroke.path.segments[0].p0.y, viewportHeight).frequency;
 
     sm.scaleMelodicStrokesY(2.0);
-    expect(drumStroke.path.segments[0].p0.y).toBe(600);
-    expect(drumStroke.path.segments[0].p3.y).toBe(600);
+    expect(drumStroke.path.segments[0].p0.y).toBe(1200);
+    expect(drumStroke.path.segments[0].p3.y).toBe(1200);
+
+    // Restore scale back to 1x and verify Octave View zoom preserves physical frequency
+    sm.scaleMelodicStrokesY(0.5);
+    const oldWorldH = quantizer.getWorldHeight(viewportHeight);
+    const oldActiveH = Math.max(1, oldWorldH - 2 * ScaleQuantizer.MARGIN_Y);
+
+    quantizer.updateConfig({ octaveSpan: 2 });
+    const newWorldH = quantizer.getWorldHeight(viewportHeight);
+    const newActiveH = Math.max(1, newWorldH - 2 * ScaleQuantizer.MARGIN_Y);
+
+    sm.scaleMelodicStrokesY(newActiveH / oldActiveH, ScaleQuantizer.MARGIN_Y);
+    const zoomedFreq = quantizer.quantizeContinuous(drumStroke.path.segments[0].p0.y, viewportHeight).frequency;
+    expect(zoomedFreq).toBeCloseTo(initialFreq, 4);
   });
 
   it('getNextVersionName increments version numbers and handles collisions correctly', () => {
@@ -2414,6 +2434,807 @@ describe('StrokeManager Features: Traversal Mode, Edit Translation, Revoicing, a
       sm.redo();
       expect(stroke.path).toBe(newPath);
       expect(stroke.path.segments[0].p0.x).toBe(200);
+    });
+  });
+
+  describe('Wave 1C Regression Tests', () => {
+    const makeFreshPath = (y: number = 200): SplinePath => ({
+      segments: [
+        {
+          p0: { x: 50, y },
+          p1: { x: 120, y },
+          p2: { x: 180, y },
+          p3: { x: 250, y },
+        },
+      ],
+      isClosed: false,
+    });
+
+    it('preserves per-stroke FX (distortion, filterCutoff, lofi, reverb) across drone restarts via setStrokeStyle, toggleMute, setPaused, undo/redo, and activateAudioVoices', () => {
+      vi.restoreAllMocks();
+      const mockEngine = { isReady: true } as any;
+      const startSpy = vi.spyOn(DroneVoice.prototype, 'start').mockImplementation(function (this: any) {
+        this._isPlaying = true;
+      });
+      const stopSpy = vi.spyOn(DroneVoice.prototype, 'stop').mockImplementation(function (this: any) {
+        this._isPlaying = false;
+      });
+      const updateDualSpy = vi.spyOn(DroneVoice.prototype, 'updateDual').mockImplementation(() => {});
+
+      try {
+        const sm = new StrokeManager(mockEngine);
+        const quantizer = new ScaleQuantizer();
+
+        const fxReverb = 0.72;
+        const fxDistortion = 0.65;
+        const fxFilterCutoff = 0.35;
+        const fxLofi = 0.55;
+
+        const assertLastStartFX = () => {
+          expect(startSpy).toHaveBeenCalled();
+          const lastCall = startSpy.mock.calls[startSpy.mock.calls.length - 1];
+          expect(lastCall[3]).toBeCloseTo(fxReverb, 4);
+          expect(lastCall[5]).toBeCloseTo(fxDistortion, 4);
+          expect(lastCall[6]).toBeCloseTo(fxFilterCutoff, 4);
+          expect(lastCall[7]).toBeCloseTo(fxLofi, 4);
+        };
+
+        const stroke = sm.addStroke(
+          makeFreshPath(250),
+          'solid',
+          'indigo',
+          120,
+          quantizer,
+          600,
+          0.9,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          fxReverb,
+          0.0,
+          undefined,
+          undefined,
+          true,
+          false,
+          fxDistortion,
+          fxFilterCutoff,
+          fxLofi
+        );
+        assertLastStartFX();
+
+        // 1. setStrokeStyle: solid -> dotted -> solid
+        sm.setStrokeStyle(stroke.id, 'dotted', false);
+        expect(stroke.droneVoice).toBeNull();
+        startSpy.mockClear();
+        sm.setStrokeStyle(stroke.id, 'solid', false);
+        assertLastStartFX();
+
+        // 2. toggleMute: mute -> unmute
+        sm.toggleMute(stroke.id);
+        expect(stroke.droneVoice).toBeNull();
+        startSpy.mockClear();
+        sm.toggleMute(stroke.id);
+        assertLastStartFX();
+
+        // 3. setPaused (pause -> resume)
+        sm.setPaused(true);
+        expect(stroke.droneVoice).toBeNull();
+        startSpy.mockClear();
+        sm.setPaused(false);
+        assertLastStartFX();
+
+        // 4. undo / redo
+        sm.removeStroke(stroke.id);
+        expect(stroke.droneVoice).toBeNull();
+        startSpy.mockClear();
+        sm.undo(); // restores removed stroke
+        assertLastStartFX();
+
+        // Also test redo of an added stroke
+        const stroke2 = sm.addStroke(
+          makeFreshPath(320),
+          'solid',
+          'amber',
+          120,
+          quantizer,
+          600,
+          0.85,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          fxReverb,
+          0.0,
+          undefined,
+          undefined,
+          true,
+          false,
+          fxDistortion,
+          fxFilterCutoff,
+          fxLofi
+        );
+        sm.undo();
+        expect(sm.getStroke(stroke2.id)).toBeUndefined();
+        startSpy.mockClear();
+        sm.redo();
+        assertLastStartFX();
+
+        // 5. activateAudioVoices
+        const lateEngine = { isReady: false } as any;
+        const smLate = new StrokeManager(lateEngine);
+        const lateStroke = smLate.addStroke(
+          makeFreshPath(280),
+          'solid',
+          'rose',
+          120,
+          quantizer,
+          600,
+          0.8,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          fxReverb,
+          0.0,
+          undefined,
+          undefined,
+          false,
+          false,
+          fxDistortion,
+          fxFilterCutoff,
+          fxLofi
+        );
+        expect(lateStroke.droneVoice).toBeNull();
+
+        lateEngine.isReady = true;
+        startSpy.mockClear();
+        smLate.activateAudioVoices();
+        expect(lateStroke.droneVoice).not.toBeNull();
+        assertLastStartFX();
+      } finally {
+        startSpy.mockRestore();
+        stopSpy.mockRestore();
+        updateDualSpy.mockRestore();
+      }
+    });
+
+    it('does not start audible drone voices when importing a composition with muted: true', () => {
+      vi.restoreAllMocks();
+      const mockEngine = { isReady: true } as any;
+      const startSpy = vi.spyOn(DroneVoice.prototype, 'start').mockImplementation(function (this: any) {
+        this._isPlaying = true;
+      });
+      const stopSpy = vi.spyOn(DroneVoice.prototype, 'stop').mockImplementation(function (this: any) {
+        this._isPlaying = false;
+      });
+
+      try {
+        const sm = new StrokeManager(mockEngine);
+        const quantizer = new ScaleQuantizer();
+
+        const comp: SavedComposition = {
+          version: 1,
+          name: 'Muted Preset',
+          timestamp: Date.now(),
+          bpm: 60,
+          canvasWidth: 800,
+          canvasHeight: 600,
+          strokes: [
+            {
+              id: 'muted-drone-1',
+              instrumentId: 'indigo',
+              style: 'solid',
+              volume: 0.9,
+              muted: true,
+              path: makeFreshPath(300),
+            },
+          ],
+        };
+
+        sm.importComposition(comp, quantizer, 600, 800);
+        expect(sm.activeStrokes).toHaveLength(1);
+        const imported = sm.activeStrokes[0];
+        expect(imported.muted).toBe(true);
+        expect(imported.droneVoice).toBeNull();
+        expect(startSpy).not.toHaveBeenCalled();
+
+        // Activating voices or stepping update must keep the muted stroke silent
+        sm.activateAudioVoices();
+        sm.update(0.016, 800, 600, quantizer);
+        expect(imported.droneVoice).toBeNull();
+        expect(startSpy).not.toHaveBeenCalled();
+      } finally {
+        startSpy.mockRestore();
+        stopSpy.mockRestore();
+      }
+    });
+
+    it('startSceneCrossfade preserves isScrollEnabled and scrollY on incoming quantizer and starts incoming drones at volume 0', () => {
+      vi.restoreAllMocks();
+      const mockEngine = { isReady: true } as any;
+      const startSpy = vi.spyOn(DroneVoice.prototype, 'start').mockImplementation(function (this: any) {
+        this._isPlaying = true;
+      });
+      const stopSpy = vi.spyOn(DroneVoice.prototype, 'stop').mockImplementation(function (this: any) {
+        this._isPlaying = false;
+      });
+      const setVolumeSpy = vi.spyOn(DroneVoice.prototype, 'setVolume').mockImplementation(() => {});
+      const updateDualSpy = vi.spyOn(DroneVoice.prototype, 'updateDual').mockImplementation(() => {});
+
+      try {
+        const sm = new StrokeManager(mockEngine);
+        const quantizer = new ScaleQuantizer();
+        quantizer.setScrollEnabled(true);
+        quantizer.setScrollY(420);
+
+        sm.addStroke(makeFreshPath(500), 'solid', 'indigo', 100, quantizer, 600);
+        startSpy.mockClear();
+        setVolumeSpy.mockClear();
+
+        const incomingComp: SavedComposition = {
+          version: 1,
+          name: 'Scrolled Scene',
+          timestamp: Date.now(),
+          bpm: 50,
+          scaleId: 'lydian',
+          rootId: 'D3',
+          strokes: [
+            {
+              id: 'incoming-1',
+              instrumentId: 'amber',
+              style: 'solid',
+              volume: 0.9,
+              path: makeFreshPath(520),
+            },
+          ],
+        };
+
+        sm.startSceneCrossfade(incomingComp, quantizer, 600, 800, 'equalPower', 'scene_scroll');
+
+        const incomingQuantizer = (sm as any).morphIncomingQuantizer as ScaleQuantizer;
+        expect(incomingQuantizer).not.toBeNull();
+        expect(incomingQuantizer.isScrollEnabled).toBe(true);
+        expect(incomingQuantizer.scrollY).toBe(420);
+
+        const incomingStroke = sm.activeStrokes.find((s) => s.morphRole === 'incoming');
+        expect(incomingStroke).toBeDefined();
+        expect(incomingStroke?.morphGain).toBe(0);
+
+        // Incoming drone voice must start at volume 0 (never blasting at full volume before fade-in)
+        expect(startSpy).toHaveBeenCalledTimes(1);
+        expect(startSpy.mock.calls[0][2]).toBe(0);
+      } finally {
+        startSpy.mockRestore();
+        stopSpy.mockRestore();
+        setVolumeSpy.mockRestore();
+        updateDualSpy.mockRestore();
+      }
+    });
+
+    it('deleteSelected pushes a single atomic batchRemove undo entry and cleans selectedIds', () => {
+      const sm = new StrokeManager();
+      const s1 = sm.addStroke(makeFreshPath(100), 'solid', 'indigo', 120);
+      const s2 = sm.addStroke(makeFreshPath(200), 'solid', 'amber', 120);
+      const s3 = sm.addStroke(makeFreshPath(300), 'solid', 'rose', 120);
+
+      sm.selectMultipleStrokes([s1.id, s2.id]);
+      expect(sm.selectedStrokeIds).toEqual([s1.id, s2.id]);
+
+      const deleted = sm.deleteSelected();
+      expect(deleted).toBe(true);
+      expect(sm.activeStrokes.map((s) => s.id)).toEqual([s3.id]);
+      expect(sm.selectedStrokeIds).toEqual([]);
+      expect(sm.selectedStrokeId).toBeNull();
+      expect(s1.selected).toBe(false);
+      expect(s2.selected).toBe(false);
+
+      // Single undo() restores all deleted strokes atomically
+      expect(sm.undo()).toBe(true);
+      expect(sm.activeStrokes).toHaveLength(3);
+      expect(sm.activeStrokes.map((s) => s.id)).toContain(s1.id);
+      expect(sm.activeStrokes.map((s) => s.id)).toContain(s2.id);
+
+      // Next undo() should target the preceding addStroke(s3), confirming only 1 history entry was pushed
+      expect(sm.undo()).toBe(true);
+      expect(sm.activeStrokes.map((s) => s.id)).not.toContain(s3.id);
+
+      // Redo s3, then redo atomic batchRemove
+      expect(sm.redo()).toBe(true);
+      expect(sm.redo()).toBe(true);
+      expect(sm.activeStrokes.map((s) => s.id)).toEqual([s3.id]);
+      expect(sm.selectedStrokeIds).toEqual([]);
+    });
+
+    it('translateStroke shifts segments without rebuilding stroke.lut', () => {
+      const sm = new StrokeManager();
+      const stroke = sm.addStroke(makeFreshPath(150), 'solid', 'indigo', 120);
+      const prevLut = stroke.lut;
+      const origP0 = { ...stroke.path.segments[0].p0 };
+      const origP3 = { ...stroke.path.segments[0].p3 };
+
+      const ok = sm.translateStroke(stroke.id, 35, -25, false);
+      expect(ok).toBe(true);
+      expect(stroke.lut).toBe(prevLut);
+      expect(stroke.path.segments[0].p0).toEqual({ x: origP0.x + 35, y: origP0.y - 25 });
+      expect(stroke.path.segments[0].p3).toEqual({ x: origP3.x + 35, y: origP3.y - 25 });
+    });
+
+    it('scrubStroke triggers synthesis on striped strokes (both melodic ratchet and Onyx drum roll)', () => {
+      vi.restoreAllMocks();
+      const ratchetSpy = vi.spyOn(PulseVoice, 'triggerRatchet').mockImplementation(() => {});
+      const drumRollSpy = vi.spyOn(DrumSynth, 'triggerRoll').mockImplementation(() => {});
+
+      try {
+        const sm = new StrokeManager();
+        sm.setBpm(120);
+        const quantizer = new ScaleQuantizer();
+
+        const melodicStriped = sm.addStroke(makeFreshPath(220), 'striped', 'indigo', 120, quantizer, 600);
+        const onyxStriped = sm.addStroke(makeFreshPath(480), 'striped', 'onyx', 120, quantizer, 600);
+
+        // At 120 BPM & canvasWidth 1200, scrubDist = 160 * 4.0 * 0.1 = 64px (>= 40px rollSpacing)
+        sm.scrubStroke(melodicStriped.id, 4.0, 0.1, 1200, 600, quantizer);
+        expect(ratchetSpy).toHaveBeenCalledTimes(1);
+
+        sm.scrubStroke(onyxStriped.id, 4.0, 0.1, 1200, 600, quantizer);
+        expect(drumRollSpy).toHaveBeenCalledTimes(1);
+      } finally {
+        ratchetSpy.mockRestore();
+        drumRollSpy.mockRestore();
+      }
+    });
+
+    it('caps undo stack cleanly at 150 entries (BoundedHistory)', () => {
+      const history = new BoundedHistory<number>(150);
+      for (let i = 1; i <= 165; i++) {
+        history.push(i);
+      }
+      expect(history.undoSize).toBe(150);
+      expect(history.undo()).toBe(165);
+      for (let i = 0; i < 149; i++) {
+        expect(history.undo()).toBeDefined();
+      }
+      expect(history.canUndo()).toBe(false);
+      expect(history.undo()).toBeUndefined();
+
+      const sm = new StrokeManager();
+      for (let i = 0; i < 160; i++) {
+        sm.addStroke(makeFreshPath(100 + (i % 50)), 'solid', 'indigo', 120);
+      }
+      let undoneCount = 0;
+      while (sm.undo()) {
+        undoneCount++;
+      }
+      expect(undoneCount).toBe(150);
+      expect(sm.canUndo).toBe(false);
+      expect(sm.activeStrokes).toHaveLength(10);
+    });
+
+    it('importComposition scales Y proportionally when canvasHeight differs and respects preserveIds and randomizePlayheads', () => {
+      const sm = new StrokeManager();
+      const stroke = sm.addStroke(
+        {
+          segments: [
+            {
+              p0: { x: 100, y: 200 },
+              p1: { x: 220, y: 200 },
+              p2: { x: 360, y: 200 },
+              p3: { x: 500, y: 200 },
+            },
+          ],
+          isClosed: false,
+        },
+        'dotted',
+        'amber',
+        120
+      );
+      const exported = sm.exportComposition('Scale Y Test', 'dorian', 'D3', 1000, 600);
+      const originalId = stroke.id;
+
+      const sm2 = new StrokeManager();
+      sm2.importComposition(exported, undefined, 900, 1000, {
+        preserveIds: true,
+        randomizePlayheads: false,
+      });
+
+      expect(sm2.activeStrokes).toHaveLength(1);
+      const imported = sm2.activeStrokes[0];
+      expect(imported.id).toBe(originalId);
+      // canvasHeight 600 -> 900 gives scaleY = 1.5
+      expect(imported.path.segments[0].p0.y).toBeCloseTo(300, 4);
+      expect(imported.path.segments[0].p3.y).toBeCloseTo(300, 4);
+      expect(imported.path.segments[0].p0.x).toBeCloseTo(100, 4);
+      // randomizePlayheads: false keeps playheads at start
+      expect(imported.playhead.currentDistance).toBe(0);
+      expect(imported.playhead.direction).toBe(1);
+    });
+  });
+
+  describe('adjustStrokesTempo & Mixed Speed/Timer Multi-Selection', () => {
+    const makeFreshPath = (y: number = 200): SplinePath => ({
+      segments: [
+        {
+          p0: { x: 50, y },
+          p1: { x: 120, y },
+          p2: { x: 180, y },
+          p3: { x: 250, y },
+        },
+      ],
+      isClosed: false,
+    });
+
+    it('speeds up and slows down both Speed-mode and Timer-mode lines in the same direction cleanly', () => {
+      const sm = new StrokeManager();
+      sm.setBpm(120);
+      const quantizer = new ScaleQuantizer();
+
+      const speedStroke = sm.addStroke(makeFreshPath(180), 'solid', 'indigo', 120, quantizer, 600);
+      const timerStroke = sm.addStroke(makeFreshPath(320), 'dotted', 'rose', 120, quantizer, 600);
+      sm.setStrokeTimingMode(timerStroke.id, 'timer', 1200, false);
+      sm.setStrokeDuration(timerStroke.id, 30, false);
+
+      sm.selectStrokes([speedStroke.id, timerStroke.id]);
+      sm.update(0.016, 1200, 600, quantizer);
+      const initialSpeedVel = speedStroke.playhead.velocity;
+      const initialTimerVel = timerStroke.playhead.velocity;
+
+      // Speed up both lines (+1): speedMultiplier goes up, timer duration goes down -> BOTH velocities increase
+      const fasterUpdated = sm.adjustStrokesTempo(sm.selectedStrokeIds, 1, 1, true);
+      expect(fasterUpdated).toHaveLength(2);
+      expect(speedStroke.speedMultiplier).toBe(1.1);
+      expect(timerStroke.duration).toBe(25);
+
+      sm.update(0.016, 1200, 600, quantizer);
+      expect(speedStroke.playhead.velocity).toBeGreaterThan(initialSpeedVel);
+      expect(timerStroke.playhead.velocity).toBeGreaterThan(initialTimerVel);
+
+      // Slow down both lines with Shift (5x step): speedMultiplier decreases, timer duration increases -> BOTH decrease
+      const fasterSpeedVel = speedStroke.playhead.velocity;
+      const fasterTimerVel = timerStroke.playhead.velocity;
+      const slowerUpdated = sm.adjustStrokesTempo(sm.selectedStrokeIds, -1, 5, true);
+      expect(slowerUpdated).toHaveLength(2);
+      expect(speedStroke.speedMultiplier).toBe(0.6);
+      expect(timerStroke.duration).toBe(50);
+
+      sm.update(0.016, 1200, 600, quantizer);
+      expect(speedStroke.playhead.velocity).toBeLessThan(fasterSpeedVel);
+      expect(timerStroke.playhead.velocity).toBeLessThan(fasterTimerVel);
+
+      // Atomic undo/redo restores prior speedMultiplier and duration across both modes
+      sm.undo();
+      expect(speedStroke.speedMultiplier).toBe(1.1);
+      expect(timerStroke.duration).toBe(25);
+
+      sm.undo();
+      expect(speedStroke.speedMultiplier).toBe(1.0);
+      expect(timerStroke.duration).toBe(30);
+
+      sm.redo();
+      expect(speedStroke.speedMultiplier).toBe(1.1);
+      expect(timerStroke.duration).toBe(25);
+    });
+
+    it('preserves 0.05x minimum speed clamp and hundredths precision when adjusting tempo', () => {
+      const sm = new StrokeManager();
+      const sMin = sm.addStroke(makeFreshPath(180), 'solid', 'indigo', 120);
+      const sPrecision = sm.addStroke(makeFreshPath(260), 'solid', 'amber', 120);
+
+      sm.setStrokeSpeed(sMin.id, 0.05, false);
+      sm.setStrokeSpeed(sPrecision.id, 1.05, false);
+
+      // Slowing down a 0.05x stroke stays at 0.05x (does NOT jump up to 0.1x)
+      const minSlowResult = sm.adjustStrokesTempo([sMin.id], -1, 1, false);
+      expect(minSlowResult).toHaveLength(0);
+      expect(sMin.speedMultiplier).toBe(0.05);
+
+      // Hundredths precision is preserved when adjusting a 1.05x stroke
+      sm.adjustStrokesTempo([sPrecision.id], 1, 1, false);
+      expect(sPrecision.speedMultiplier).toBe(1.15);
+
+      sm.adjustStrokesTempo([sPrecision.id], -1, 2, false);
+      expect(sPrecision.speedMultiplier).toBe(0.95);
+    });
+  });
+
+  describe('Wave 1B Engine Features: Articulation, Swing, Bar Quantization, Duplicate, History & SceneVersion', () => {
+    const makeFreshPath = (y: number = 200, x0: number = 50, x1: number = 550): SplinePath => {
+      const dx = (x1 - x0) / 3;
+      return {
+        segments: [
+          {
+            p0: { x: x0, y },
+            p1: { x: x0 + dx, y },
+            p2: { x: x0 + 2 * dx, y },
+            p3: { x: x1, y },
+          },
+        ],
+        isClosed: false,
+      };
+    };
+
+    it('supports setStrokeArticulation, commitStrokePropertyUndo, undo/redo, export/import persistence, and forwarding articulation to PulseVoice.trigger', () => {
+      const mockEngine = { isReady: true, context: { currentTime: 10 } } as any;
+      const sm = new StrokeManager(mockEngine);
+      sm.setBpm(120);
+      const quantizer = new ScaleQuantizer();
+
+      const stroke = sm.addStroke(makeFreshPath(220, 50, 550), 'dotted', 'indigo', 120, quantizer, 600);
+      expect(stroke.articulation).toBe(1.0);
+
+      // Clamping to [0.2, 2.5]
+      expect(sm.setStrokeArticulation(stroke.id, 0.05, false)).toBe(true);
+      expect(stroke.articulation).toBe(0.2);
+
+      expect(sm.setStrokeArticulation(stroke.id, 4.0, false)).toBe(true);
+      expect(stroke.articulation).toBe(2.5);
+
+      // Reset to 1.0 before testing deferred property undo
+      sm.setStrokeArticulation(stroke.id, 1.0, false);
+      expect(sm.setStrokeArticulation(stroke.id, 1.85, false)).toBe(true);
+      expect(stroke.articulation).toBe(1.85);
+
+      sm.commitStrokePropertyUndo(stroke.id, 'articulation', 1.0, 1.85);
+      expect(sm.undo()).toBe(true);
+      expect(stroke.articulation).toBe(1.0);
+      expect(sm.redo()).toBe(true);
+      expect(stroke.articulation).toBe(1.85);
+
+      // Immediate undo-recorded articulation edit
+      expect(sm.setStrokeArticulation(stroke.id, 0.45, true)).toBe(true);
+      expect(stroke.articulation).toBe(0.45);
+      expect(sm.undo()).toBe(true);
+      expect(stroke.articulation).toBe(1.85);
+      expect(sm.redo()).toBe(true);
+      expect(stroke.articulation).toBe(0.45);
+
+      // Export & import persistence
+      const exported = sm.exportComposition('Articulation Piece', 'dorian', 'D3', 1200, 600);
+      expect(exported.strokes[0].articulation).toBe(0.45);
+
+      const smImported = new StrokeManager(mockEngine);
+      smImported.importComposition(exported, quantizer, 600, 1200, {
+        preserveIds: true,
+        randomizePlayheads: false,
+      });
+      expect(smImported.activeStrokes).toHaveLength(1);
+      expect(smImported.activeStrokes[0].articulation).toBe(0.45);
+
+      // Trailing articulation forwarded to PulseVoice.trigger
+      const pulseSpy = vi.spyOn(PulseVoice, 'trigger').mockImplementation(() => {});
+      try {
+        sm.update(0.3, 1200, 600, quantizer, 0.3);
+        expect(pulseSpy).toHaveBeenCalledTimes(1);
+        expect(pulseSpy.mock.calls[0][16]).toBe(0.45);
+      } finally {
+        pulseSpy.mockRestore();
+      }
+    });
+
+    it('clamps swing to [0, 0.75] and delays alternating off-beat dotted and striped triggers cleanly', () => {
+      const mockEngine = { isReady: true, context: { currentTime: 10 } } as any;
+      const sm = new StrokeManager(mockEngine);
+      sm.setBpm(120);
+      const quantizer = new ScaleQuantizer();
+
+      sm.setSwing(-0.5);
+      expect(sm.swing).toBe(0);
+      sm.setSwing(1.2);
+      expect(sm.swing).toBe(0.75);
+      sm.setSwing(0.5);
+      expect(sm.swing).toBe(0.5);
+
+      // At 120 BPM & swing 0.5: 0.5 * Math.min(0.18, (60 / 120) * 0.25) = 0.0625s
+      const expectedSwingDelay = 0.0625;
+      const pulseSpy = vi.spyOn(PulseVoice, 'trigger').mockImplementation(() => {});
+      const ratchetSpy = vi.spyOn(PulseVoice, 'triggerRatchet').mockImplementation(() => {});
+
+      try {
+        sm.addStroke(makeFreshPath(200, 50, 550), 'dotted', 'indigo', 120, quantizer, 600);
+        sm.addStroke(makeFreshPath(300, 50, 550), 'striped', 'amber', 120, quantizer, 600);
+
+        sm.update(0.3, 1200, 600, quantizer, 0.3);
+        sm.update(0.3, 1200, 600, quantizer, 0.6);
+        sm.update(0.3, 1200, 600, quantizer, 0.9);
+        sm.update(0.3, 1200, 600, quantizer, 1.2);
+
+        expect(pulseSpy).toHaveBeenCalledTimes(4);
+        expect(pulseSpy.mock.calls[0][7]).toBeCloseTo(0, 6);
+        expect(pulseSpy.mock.calls[1][7]).toBeCloseTo(expectedSwingDelay, 6);
+        expect(pulseSpy.mock.calls[2][7]).toBeCloseTo(0, 6);
+        expect(pulseSpy.mock.calls[3][7]).toBeCloseTo(expectedSwingDelay, 6);
+
+        expect(ratchetSpy).toHaveBeenCalledTimes(4);
+        expect(ratchetSpy.mock.calls[0][10]).toBeCloseTo(0.3, 6);
+        expect(ratchetSpy.mock.calls[1][10]).toBeCloseTo(0.6 + expectedSwingDelay, 6);
+        expect(ratchetSpy.mock.calls[2][10]).toBeCloseTo(0.9, 6);
+        expect(ratchetSpy.mock.calls[3][10]).toBeCloseTo(1.2 + expectedSwingDelay, 6);
+      } finally {
+        pulseSpy.mockRestore();
+        ratchetSpy.mockRestore();
+      }
+    });
+
+    it('queues quantized mute toggles and flushes mutes + fires onBarBoundary at 4-beat bar wrap', () => {
+      const sm = new StrokeManager();
+      sm.setBpm(120); // 1 bar (4 beats) = 2.0s
+      expect(sm.quantizedTriggering).toBe(false);
+      sm.setQuantizedTriggering(true);
+      expect(sm.quantizedTriggering).toBe(true);
+
+      const quantizer = new ScaleQuantizer();
+      const stroke = sm.addStroke(makeFreshPath(240), 'solid', 'indigo', 120, quantizer, 600);
+      const onBarBoundary = vi.fn();
+      sm.onBarBoundary = onBarBoundary;
+
+      // Within first bar (t = 0.5s): no boundary wrap yet
+      sm.update(0.5, 1200, 600, quantizer);
+      expect(onBarBoundary).not.toHaveBeenCalled();
+
+      // Queue mute toggle while quantizedTriggering is active
+      expect(sm.queueToggleMute(stroke.id)).toBe(true);
+      expect(sm.getPendingMuteIds().has(stroke.id)).toBe(true);
+      expect(stroke.muted).toBeFalsy();
+
+      // Advance to t = 1.5s (still inside bar 0)
+      sm.update(1.0, 1200, 600, quantizer);
+      expect(stroke.muted).toBeFalsy();
+      expect(sm.getPendingMuteIds().has(stroke.id)).toBe(true);
+      expect(onBarBoundary).not.toHaveBeenCalled();
+
+      // Cross 4-beat bar wrap at t = 2.0s -> t = 2.1s
+      sm.update(0.6, 1200, 600, quantizer);
+      expect(stroke.muted).toBe(true);
+      expect(sm.getPendingMuteIds().size).toBe(0);
+      expect(onBarBoundary).toHaveBeenCalledTimes(1);
+
+      // Disabling quantizedTriggering makes queueToggleMute apply immediately and return false
+      sm.setQuantizedTriggering(false);
+      expect(sm.queueToggleMute(stroke.id)).toBe(false);
+      expect(stroke.muted).toBe(false);
+    });
+
+    it('duplicateStrokes clones full FX with 1 atomic batchAdd undo entry and getStrokesInRect finds intersecting strokes', () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+
+      const s1 = sm.addStroke(makeFreshPath(150, 100, 200), 'dotted', 'indigo', 120, quantizer, 600);
+      sm.setStrokeDistortion(s1.id, 0.65, false);
+      sm.setStrokeFilterCutoff(s1.id, 0.4, false);
+      sm.setStrokeLofi(s1.id, 0.55, false);
+      sm.setStrokeArticulation(s1.id, 1.9, false);
+
+      const s2 = sm.addStroke(makeFreshPath(450, 500, 600), 'striped', 'amber', 120, quantizer, 600);
+
+      expect(sm.getStrokesInRect({ x1: 80, y1: 120, x2: 220, y2: 180 }).map((s) => s.id)).toEqual([s1.id]);
+      expect(sm.getStrokesInRect({ x1: 220, y1: 180, x2: 80, y2: 120 }).map((s) => s.id)).toEqual([s1.id]);
+      expect(sm.getStrokesInRect({ x1: 0, y1: 0, x2: 700, y2: 500 }).map((s) => s.id)).toEqual([s1.id, s2.id]);
+      expect(sm.getStrokesInRect({ x1: 300, y1: 250, x2: 400, y2: 350 })).toEqual([]);
+
+      const dupes = sm.duplicateStrokes([s1.id, s2.id], 25, -15, quantizer, 600);
+      expect(dupes).toHaveLength(2);
+      expect(dupes[0].id).not.toBe(s1.id);
+      expect(dupes[1].id).not.toBe(s2.id);
+      expect(dupes[0].path.segments[0].p0).toEqual({ x: 125, y: 135 });
+      expect(dupes[0].distortion).toBe(0.65);
+      expect(dupes[0].filterCutoff).toBe(0.4);
+      expect(dupes[0].lofi).toBe(0.55);
+      expect(dupes[0].articulation).toBe(1.9);
+      expect(sm.activeStrokes).toHaveLength(4);
+      expect(sm.lastUndoLabel).toBe('Add Lines');
+
+      // Single atomic undo removes both duplicates
+      expect(sm.undo()).toBe(true);
+      expect(sm.activeStrokes.map((s) => s.id)).toEqual([s1.id, s2.id]);
+
+      // Redo restores both duplicates with full FX
+      expect(sm.redo()).toBe(true);
+      expect(sm.activeStrokes).toHaveLength(4);
+      const restoredDup = sm.getStroke(dupes[0].id);
+      expect(restoredDup?.distortion).toBe(0.65);
+      expect(restoredDup?.filterCutoff).toBe(0.4);
+      expect(restoredDup?.lofi).toBe(0.55);
+      expect(restoredDup?.articulation).toBe(1.9);
+    });
+
+    it('increments sceneVersion only on mutations and accurately tracks undoCount, redoCount, lastUndoLabel, and lastRedoLabel', () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+
+      expect(sm.sceneVersion).toBe(0);
+      expect(sm.undoCount).toBe(0);
+      expect(sm.redoCount).toBe(0);
+      expect(sm.lastUndoLabel).toBeNull();
+      expect(sm.lastRedoLabel).toBeNull();
+
+      const stroke = sm.addStroke(makeFreshPath(220), 'solid', 'indigo', 120, quantizer, 600);
+      const vAfterAdd = sm.sceneVersion;
+      expect(vAfterAdd).toBeGreaterThan(0);
+      expect(sm.undoCount).toBe(1);
+      expect(sm.redoCount).toBe(0);
+      expect(sm.lastUndoLabel).toBe('Draw Line');
+      expect(sm.lastRedoLabel).toBeNull();
+
+      // Regular playback update() frames must NOT mutate sceneVersion
+      sm.update(0.016, 1200, 600, quantizer);
+      sm.update(0.016, 1200, 600, quantizer);
+      expect(sm.sceneVersion).toBe(vAfterAdd);
+
+      // Static property mutation increments sceneVersion and updates history labels
+      sm.setStrokeArticulation(stroke.id, 1.6, true);
+      const vAfterArticulation = sm.sceneVersion;
+      expect(vAfterArticulation).toBeGreaterThan(vAfterAdd);
+      expect(sm.undoCount).toBe(2);
+      expect(sm.redoCount).toBe(0);
+      expect(sm.lastUndoLabel).toBe('Gate / Decay');
+      expect(sm.lastRedoLabel).toBeNull();
+
+      // Undo updates counts, labels, and increments sceneVersion
+      expect(sm.undo()).toBe(true);
+      const vAfterUndo = sm.sceneVersion;
+      expect(vAfterUndo).toBeGreaterThan(vAfterArticulation);
+      expect(sm.undoCount).toBe(1);
+      expect(sm.redoCount).toBe(1);
+      expect(sm.lastUndoLabel).toBe('Draw Line');
+      expect(sm.lastRedoLabel).toBe('Gate / Decay');
+
+      // Redo restores state and updates counts, labels, and sceneVersion
+      expect(sm.redo()).toBe(true);
+      expect(sm.sceneVersion).toBeGreaterThan(vAfterUndo);
+      expect(sm.undoCount).toBe(2);
+      expect(sm.redoCount).toBe(0);
+      expect(sm.lastUndoLabel).toBe('Gate / Decay');
+      expect(sm.lastRedoLabel).toBeNull();
+    });
+
+    it('syncStrokesToSameSpeed and syncStrokesToSameDuration unify mixed Speed/Timer strokes with single atomic undo/redo', () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+
+      const sSpeed = sm.addStroke(makeFreshPath(180), 'solid', 'indigo', 120, quantizer, 600, 1.0, 'freeform', 'restart', 30, 0.5, 'speed', undefined, undefined, 'speed');
+      const sTimer = sm.addStroke(makeFreshPath(260), 'dotted', 'amber', 120, quantizer, 600, 1.0, 'freeform', 'restart', 45, 2.0, 'timer', undefined, undefined, 'timer');
+      sm.clearHistory();
+
+      // Sync both to Speed 1.25x
+      const syncedSpeed = sm.syncStrokesToSameSpeed([sSpeed.id, sTimer.id], 1.25, true);
+      expect(syncedSpeed).toHaveLength(2);
+      expect(sSpeed.timingMode).toBe('speed');
+      expect(sSpeed.speedMode).toBe('speed');
+      expect(sSpeed.speedMultiplier).toBe(1.25);
+      expect(sTimer.timingMode).toBe('speed');
+      expect(sTimer.speedMode).toBe('speed');
+      expect(sTimer.speedMultiplier).toBe(1.25);
+      expect(sm.undoCount).toBe(1);
+      expect(sm.lastUndoLabel).toBe('Sync Lines Timing');
+
+      // Single atomic undo restores both modes and values
+      expect(sm.undo()).toBe(true);
+      expect(sSpeed.timingMode).toBe('speed');
+      expect(sSpeed.speedMultiplier).toBe(0.5);
+      expect(sTimer.timingMode).toBe('timer');
+      expect(sTimer.duration).toBe(45);
+      expect(sTimer.speedMultiplier).toBe(2.0);
+
+      // Redo reapplies 1.25x
+      expect(sm.redo()).toBe(true);
+      expect(sSpeed.speedMultiplier).toBe(1.25);
+      expect(sTimer.timingMode).toBe('speed');
+      expect(sTimer.speedMultiplier).toBe(1.25);
+
+      // Sync both to Timer 60s
+      const syncedDur = sm.syncStrokesToSameDuration([sSpeed.id, sTimer.id], 60, true);
+      expect(syncedDur).toHaveLength(2);
+      expect(sSpeed.timingMode).toBe('timer');
+      expect(sSpeed.duration).toBe(60);
+      expect(sTimer.timingMode).toBe('timer');
+      expect(sTimer.duration).toBe(60);
+
+      expect(sm.undo()).toBe(true);
+      expect(sSpeed.timingMode).toBe('speed');
+      expect(sSpeed.speedMultiplier).toBe(1.25);
     });
   });
 });

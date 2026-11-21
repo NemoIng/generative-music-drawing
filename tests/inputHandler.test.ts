@@ -6,6 +6,7 @@ import { soundEngine } from '../src/audio/audioContext';
 import { SplinePath } from '../src/math/types';
 import { PulseVoice } from '../src/audio/synthVoice';
 import { DrumSynth } from '../src/audio/drumSynth';
+import { getInstrument } from '../src/audio/instruments';
 
 describe('Unified InputHandler Interaction Model', () => {
   let listeners: Record<string, Function[]> = {};
@@ -1051,6 +1052,381 @@ describe('Unified InputHandler Interaction Model', () => {
       expect(handler.activeRedrawStrokeId).toBeNull();
 
       handler.destroy();
+    });
+  });
+
+  describe('Wave 1 Regression Tests', () => {
+    it('destroy() removes both touchstart and touchmove listeners using the registered handler reference', () => {
+      const addSpy = vi.spyOn(mockCanvas, 'addEventListener');
+      const removeSpy = vi.spyOn(mockCanvas, 'removeEventListener');
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+
+      const handler = new InputHandler(mockCanvas, {
+        strokeManager: sm,
+        getQuantizer: () => quantizer,
+        onStrokeComplete: vi.fn(),
+      });
+
+      expect(listeners['touchstart']).toHaveLength(1);
+      expect(listeners['touchmove']).toHaveLength(1);
+      const touchStartHandler = listeners['touchstart'][0];
+      const touchMoveHandler = listeners['touchmove'][0];
+      expect(touchStartHandler).toBe(touchMoveHandler);
+      expect(addSpy).toHaveBeenCalledWith('touchstart', touchStartHandler, { passive: false });
+      expect(addSpy).toHaveBeenCalledWith('touchmove', touchMoveHandler, { passive: false });
+
+      handler.destroy();
+
+      expect(listeners['touchstart']).toHaveLength(0);
+      expect(listeners['touchmove']).toHaveLength(0);
+      expect(removeSpy).toHaveBeenCalledWith('touchstart', touchStartHandler);
+      expect(removeSpy).toHaveBeenCalledWith('touchmove', touchMoveHandler);
+    });
+
+    it('invokes onLiveTrigger callback on Live Play pointerdown', async () => {
+      const pulseSpy = vi.spyOn(PulseVoice, 'trigger').mockImplementation(() => {});
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+      const onLiveTrigger = vi.fn();
+
+      const handler = new InputHandler(mockCanvas, {
+        strokeManager: sm,
+        getQuantizer: () => quantizer,
+        getCurrentInstrument: () => 'amber',
+        getCurrentStyle: () => 'dotted',
+        onStrokeComplete: vi.fn(),
+      });
+
+      try {
+        handler.onLiveTrigger = onLiveTrigger;
+        handler.setAppMode('live');
+
+        const pointerDown = listeners['pointerdown'][0];
+        await pointerDown({ clientX: 250, clientY: 180, button: 0 } as any);
+
+        expect(onLiveTrigger).toHaveBeenCalledTimes(1);
+        expect(onLiveTrigger).toHaveBeenCalledWith(250, 180, getInstrument('amber').color);
+      } finally {
+        pulseSpy.mockRestore();
+        handler.destroy();
+      }
+    });
+
+    it('hover pointermove skips hitTest when e.target !== canvas or outside bounds, and runs when e.target === undefined inside bounds', () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+      const stroke = sm.addStroke(dummyPath, 'solid', 'indigo', 100);
+      const hitTestSpy = vi.spyOn(sm, 'hitTest');
+
+      const handler = new InputHandler(mockCanvas, {
+        strokeManager: sm,
+        getQuantizer: () => quantizer,
+        onStrokeComplete: vi.fn(),
+      });
+
+      try {
+        const pointerMove = windowListeners['pointermove'][0];
+
+        // 1. e.target is a different non-undefined element -> skips hitTest
+        pointerMove({ clientX: 100, clientY: 100, target: { tagName: 'DIV' } } as any);
+        expect(hitTestSpy).not.toHaveBeenCalled();
+        expect(sm.hoveredStrokeId).toBeNull();
+
+        // 2. Coordinates outside canvas bounds -> skips hitTest
+        pointerMove({ clientX: -10, clientY: 100, target: mockCanvas } as any);
+        pointerMove({ clientX: 850, clientY: 100, target: mockCanvas } as any);
+        pointerMove({ clientX: 100, clientY: -5, target: mockCanvas } as any);
+        pointerMove({ clientX: 100, clientY: 650, target: mockCanvas } as any);
+        expect(hitTestSpy).not.toHaveBeenCalled();
+        expect(sm.hoveredStrokeId).toBeNull();
+
+        // 3. e.target === undefined inside bounds -> runs hitTest and highlights hovered stroke
+        pointerMove({ clientX: 100, clientY: 100 } as any);
+        expect(hitTestSpy).toHaveBeenCalledTimes(1);
+        expect(sm.hoveredStrokeId).toBe(stroke.id);
+        expect(mockCanvas.style.cursor).toBe('pointer');
+
+        // 4. Moving onto an off-canvas target clears hovered state without calling hitTest again
+        pointerMove({ clientX: 100, clientY: 100, target: { tagName: 'BUTTON' } } as any);
+        expect(hitTestSpy).toHaveBeenCalledTimes(1);
+        expect(sm.hoveredStrokeId).toBeNull();
+      } finally {
+        hitTestSpy.mockRestore();
+        handler.destroy();
+      }
+    });
+  });
+
+  describe('Wave 1C Input Gestures: Marquee, Alt+Drag Duplicate, and Multi-Touch', () => {
+    it('supports Cmd/Ctrl + Drag marquee selection exposing marqueeRect and invoking onMarqueeSelect with world coords', () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+      quantizer.setScrollEnabled(true);
+      quantizer.setScrollY(100);
+
+      const onMarqueeSelect = vi.fn();
+      const onStrokeComplete = vi.fn();
+      const handler = new InputHandler(mockCanvas, {
+        strokeManager: sm,
+        getQuantizer: () => quantizer,
+        onStrokeComplete,
+        onMarqueeSelect,
+      });
+
+      try {
+        expect(handler.marqueeRect).toBeNull();
+
+        // Cmd + Drag on empty canvas
+        listeners['pointerdown'][0]({ clientX: 40, clientY: 50, pointerId: 1, button: 0, metaKey: true });
+        expect(handler.marqueeRect).toEqual({ x1: 40, y1: 50, x2: 40, y2: 50 });
+
+        windowListeners['pointermove'][0]({ clientX: 240, clientY: 250, pointerId: 1 });
+        expect(handler.marqueeRect).toEqual({ x1: 40, y1: 50, x2: 240, y2: 250 });
+
+        windowListeners['pointerup'][0]({ clientX: 240, clientY: 250, pointerId: 1 });
+        expect(handler.marqueeRect).toBeNull();
+        expect(onMarqueeSelect).toHaveBeenCalledTimes(1);
+        expect(onMarqueeSelect).toHaveBeenCalledWith({
+          x1: 40,
+          y1: 150,
+          x2: 240,
+          y2: 350,
+        });
+        expect(onStrokeComplete).not.toHaveBeenCalled();
+
+        // Ctrl + Drag also works identically
+        listeners['pointerdown'][0]({ clientX: 10, clientY: 20, pointerId: 1, button: 0, ctrlKey: true });
+        expect(handler.marqueeRect).toEqual({ x1: 10, y1: 20, x2: 10, y2: 20 });
+        windowListeners['pointermove'][0]({ clientX: 110, clientY: 120, pointerId: 1 });
+        expect(handler.marqueeRect).toEqual({ x1: 10, y1: 20, x2: 110, y2: 120 });
+        windowListeners['pointerup'][0]({ clientX: 110, clientY: 120, pointerId: 1 });
+        expect(handler.marqueeRect).toBeNull();
+        expect(onMarqueeSelect).toHaveBeenCalledTimes(2);
+        expect(onMarqueeSelect).toHaveBeenLastCalledWith({
+          x1: 10,
+          y1: 120,
+          x2: 110,
+          y2: 220,
+        });
+      } finally {
+        handler.destroy();
+      }
+    });
+
+    it('Alt/Option + Drag on a stroke invokes onDuplicateDragStart and drags the duplicate while Alt + empty drag still triggers onStrokeRedraw', () => {
+      const sm = new StrokeManager({ isReady: false } as any);
+      const quantizer = new ScaleQuantizer();
+      const stroke = sm.addStroke(dummyPath, 'solid', 'indigo', 120);
+      const origP0 = { ...stroke.path.segments[0].p0 };
+
+      const onDuplicateDragStart = vi.fn((ids: string[]) =>
+        sm.duplicateStrokes(ids, 0, 0, quantizer, 600).map((s) => s.id)
+      );
+      const onStrokeRedraw = vi.fn();
+      const onStrokeComplete = vi.fn();
+
+      const handler = new InputHandler(mockCanvas, {
+        strokeManager: sm,
+        getQuantizer: () => quantizer,
+        onStrokeComplete,
+        onStrokeRedraw,
+        onDuplicateDragStart,
+      });
+
+      try {
+        // 1. Alt/Option + Drag directly ON a stroke -> duplicates and drags the duplicate
+        listeners['pointerdown'][0]({ clientX: 100, clientY: 100, pointerId: 1, button: 0, altKey: true });
+        expect(onDuplicateDragStart).toHaveBeenCalledTimes(1);
+        expect(onDuplicateDragStart).toHaveBeenCalledWith([stroke.id]);
+        expect(sm.activeStrokes).toHaveLength(2);
+
+        const dupStroke = sm.activeStrokes[1];
+        expect(dupStroke.id).not.toBe(stroke.id);
+
+        windowListeners['pointermove'][0]({ clientX: 140, clientY: 160, pointerId: 1 });
+        windowListeners['pointerup'][0]({ clientX: 140, clientY: 160, pointerId: 1 });
+
+        expect(stroke.path.segments[0].p0).toEqual(origP0);
+        expect(dupStroke.path.segments[0].p0).toEqual({ x: origP0.x + 40, y: origP0.y + 60 });
+        expect(onStrokeRedraw).not.toHaveBeenCalled();
+        expect(onStrokeComplete).not.toHaveBeenCalled();
+
+        // 2. Clicking empty space with altKey: true when a stroke is selected still triggers onStrokeRedraw
+        sm.selectStroke(stroke.id);
+        listeners['pointerdown'][0]({ clientX: 400, clientY: 400, pointerId: 1, button: 0, altKey: true });
+        windowListeners['pointermove'][0]({ clientX: 440, clientY: 420, pointerId: 1 });
+        windowListeners['pointermove'][0]({ clientX: 480, clientY: 440, pointerId: 1 });
+        windowListeners['pointerup'][0]({ clientX: 480, clientY: 440, pointerId: 1 });
+
+        expect(onDuplicateDragStart).toHaveBeenCalledTimes(1);
+        expect(onStrokeRedraw).toHaveBeenCalledTimes(1);
+        expect(onStrokeRedraw).toHaveBeenCalledWith(stroke.id, expect.any(Object));
+        expect(onStrokeComplete).not.toHaveBeenCalled();
+      } finally {
+        handler.destroy();
+      }
+    });
+
+    it('handles two-finger touch pinch octave zoom and vertical scroll, and removes all touch listeners on destroy()', () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+      const onPinchOctaveZoom = vi.fn();
+      const onTwoFingerScrollY = vi.fn();
+      const removeSpy = vi.spyOn(mockCanvas, 'removeEventListener');
+
+      const handler = new InputHandler(mockCanvas, {
+        strokeManager: sm,
+        getQuantizer: () => quantizer,
+        onStrokeComplete: vi.fn(),
+        onPinchOctaveZoom,
+        onTwoFingerScrollY,
+      });
+
+      const preventStart = vi.fn();
+      const preventMove = vi.fn();
+
+      // Initial two-finger touch: distance = 100, midY = 200
+      listeners['touchstart'][0]({
+        type: 'touchstart',
+        touches: [
+          { clientX: 100, clientY: 200 },
+          { clientX: 200, clientY: 200 },
+        ],
+        preventDefault: preventStart,
+      });
+      expect(preventStart).toHaveBeenCalledTimes(1);
+
+      // Spread fingers to distance = 200 (scaleFactor = 2.0) and shift midpoint up to midY = 160 (deltaY = +40)
+      listeners['touchmove'][0]({
+        type: 'touchmove',
+        touches: [
+          { clientX: 50, clientY: 160 },
+          { clientX: 250, clientY: 160 },
+        ],
+        preventDefault: preventMove,
+      });
+      expect(preventMove).toHaveBeenCalledTimes(1);
+      expect(onPinchOctaveZoom).toHaveBeenCalledTimes(1);
+      expect(onPinchOctaveZoom.mock.calls[0][0]).toBeCloseTo(2.0, 5);
+      expect(onTwoFingerScrollY).toHaveBeenCalledTimes(1);
+      expect(onTwoFingerScrollY.mock.calls[0][0]).toBeCloseTo(40, 5);
+
+      // End touches
+      listeners['touchend'][0]({ type: 'touchend', touches: [] });
+
+      // Destroy removes all 4 touch event listeners cleanly
+      handler.destroy();
+      expect(listeners['touchstart']).toHaveLength(0);
+      expect(listeners['touchmove']).toHaveLength(0);
+      expect(listeners['touchend']).toHaveLength(0);
+      expect(listeners['touchcancel']).toHaveLength(0);
+      expect(removeSpy).toHaveBeenCalledWith('touchstart', expect.any(Function));
+      expect(removeSpy).toHaveBeenCalledWith('touchmove', expect.any(Function));
+      expect(removeSpy).toHaveBeenCalledWith('touchend', expect.any(Function));
+      expect(removeSpy).toHaveBeenCalledWith('touchcancel', expect.any(Function));
+    });
+  });
+
+  describe('Re-draw Mode Line Moving & Multi-Selection', () => {
+    it('moves a line when dragged directly on the stroke in redraw mode, without triggering onStrokeRedraw', () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+      const onStrokeComplete = vi.fn();
+      const onStrokeRedraw = vi.fn();
+      const onStrokeTranslateEnd = vi.fn();
+
+      const stroke = sm.addStroke(dummyPath, 'solid', 'indigo', 120);
+      sm.selectStroke(stroke.id);
+      const origP0 = { ...stroke.path.segments[0].p0 };
+
+      const handler = new InputHandler(mockCanvas, {
+        strokeManager: sm,
+        getQuantizer: () => quantizer,
+        onStrokeComplete,
+        onStrokeRedraw,
+        onStrokeTranslateEnd,
+      });
+
+      try {
+        handler.setAppMode('redraw');
+
+        // Hover directly on the stroke displays 'grab'
+        windowListeners['pointermove'][0]({ clientX: 100, clientY: 100 });
+        expect(mockCanvas.style.cursor).toBe('grab');
+
+        // Grab and drag the stroke directly in redraw mode
+        listeners['pointerdown'][0]({ clientX: 100, clientY: 100, pointerId: 1, button: 0 });
+        windowListeners['pointermove'][0]({ clientX: 130, clientY: 145, pointerId: 1 });
+        windowListeners['pointerup'][0]({ clientX: 130, clientY: 145, pointerId: 1 });
+
+        expect(onStrokeRedraw).not.toHaveBeenCalled();
+        expect(onStrokeComplete).not.toHaveBeenCalled();
+        expect(onStrokeTranslateEnd).toHaveBeenCalledTimes(1);
+        expect(stroke.path.segments[0].p0).toEqual({ x: origP0.x + 30, y: origP0.y + 45 });
+
+        // Dragging on empty space in redraw mode still triggers onStrokeRedraw
+        listeners['pointerdown'][0]({ clientX: 100, clientY: 400, pointerId: 1, button: 0 });
+        windowListeners['pointermove'][0]({ clientX: 180, clientY: 420, pointerId: 1 });
+        windowListeners['pointerup'][0]({ clientX: 180, clientY: 420, pointerId: 1 });
+        expect(onStrokeRedraw).toHaveBeenCalledTimes(1);
+        expect(onStrokeRedraw).toHaveBeenCalledWith(stroke.id, expect.any(Object));
+      } finally {
+        handler.destroy();
+      }
+    });
+
+    it('supports Cmd/Ctrl+Click multi-select drag and Alt+Drag forced redraw over a stroke in redraw mode', () => {
+      const sm = new StrokeManager();
+      const quantizer = new ScaleQuantizer();
+      const onStrokeRedraw = vi.fn();
+      const onStrokeTranslateEnd = vi.fn();
+
+      const path1: SplinePath = {
+        segments: [{ p0: { x: 50, y: 100 }, p1: { x: 100, y: 100 }, p2: { x: 150, y: 100 }, p3: { x: 200, y: 100 } }],
+        isClosed: false,
+      };
+      const stroke1 = sm.addStroke(path1, 'solid', 'indigo', 120);
+      const path2: SplinePath = {
+        segments: [{ p0: { x: 50, y: 220 }, p1: { x: 100, y: 220 }, p2: { x: 150, y: 220 }, p3: { x: 200, y: 220 } }],
+        isClosed: false,
+      };
+      const stroke2 = sm.addStroke(path2, 'dotted', 'amber', 120);
+      sm.selectStroke(stroke1.id);
+
+      const handler = new InputHandler(mockCanvas, {
+        strokeManager: sm,
+        getQuantizer: () => quantizer,
+        onStrokeComplete: vi.fn(),
+        onStrokeRedraw,
+        onStrokeTranslateEnd,
+      });
+
+      try {
+        handler.setAppMode('redraw');
+
+        // Cmd+Click stroke2 and drag -> both stroke1 and stroke2 move together
+        listeners['pointerdown'][0]({ clientX: 100, clientY: 220, pointerId: 1, button: 0, metaKey: true });
+        expect(sm.selectedStrokeIds).toEqual([stroke1.id, stroke2.id]);
+        windowListeners['pointermove'][0]({ clientX: 120, clientY: 240, pointerId: 1 });
+        windowListeners['pointerup'][0]({ clientX: 120, clientY: 240, pointerId: 1 });
+
+        expect(onStrokeRedraw).not.toHaveBeenCalled();
+        expect(onStrokeTranslateEnd).toHaveBeenCalledTimes(1);
+        expect(stroke1.path.segments[0].p0.x).toBe(70);
+        expect(stroke2.path.segments[0].p0.x).toBe(70);
+
+        // Alt+Drag even directly over stroke2 forces redraw when selected
+        sm.selectStroke(stroke2.id);
+        listeners['pointerdown'][0]({ clientX: 120, clientY: 240, pointerId: 1, button: 0, altKey: true });
+        windowListeners['pointermove'][0]({ clientX: 200, clientY: 260, pointerId: 1 });
+        windowListeners['pointerup'][0]({ clientX: 200, clientY: 260, pointerId: 1 });
+
+        expect(onStrokeRedraw).toHaveBeenCalledTimes(1);
+        expect(onStrokeRedraw).toHaveBeenCalledWith(stroke2.id, expect.any(Object));
+      } finally {
+        handler.destroy();
+      }
     });
   });
 });

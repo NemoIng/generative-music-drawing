@@ -1,4 +1,4 @@
-import { SplinePath, Point2D, ArcLengthLUT } from '../math/types';
+import { SplinePath, Point2D } from '../math/types';
 import { buildArcLengthLUT } from '../math/arcLengthTable';
 import { evaluateAtDistance } from '../math/arcLengthInverter';
 import { evaluateBezier } from '../math/bezier';
@@ -7,91 +7,21 @@ import { ScaleQuantizer } from '../audio/scaleQuantizer';
 import { SCALES, ROOT_NOTES } from '../audio/scales';
 import { DroneVoice, PulseVoice, XAxisModulationMode } from '../audio/synthVoice';
 import { DrumSynth } from '../audio/drumSynth';
+import { resolveDrumZone, type DrumZone } from '../audio/drumMapping';
 import { getInstrument, DEFAULT_INSTRUMENT } from '../audio/instruments';
 import { soundEngine, SoundEngine } from '../audio/audioContext';
 import { DrawnStroke, StrokeStyle, TraversalMode, TimingMode, LoopQuantizeMode, SpeedMode, HarmonizerMode, SavedComposition, MorphCurveMode, SavedStroke } from './types';
 import { getHarmonizerFrequencies } from '../audio/harmony';
 import { calculateBreathing, BreathingMode } from '../audio/breathing';
+import { BoundedHistory, UndoAction, describeUndoAction } from './history';
 
+export type { UndoAction } from './history';
 
-type UndoAction =
-  | { type: 'add'; stroke: DrawnStroke }
-  | { type: 'batchAdd'; strokes: DrawnStroke[] }
-  | { type: 'remove'; stroke: DrawnStroke; index: number }
-  | { type: 'move'; strokeId: string; dx: number; dy: number }
-  | { type: 'multiMove'; moves: { strokeId: string; dx: number; dy: number }[] }
-  | { type: 'revoice'; strokeId: string; oldInstrumentId: string; newInstrumentId: string }
-  | { type: 'volume'; strokeId: string; oldVolume: number; newVolume: number }
-  | { type: 'duration'; strokeId: string; oldDuration: number; newDuration: number }
-  | { type: 'speed'; strokeId: string; oldSpeed: number; newSpeed: number }
-  | {
-      type: 'timingMode';
-      strokeId: string;
-      oldTimingMode: TimingMode;
-      newTimingMode: TimingMode;
-      oldSpeed?: number;
-      newSpeed?: number;
-      oldDuration?: number;
-      newDuration?: number;
-    }
-  | {
-      type: 'batchTimingMode';
-      records: {
-        strokeId: string;
-        oldTimingMode: TimingMode;
-        newTimingMode: TimingMode;
-        oldSpeed?: number;
-        newSpeed?: number;
-        oldDuration?: number;
-        newDuration?: number;
-      }[];
-    }
-  | { type: 'speedMode'; strokeId: string; oldSpeedMode: SpeedMode; newSpeedMode: SpeedMode }
-  | { type: 'style'; strokeId: string; oldStyle: StrokeStyle; newStyle: StrokeStyle }
-  | { type: 'loopQuantize'; strokeId: string; oldLoopQuantize: LoopQuantizeMode; newLoopQuantize: LoopQuantizeMode }
-  | { type: 'traversal'; strokeId: string; oldTraversal: TraversalMode; newTraversal: TraversalMode }
-  | { type: 'harmonizer'; strokeId: string; oldHarmonizer: HarmonizerMode; newHarmonizer: HarmonizerMode }
-  | { type: 'reverb'; strokeId: string; oldReverb: number; newReverb: number }
-  | { type: 'fluctuation'; strokeId: string; oldFluctuation: number; newFluctuation: number }
-  | { type: 'distortion'; strokeId: string; oldDistortion: number; newDistortion: number }
-  | { type: 'filterCutoff'; strokeId: string; oldFilterCutoff: number; newFilterCutoff: number }
-  | { type: 'lofi'; strokeId: string; oldLofi: number; newLofi: number }
-  | {
-      type: 'reshape';
-      strokeId: string;
-      oldPath: SplinePath;
-      oldLut: ArcLengthLUT;
-      oldWaveParams?: WaveParams;
-      newPath: SplinePath;
-      newLut: ArcLengthLUT;
-      newWaveParams: WaveParams;
-    }
-  | {
-      type: 'redraw';
-      strokeId: string;
-      oldPath: SplinePath;
-      oldLut: ArcLengthLUT;
-      newPath: SplinePath;
-      newLut: ArcLengthLUT;
-    }
-  | {
-      type: 'batchSpeed';
-      records: {
-        strokeId: string;
-        oldSpeed: number;
-        newSpeed: number;
-        oldDuration: number;
-        newDuration: number;
-      }[];
-    }
-  | {
-      type: 'batchVolume';
-      records: {
-        strokeId: string;
-        oldVolume: number;
-        newVolume: number;
-      }[];
-    };
+export interface ImportCompositionOptions {
+  preserveIds?: boolean;
+  randomizePlayheads?: boolean;
+  releaseOldVoicesTime?: number;
+}
 
 function distToSegment(p: Point2D, a: Point2D, b: Point2D): number {
   const dx = b.x - a.x;
@@ -145,6 +75,7 @@ export interface StrokeClipboardData {
   distortion?: number;
   filterCutoff?: number;
   lofi?: number;
+  articulation?: number;
 }
 
 export class StrokeManager {
@@ -158,6 +89,36 @@ export class StrokeManager {
 
   /** Optional callback fired when a stroke playhead hits a note, drum trigger, or bounces */
   public onTriggerSpark?: (x: number, y: number, color: string, count?: number, instrumentId?: string) => void;
+  /** Optional callback fired when the master clock crosses a 4-beat bar boundary */
+  public onBarBoundary?: () => void;
+  /** Optional MIDI hooks */
+  public onMidiPulse?: (event: {
+    strokeId: string;
+    instrumentId: string;
+    frequency: number;
+    velocity: number;
+    articulation: number;
+    isDrum: boolean;
+    drumZone?: DrumZone;
+    tomFreq?: number;
+    isStriped: boolean;
+  }) => void;
+  public onMidiDroneUpdate?: (event: {
+    strokeId: string;
+    instrumentId: string;
+    frequency: number;
+    velocity: number;
+    normX: number;
+    curvature: number;
+    filterCutoff: number;
+  }) => void;
+  public onMidiDroneStop?: (strokeId: string) => void;
+
+  private _sceneVersion = 0;
+  private _swing = 0.0;
+  private strokeSwingParity = new Map<string, number>();
+  private _quantizedTriggering = false;
+  private pendingMuteIds = new Set<string>();
   private xModMode: XAxisModulationMode = 'panAndTone';
   private quantizeMode: LoopQuantizeMode = '2bars';
   private defaultHarmonizer: HarmonizerMode = 'single';
@@ -169,8 +130,7 @@ export class StrokeManager {
   private lastCanvasWidth = 1200;
 
   // History stacks
-  private undoStack: UndoAction[] = [];
-  private redoStack: UndoAction[] = [];
+  private history = new BoundedHistory<UndoAction>(150);
 
   constructor(engine: SoundEngine = soundEngine) {
     this.engine = engine;
@@ -334,12 +294,78 @@ export class StrokeManager {
     return this.isPaused;
   }
 
+  public get sceneVersion(): number {
+    return this._sceneVersion;
+  }
+
+  public bumpSceneVersion(): void {
+    this._sceneVersion++;
+  }
+
+  public get swing(): number {
+    return this._swing;
+  }
+
+  public setSwing(val: number): void {
+    this._swing = Math.max(0, Math.min(0.75, val));
+  }
+
+  public get quantizedTriggering(): boolean {
+    return this._quantizedTriggering;
+  }
+
+  public setQuantizedTriggering(enabled: boolean): void {
+    this._quantizedTriggering = enabled;
+  }
+
+  public getPendingMuteIds(): ReadonlySet<string> {
+    return this.pendingMuteIds;
+  }
+
+  public queueToggleMute(strokeId: string): boolean {
+    const stroke = this.strokes.find((s) => s.id === strokeId);
+    if (!stroke) return false;
+    if (this._quantizedTriggering && !this.isPaused) {
+      if (this.pendingMuteIds.has(strokeId)) {
+        this.pendingMuteIds.delete(strokeId);
+      } else {
+        this.pendingMuteIds.add(strokeId);
+      }
+      this.bumpSceneVersion();
+      return true;
+    }
+    this.toggleMute(strokeId);
+    return false;
+  }
+
   public get canUndo(): boolean {
-    return this.undoStack.length > 0;
+    return this.history.canUndo();
   }
 
   public get canRedo(): boolean {
-    return this.redoStack.length > 0;
+    return this.history.canRedo();
+  }
+
+  public get undoCount(): number {
+    return this.history.undoSize;
+  }
+
+  public get redoCount(): number {
+    return this.history.redoSize;
+  }
+
+  public get lastUndoLabel(): string | null {
+    const top = this.history.peekUndo();
+    return top ? describeUndoAction(top) : null;
+  }
+
+  public get lastRedoLabel(): string | null {
+    const top = this.history.peekRedo();
+    return top ? describeUndoAction(top) : null;
+  }
+
+  public clearHistory(): void {
+    this.history.clear();
   }
 
   public get sceneMorphVolumeGain(): number {
@@ -374,18 +400,20 @@ export class StrokeManager {
     this.isPaused = paused;
     if (this.isPaused) {
       for (const stroke of this.strokes) {
+        const hadVoice = !!stroke.droneVoice;
         if (stroke.droneVoice) {
           stroke.droneVoice.stop();
           stroke.droneVoice = null;
         }
+        if (hadVoice || (stroke.style === 'solid' && stroke.instrumentId !== 'onyx')) {
+          this.onMidiDroneStop?.(stroke.id);
+        }
       }
     } else {
       for (const stroke of this.strokes) {
-        if (stroke.style === 'solid' && this.engine.isReady && stroke.playhead.lastPitch && this.isStrokeAudible(stroke)) {
+        if (stroke.style === 'solid' && stroke.playhead.lastPitch) {
           if (!stroke.droneVoice || !stroke.droneVoice.isPlaying) {
-            const inst = getInstrument(stroke.instrumentId);
-            stroke.droneVoice = new DroneVoice(this.engine);
-            stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, stroke.volume ?? 1.0, stroke.reverb ?? this.defaultReverb);
+            this.startStrokeDroneVoice(stroke, stroke.playhead.lastPitch.frequency);
           }
         }
       }
@@ -419,6 +447,7 @@ export class StrokeManager {
     for (const stroke of this.strokes) {
       stroke.selected = stroke.id === id;
     }
+    this._sceneVersion++;
   }
 
   public toggleSelectStroke(id: string): void {
@@ -431,6 +460,7 @@ export class StrokeManager {
     for (const stroke of this.strokes) {
       stroke.selected = this.selectedIds.has(stroke.id);
     }
+    this._sceneVersion++;
   }
 
   public selectAllStrokes(): void {
@@ -440,6 +470,7 @@ export class StrokeManager {
       stroke.selected = true;
     }
     this.selectedId = this.selectedIds.size === 1 ? Array.from(this.selectedIds)[0] : null;
+    this._sceneVersion++;
   }
 
   public selectMultipleStrokes(ids: string[]): void {
@@ -448,6 +479,7 @@ export class StrokeManager {
     for (const stroke of this.strokes) {
       stroke.selected = this.selectedIds.has(stroke.id);
     }
+    this._sceneVersion++;
   }
 
   /**
@@ -459,10 +491,62 @@ export class StrokeManager {
   }
 
   public setHoveredStroke(id: string | null): void {
+    if (this.hoveredId === id) return;
     this.hoveredId = id;
     for (const stroke of this.strokes) {
       stroke.hovered = stroke.id === id;
     }
+    this._sceneVersion++;
+  }
+
+  private removeFromSelection(id: string): void {
+    this.selectedIds.delete(id);
+    if (this.selectedId === id) {
+      this.selectedId = this.selectedIds.size === 1 ? Array.from(this.selectedIds)[0] : null;
+    }
+  }
+
+  private startStrokeDroneVoice(
+    stroke: DrawnStroke,
+    freq: number,
+    audioTime?: number,
+    volumeOverride?: number
+  ): void {
+    if (
+      this.isPaused ||
+      !this.engine.isReady ||
+      !this.isStrokeAudible(stroke) ||
+      stroke.style !== 'solid' ||
+      stroke.instrumentId === 'onyx'
+    ) {
+      return;
+    }
+    if (stroke.droneVoice) {
+      stroke.droneVoice.stop();
+      stroke.droneVoice = null;
+    }
+    const instrument = getInstrument(stroke.instrumentId);
+    const effectiveVol =
+      volumeOverride !== undefined
+        ? volumeOverride
+        : (stroke.volume ?? 1.0) * (stroke.morphGain ?? 1.0);
+    const voice = new DroneVoice(this.engine);
+    voice.start(
+      freq,
+      instrument,
+      effectiveVol,
+      stroke.reverb ?? this.defaultReverb,
+      audioTime,
+      stroke.distortion ?? 0,
+      stroke.filterCutoff ?? 1.0,
+      stroke.lofi ?? 0
+    );
+    const voiceWithHarmonizer = voice as DroneVoice & { setHarmonizer?: (mode: HarmonizerMode) => void };
+    if (typeof voiceWithHarmonizer.setHarmonizer === 'function') {
+      voiceWithHarmonizer.setHarmonizer(stroke.harmonizer ?? 'single');
+    }
+    (voice as DroneVoice & { setArticulation?: (v: number) => void }).setArticulation?.(stroke.articulation ?? 1.0);
+    stroke.droneVoice = voice;
   }
 
   public isStrokeAudible(stroke: DrawnStroke): boolean {
@@ -477,16 +561,21 @@ export class StrokeManager {
     if (!stroke) return false;
     stroke.muted = !stroke.muted;
 
-    if (!this.isStrokeAudible(stroke) && stroke.droneVoice) {
-      stroke.droneVoice.stop();
-      stroke.droneVoice = null;
-    } else if (this.isStrokeAudible(stroke) && stroke.style === 'solid' && this.engine.isReady && stroke.playhead.lastPitch && !this.isPaused) {
+    if (!this.isStrokeAudible(stroke)) {
+      const hadVoice = !!stroke.droneVoice;
+      if (stroke.droneVoice) {
+        stroke.droneVoice.stop();
+        stroke.droneVoice = null;
+      }
+      if (hadVoice || stroke.style === 'solid') {
+        this.onMidiDroneStop?.(stroke.id);
+      }
+    } else if (this.isStrokeAudible(stroke) && stroke.style === 'solid' && stroke.playhead.lastPitch) {
       if (!stroke.droneVoice || !stroke.droneVoice.isPlaying) {
-        const inst = getInstrument(stroke.instrumentId);
-        stroke.droneVoice = new DroneVoice(this.engine);
-        stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, stroke.volume ?? 1.0, stroke.reverb ?? this.defaultReverb);
+        this.startStrokeDroneVoice(stroke, stroke.playhead.lastPitch.frequency);
       }
     }
+    this._sceneVersion++;
     return stroke.muted ?? false;
   }
 
@@ -495,16 +584,21 @@ export class StrokeManager {
     if (!stroke) return;
     stroke.muted = muted;
 
-    if (!this.isStrokeAudible(stroke) && stroke.droneVoice) {
-      stroke.droneVoice.stop();
-      stroke.droneVoice = null;
-    } else if (this.isStrokeAudible(stroke) && stroke.style === 'solid' && this.engine.isReady && stroke.playhead.lastPitch && !this.isPaused) {
+    if (!this.isStrokeAudible(stroke)) {
+      const hadVoice = !!stroke.droneVoice;
+      if (stroke.droneVoice) {
+        stroke.droneVoice.stop();
+        stroke.droneVoice = null;
+      }
+      if (hadVoice || stroke.style === 'solid') {
+        this.onMidiDroneStop?.(stroke.id);
+      }
+    } else if (this.isStrokeAudible(stroke) && stroke.style === 'solid' && stroke.playhead.lastPitch) {
       if (!stroke.droneVoice || !stroke.droneVoice.isPlaying) {
-        const inst = getInstrument(stroke.instrumentId);
-        stroke.droneVoice = new DroneVoice(this.engine);
-        stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, stroke.volume ?? 1.0, stroke.reverb ?? this.defaultReverb);
+        this.startStrokeDroneVoice(stroke, stroke.playhead.lastPitch.frequency);
       }
     }
+    this._sceneVersion++;
   }
 
   public toggleSolo(strokeId: string): boolean {
@@ -515,15 +609,20 @@ export class StrokeManager {
     // Refresh audio voices for all strokes
     for (const s of this.strokes) {
       const audible = this.isStrokeAudible(s);
-      if (!audible && s.droneVoice) {
-        s.droneVoice.stop();
-        s.droneVoice = null;
-      } else if (audible && s.style === 'solid' && (!s.droneVoice || !s.droneVoice.isPlaying) && this.engine.isReady && s.playhead.lastPitch && !this.isPaused) {
-        const inst = getInstrument(s.instrumentId);
-        s.droneVoice = new DroneVoice(this.engine);
-        s.droneVoice.start(s.playhead.lastPitch.frequency, inst, s.volume ?? 1.0, s.reverb ?? this.defaultReverb);
+      if (!audible) {
+        const hadVoice = !!s.droneVoice;
+        if (s.droneVoice) {
+          s.droneVoice.stop();
+          s.droneVoice = null;
+        }
+        if (hadVoice || s.style === 'solid') {
+          this.onMidiDroneStop?.(s.id);
+        }
+      } else if (audible && s.style === 'solid' && (!s.droneVoice || !s.droneVoice.isPlaying) && s.playhead.lastPitch) {
+        this.startStrokeDroneVoice(s, s.playhead.lastPitch.frequency);
       }
     }
+    this._sceneVersion++;
     return stroke.soloed ?? false;
   }
 
@@ -548,10 +647,14 @@ export class StrokeManager {
     isPoint = false,
     distortion = 0.0,
     filterCutoff = 1.0,
-    lofi = 0.0
+    lofi = 0.0,
+    muted: boolean = false,
+    fixedId?: string,
+    startVolumeOverride?: number,
+    articulation: number = 1.0
   ): DrawnStroke {
     const lut = buildArcLengthLUT(path, 64);
-    const id = `stroke-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const id = fixedId ?? `stroke-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const instrument = getInstrument(instrumentId);
     const strokeVolume = Math.max(0, Math.min(1, volume));
     const strokeReverb = typeof reverb === 'number' ? Math.max(0, Math.min(1, reverb)) : this.defaultReverb;
@@ -559,6 +662,7 @@ export class StrokeManager {
     const strokeDistortion = typeof distortion === 'number' ? Math.max(0, Math.min(1, distortion)) : 0.0;
     const strokeFilterCutoff = typeof filterCutoff === 'number' ? Math.max(0, Math.min(1, filterCutoff)) : 1.0;
     const strokeLofi = typeof lofi === 'number' ? Math.max(0, Math.min(1, lofi)) : 0.0;
+    const strokeArticulation = typeof articulation === 'number' ? Math.max(0.2, Math.min(2.5, articulation)) : 1.0;
     const effectiveLoopQuantize = loopQuantize ?? this.quantizeMode;
     const effectiveTraversal: TraversalMode = (traversal === 'bounce' || (traversal as string) === 'pingpong') ? 'bounce' : 'restart';
     const effectiveDuration = duration ?? this.defaultDuration;
@@ -575,12 +679,6 @@ export class StrokeManager {
       initialPitch = style === 'solid'
         ? quantizer.quantizeContinuous(initialEval.point.y, canvasHeight)
         : quantizer.quantizeDiscrete(initialEval.point.y, canvasHeight);
-    }
-
-    let droneVoice: DroneVoice | null = null;
-    if (style === 'solid' && this.engine.isReady && initialPitch && !this.isPaused) {
-      droneVoice = new DroneVoice(this.engine);
-      droneVoice.start(initialPitch.frequency, instrument, strokeVolume, strokeReverb, undefined, strokeDistortion, strokeFilterCutoff, strokeLofi);
     }
 
     const stroke: DrawnStroke = {
@@ -601,11 +699,11 @@ export class StrokeManager {
         trail: [],
         finished: false,
       },
-      droneVoice,
+      droneVoice: null,
       active: true,
       selected: false,
       hovered: false,
-      muted: false,
+      muted,
       soloed: false,
       volume: strokeVolume,
       reverb: strokeReverb,
@@ -613,6 +711,7 @@ export class StrokeManager {
       distortion: strokeDistortion,
       filterCutoff: strokeFilterCutoff,
       lofi: strokeLofi,
+      articulation: strokeArticulation,
       isPoint,
       duration: effectiveDuration,
       speedMultiplier: effectiveSpeedMult,
@@ -624,9 +723,12 @@ export class StrokeManager {
     };
 
     this.strokes.push(stroke);
+    if (initialPitch) {
+      this.startStrokeDroneVoice(stroke, initialPitch.frequency, undefined, startVolumeOverride);
+    }
+    this._sceneVersion++;
     if (recordUndo) {
-      this.undoStack.push({ type: 'add', stroke });
-      this.redoStack = [];
+      this.history.push({ type: 'add', stroke });
     }
     return stroke;
   }
@@ -645,15 +747,15 @@ export class StrokeManager {
     if (stroke.droneVoice) {
       stroke.droneVoice.setVolume(clampedVol);
     }
+    this._sceneVersion++;
 
     if (recordUndo) {
-      this.undoStack.push({
+      this.history.push({
         type: 'volume',
         strokeId,
         oldVolume: oldVol,
         newVolume: clampedVol,
       });
-      this.redoStack = [];
     }
     return true;
   }
@@ -672,15 +774,15 @@ export class StrokeManager {
     if (stroke.droneVoice) {
       stroke.droneVoice.setReverb(clampedReverb);
     }
+    this._sceneVersion++;
 
     if (recordUndo) {
-      this.undoStack.push({
+      this.history.push({
         type: 'reverb',
         strokeId,
         oldReverb,
         newReverb: clampedReverb,
       });
-      this.redoStack = [];
     }
     return true;
   }
@@ -696,15 +798,15 @@ export class StrokeManager {
     if (Math.abs(oldFluctuation - clampedFluctuation) < 0.001) return false;
 
     stroke.fluctuation = clampedFluctuation;
+    this._sceneVersion++;
 
     if (recordUndo) {
-      this.undoStack.push({
+      this.history.push({
         type: 'fluctuation',
         strokeId,
         oldFluctuation,
         newFluctuation: clampedFluctuation,
       });
-      this.redoStack = [];
     }
     return true;
   }
@@ -723,15 +825,15 @@ export class StrokeManager {
     if (stroke.droneVoice) {
       stroke.droneVoice.setDistortion(clampedDistortion);
     }
+    this._sceneVersion++;
 
     if (recordUndo) {
-      this.undoStack.push({
+      this.history.push({
         type: 'distortion',
         strokeId,
         oldDistortion,
         newDistortion: clampedDistortion,
       });
-      this.redoStack = [];
     }
     return true;
   }
@@ -750,15 +852,15 @@ export class StrokeManager {
     if (stroke.droneVoice) {
       stroke.droneVoice.setFilterCutoff(clampedCutoff);
     }
+    this._sceneVersion++;
 
     if (recordUndo) {
-      this.undoStack.push({
+      this.history.push({
         type: 'filterCutoff',
         strokeId,
         oldFilterCutoff: oldCutoff,
         newFilterCutoff: clampedCutoff,
       });
-      this.redoStack = [];
     }
     return true;
   }
@@ -777,15 +879,40 @@ export class StrokeManager {
     if (stroke.droneVoice) {
       stroke.droneVoice.setLofi(clampedLofi);
     }
+    this._sceneVersion++;
 
     if (recordUndo) {
-      this.undoStack.push({
+      this.history.push({
         type: 'lofi',
         strokeId,
         oldLofi,
         newLofi: clampedLofi,
       });
-      this.redoStack = [];
+    }
+    return true;
+  }
+
+  /**
+   * Sets the articulation / gate decay multiplier (0.2 staccato to 2.5 legato) of an individual stroke with undo support.
+   */
+  public setStrokeArticulation(strokeId: string, articulation: number, recordUndo = true): boolean {
+    const stroke = this.strokes.find((s) => s.id === strokeId);
+    if (!stroke) return false;
+    const clamped = Math.max(0.2, Math.min(2.5, articulation));
+    const oldArticulation = stroke.articulation ?? 1.0;
+    if (Math.abs(oldArticulation - clamped) < 0.001) return false;
+
+    stroke.articulation = clamped;
+    (stroke.droneVoice as (DroneVoice & { setArticulation?: (v: number) => void }) | null)?.setArticulation?.(clamped);
+    this._sceneVersion++;
+
+    if (recordUndo) {
+      this.history.push({
+        type: 'articulation',
+        strokeId,
+        oldArticulation,
+        newArticulation: clamped,
+      });
     }
     return true;
   }
@@ -804,13 +931,23 @@ export class StrokeManager {
     stroke.instrumentId = newInstrument.id;
     stroke.color = newInstrument.color;
 
-    if (stroke.droneVoice) {
+    if (newInstrument.id === 'onyx') {
+      const hadVoice = !!stroke.droneVoice;
+      if (stroke.droneVoice) {
+        stroke.droneVoice.stop();
+        stroke.droneVoice = null;
+      }
+      if (hadVoice || stroke.style === 'solid') {
+        this.onMidiDroneStop?.(stroke.id);
+      }
+    } else if (stroke.droneVoice) {
       stroke.droneVoice.setInstrument(newInstrument);
     }
 
+    this._sceneVersion++;
+
     if (recordUndo) {
-      this.undoStack.push({ type: 'revoice', strokeId, oldInstrumentId, newInstrumentId });
-      this.redoStack = [];
+      this.history.push({ type: 'revoice', strokeId, oldInstrumentId, newInstrumentId });
     }
 
     return true;
@@ -830,17 +967,17 @@ export class StrokeManager {
     if (oldStyle === 'solid' && newStyle !== 'solid') {
       stroke.droneVoice?.stop();
       stroke.droneVoice = null;
+      this.onMidiDroneStop?.(stroke.id);
     } else if (newStyle === 'solid' && oldStyle !== 'solid') {
-      if (this.engine.isReady && stroke.playhead.lastPitch && this.isStrokeAudible(stroke) && !this.isPaused) {
-        const inst = getInstrument(stroke.instrumentId);
-        stroke.droneVoice = new DroneVoice(this.engine);
-        stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, stroke.volume ?? 1.0);
+      if (stroke.playhead.lastPitch) {
+        this.startStrokeDroneVoice(stroke, stroke.playhead.lastPitch.frequency);
       }
     }
 
+    this._sceneVersion++;
+
     if (recordUndo) {
-      this.undoStack.push({ type: 'style', strokeId, oldStyle, newStyle });
-      this.redoStack = [];
+      this.history.push({ type: 'style', strokeId, oldStyle, newStyle });
     }
 
     return true;
@@ -862,13 +999,14 @@ export class StrokeManager {
     // Immediately phase-align to musical downbeat if setting to quantized mode
     if (newLoopQuantize !== 'freeform' && stroke.lut.totalLength > 1) {
       const strokeTraversal = stroke.traversal ?? 'restart';
+      const isBounce = strokeTraversal === 'bounce' || strokeTraversal === 'pingpong';
       const beatsPerBar = StrokeManager.getBeatsForQuantize(newLoopQuantize);
       const cycleDuration = beatsPerBar * (60 / this.bpm);
-      const cycleDistance = strokeTraversal === 'pingpong' ? 2 * stroke.lut.totalLength : stroke.lut.totalLength;
+      const cycleDistance = isBounce ? 2 * stroke.lut.totalLength : stroke.lut.totalLength;
       const strokeSpeed = stroke.lut.totalLength / cycleDuration;
       const currentCycleDist = (this.masterClockTime * strokeSpeed) % cycleDistance;
 
-      if (strokeTraversal === 'pingpong') {
+      if (isBounce) {
         if (currentCycleDist <= stroke.lut.totalLength) {
           stroke.playhead.currentDistance = currentCycleDist;
           stroke.playhead.direction = 1;
@@ -883,8 +1021,7 @@ export class StrokeManager {
     }
 
     if (recordUndo) {
-      this.undoStack.push({ type: 'loopQuantize', strokeId, oldLoopQuantize, newLoopQuantize });
-      this.redoStack = [];
+      this.history.push({ type: 'loopQuantize', strokeId, oldLoopQuantize, newLoopQuantize });
     }
 
     return true;
@@ -908,8 +1045,7 @@ export class StrokeManager {
     }
 
     if (recordUndo) {
-      this.undoStack.push({ type: 'traversal', strokeId, oldTraversal, newTraversal: normalizedNew });
-      this.redoStack = [];
+      this.history.push({ type: 'traversal', strokeId, oldTraversal, newTraversal: normalizedNew });
     }
 
     return true;
@@ -977,7 +1113,7 @@ export class StrokeManager {
     stroke.speedMode = newTimingMode;
 
     if (shouldRecord) {
-      this.undoStack.push({
+      this.history.push({
         type: 'timingMode',
         strokeId,
         oldTimingMode,
@@ -987,7 +1123,6 @@ export class StrokeManager {
         oldDuration,
         newDuration,
       });
-      this.redoStack = [];
     }
 
     return true;
@@ -1047,8 +1182,7 @@ export class StrokeManager {
     }
 
     if (records.length > 0) {
-      this.undoStack.push({ type: 'batchTimingMode', records });
-      this.redoStack = [];
+      this.history.push({ type: 'batchTimingMode', records });
     }
 
     this.defaultSpeedMode = 'speed';
@@ -1068,8 +1202,7 @@ export class StrokeManager {
     stroke.harmonizer = newHarmonizer;
 
     if (recordUndo) {
-      this.undoStack.push({ type: 'harmonizer', strokeId, oldHarmonizer, newHarmonizer });
-      this.redoStack = [];
+      this.history.push({ type: 'harmonizer', strokeId, oldHarmonizer, newHarmonizer });
     }
 
     return true;
@@ -1089,8 +1222,7 @@ export class StrokeManager {
     stroke.duration = clamped;
 
     if (recordUndo) {
-      this.undoStack.push({ type: 'duration', strokeId, oldDuration, newDuration: clamped });
-      this.redoStack = [];
+      this.history.push({ type: 'duration', strokeId, oldDuration, newDuration: clamped });
     }
 
     return true;
@@ -1134,6 +1266,8 @@ export class StrokeManager {
 
   /**
    * Adjusts speed multiplier (or timer duration) for multiple strokes simultaneously with atomic undo/redo.
+   * Note: for timer-mode strokes, playhead velocity is `L / duration`, so speeding up requires a negative
+   * `durationDelta` and slowing down requires a positive `durationDelta`.
    */
   public adjustStrokesTiming(
     strokeIds: string[],
@@ -1164,7 +1298,7 @@ export class StrokeManager {
         if (newDuration === oldDuration) continue;
         stroke.duration = newDuration;
       } else {
-        newSpeed = Math.max(0.1, Math.min(5.0, Math.round((oldSpeed + speedDelta) * 10) / 10));
+        newSpeed = Math.max(0.05, Math.min(5.0, Math.round((oldSpeed + speedDelta) * 100) / 100));
         if (Math.abs(newSpeed - oldSpeed) < 0.001) continue;
         stroke.speedMultiplier = newSpeed;
       }
@@ -1173,10 +1307,159 @@ export class StrokeManager {
     }
 
     if (recordUndo && records.length > 0) {
-      this.undoStack.push({ type: 'batchSpeed', records });
-      this.redoStack = [];
+      this.history.push({ type: 'batchSpeed', records });
     }
     return updated;
+  }
+
+  /**
+   * Adjusts playback tempo uniformly in the same direction for all specified strokes,
+   * regardless of whether each stroke uses Speed mode or Timer mode.
+   * direction = +1 speeds up every line (+speedMultiplier / -duration);
+   * direction = -1 slows down every line (-speedMultiplier / +duration).
+   */
+  public adjustStrokesTempo(
+    strokeIds: string[],
+    direction: 1 | -1,
+    stepMultiplier = 1,
+    recordUndo = true
+  ): DrawnStroke[] {
+    const speedDelta = direction * 0.1 * stepMultiplier;
+    const durationDelta = -direction * 5 * stepMultiplier;
+    return this.adjustStrokesTiming(strokeIds, speedDelta, durationDelta, recordUndo);
+  }
+
+  /**
+   * Synchronizes all specified strokes to Speed mode at the exact same speed multiplier,
+   * recording a single atomic batchTimingMode undo entry.
+   */
+  public syncStrokesToSameSpeed(
+    strokeIds: string[],
+    targetSpeed: number,
+    recordUndo = true
+  ): DrawnStroke[] {
+    const clampedSpeed = Math.max(0.05, Math.min(5.0, Math.round(targetSpeed * 100) / 100));
+    const records: {
+      strokeId: string;
+      oldTimingMode: TimingMode;
+      newTimingMode: TimingMode;
+      oldSpeed?: number;
+      newSpeed?: number;
+      oldDuration?: number;
+      newDuration?: number;
+    }[] = [];
+    const updated: DrawnStroke[] = [];
+
+    for (const id of strokeIds) {
+      const stroke = this.strokes.find((s) => s.id === id);
+      if (!stroke) continue;
+      const oldTimingMode: TimingMode = stroke.timingMode ?? (stroke.speedMode === 'timer' ? 'timer' : 'speed');
+      const oldSpeed = stroke.speedMultiplier ?? 1.0;
+      const oldDuration = stroke.duration ?? 30;
+      if (oldTimingMode === 'speed' && Math.abs(oldSpeed - clampedSpeed) < 0.001) {
+        continue;
+      }
+      stroke.timingMode = 'speed';
+      stroke.speedMode = 'speed';
+      stroke.speedMultiplier = clampedSpeed;
+      records.push({
+        strokeId: stroke.id,
+        oldTimingMode,
+        newTimingMode: 'speed',
+        oldSpeed,
+        newSpeed: clampedSpeed,
+        oldDuration,
+        newDuration: stroke.duration,
+      });
+      updated.push(stroke);
+    }
+
+    if (updated.length > 0) {
+      this._sceneVersion++;
+    }
+    if (recordUndo && records.length > 0) {
+      this.history.push({ type: 'batchTimingMode', records });
+    }
+    return updated;
+  }
+
+  /**
+   * Synchronizes all specified strokes to Timer mode at the exact same duration (seconds),
+   * recording a single atomic batchTimingMode undo entry.
+   */
+  public syncStrokesToSameDuration(
+    strokeIds: string[],
+    targetDuration: number,
+    recordUndo = true
+  ): DrawnStroke[] {
+    const clampedDur = Math.max(1, Math.min(300, Math.round(targetDuration)));
+    const records: {
+      strokeId: string;
+      oldTimingMode: TimingMode;
+      newTimingMode: TimingMode;
+      oldSpeed?: number;
+      newSpeed?: number;
+      oldDuration?: number;
+      newDuration?: number;
+    }[] = [];
+    const updated: DrawnStroke[] = [];
+
+    for (const id of strokeIds) {
+      const stroke = this.strokes.find((s) => s.id === id);
+      if (!stroke) continue;
+      const oldTimingMode: TimingMode = stroke.timingMode ?? (stroke.speedMode === 'timer' ? 'timer' : 'speed');
+      const oldSpeed = stroke.speedMultiplier ?? 1.0;
+      const oldDuration = Math.round(stroke.duration ?? 30);
+      if (oldTimingMode === 'timer' && oldDuration === clampedDur) {
+        continue;
+      }
+      stroke.timingMode = 'timer';
+      stroke.speedMode = 'timer';
+      stroke.duration = clampedDur;
+      records.push({
+        strokeId: stroke.id,
+        oldTimingMode,
+        newTimingMode: 'timer',
+        oldSpeed,
+        newSpeed: stroke.speedMultiplier,
+        oldDuration,
+        newDuration: clampedDur,
+      });
+      updated.push(stroke);
+    }
+
+    if (updated.length > 0) {
+      this._sceneVersion++;
+    }
+    if (recordUndo && records.length > 0) {
+      this.history.push({ type: 'batchTimingMode', records });
+    }
+    return updated;
+  }
+
+  /**
+   * Commits a pre-captured atomic batch timing change (used after live slider scrubs).
+   */
+  public commitBatchTimingUndo(
+    records: {
+      strokeId: string;
+      oldTimingMode: TimingMode;
+      newTimingMode: TimingMode;
+      oldSpeed?: number;
+      newSpeed?: number;
+      oldDuration?: number;
+      newDuration?: number;
+    }[]
+  ): void {
+    const changed = records.filter(
+      (r) =>
+        r.oldTimingMode !== r.newTimingMode ||
+        r.oldSpeed !== r.newSpeed ||
+        r.oldDuration !== r.newDuration
+    );
+    if (changed.length > 0) {
+      this.history.push({ type: 'batchTimingMode', records: changed });
+    }
   }
 
   /**
@@ -1202,9 +1485,11 @@ export class StrokeManager {
       updated.push(stroke);
     }
 
+    if (updated.length > 0) {
+      this._sceneVersion++;
+    }
     if (recordUndo && records.length > 0) {
-      this.undoStack.push({ type: 'batchVolume', records });
-      this.redoStack = [];
+      this.history.push({ type: 'batchVolume', records });
     }
     return updated;
   }
@@ -1242,6 +1527,7 @@ export class StrokeManager {
         stroke.playhead.currentDistance *= (newLength / oldLength);
       }
     }
+    this._sceneVersion++;
   }
 
   /**
@@ -1258,8 +1544,7 @@ export class StrokeManager {
     stroke.speedMode = 'speed';
 
     if (recordUndo) {
-      this.undoStack.push({ type: 'speed', strokeId, oldSpeed, newSpeed: clamped });
-      this.redoStack = [];
+      this.history.push({ type: 'speed', strokeId, oldSpeed, newSpeed: clamped });
     }
     return true;
   }
@@ -1276,8 +1561,7 @@ export class StrokeManager {
     stroke.speedMode = mode;
 
     if (recordUndo) {
-      this.undoStack.push({ type: 'speedMode', strokeId, oldSpeedMode: oldMode, newSpeedMode: mode });
-      this.redoStack = [];
+      this.history.push({ type: 'speedMode', strokeId, oldSpeedMode: oldMode, newSpeedMode: mode });
     }
     return true;
   }
@@ -1320,10 +1604,6 @@ export class StrokeManager {
       stroke.playhead.lastEval.point.y += dy;
     }
 
-    if (!stroke.isPoint) {
-      stroke.lut = buildArcLengthLUT(stroke.path, 64);
-    }
-
     if (stroke.waveParams) {
       stroke.waveParams.baseP0.x += dx;
       stroke.waveParams.baseP0.y += dy;
@@ -1331,25 +1611,24 @@ export class StrokeManager {
       stroke.waveParams.baseP1.y += dy;
     }
 
+    this._sceneVersion++;
+
     if (recordUndo) {
-      this.undoStack.push({ type: 'move', strokeId: id, dx, dy });
-      this.redoStack = [];
+      this.history.push({ type: 'move', strokeId: id, dx, dy });
     }
 
     return true;
   }
 
   public recordTranslateUndo(strokeId: string, dx: number, dy: number): void {
-    this.undoStack.push({ type: 'move', strokeId, dx, dy });
-    this.redoStack = [];
+    this.history.push({ type: 'move', strokeId, dx, dy });
   }
 
   public recordMultiTranslateUndo(strokeIds: string[], dx: number, dy: number): void {
-    this.undoStack.push({
+    this.history.push({
       type: 'multiMove',
       moves: strokeIds.map((id) => ({ strokeId: id, dx, dy })),
     });
-    this.redoStack = [];
   }
 
   /**
@@ -1357,20 +1636,97 @@ export class StrokeManager {
    */
   public recordBatchAddUndo(strokes: DrawnStroke[]): void {
     if (strokes.length === 0) return;
-    this.undoStack.push({ type: 'batchAdd', strokes: [...strokes] });
-    this.redoStack = [];
+    this.history.push({ type: 'batchAdd', strokes: [...strokes] });
   }
 
   /**
-   * Rescales melodic stroke Y coordinates proportionally when octave view zoom changes,
-   * guaranteeing that musical pitch (frequency and scale degree) remains identical.
-   * Onyx drum machine strokes remain locked to their fixed screen zones.
+   * Commits a deferred property slider change to the undo history.
+   */
+  public commitStrokePropertyUndo(
+    id: string,
+    prop:
+      | 'volume'
+      | 'reverb'
+      | 'fluctuation'
+      | 'distortion'
+      | 'filterCutoff'
+      | 'lofi'
+      | 'articulation'
+      | 'speedMultiplier'
+      | 'duration',
+    oldValue: number,
+    newValue: number
+  ): void {
+    const stroke = this.strokes.find((s) => s.id === id);
+    if (!stroke || Math.abs(oldValue - newValue) < 0.0001) return;
+
+    switch (prop) {
+      case 'volume':
+        this.history.push({ type: 'volume', strokeId: id, oldVolume: oldValue, newVolume: newValue });
+        break;
+      case 'reverb':
+        this.history.push({ type: 'reverb', strokeId: id, oldReverb: oldValue, newReverb: newValue });
+        break;
+      case 'fluctuation':
+        this.history.push({ type: 'fluctuation', strokeId: id, oldFluctuation: oldValue, newFluctuation: newValue });
+        break;
+      case 'distortion':
+        this.history.push({ type: 'distortion', strokeId: id, oldDistortion: oldValue, newDistortion: newValue });
+        break;
+      case 'filterCutoff':
+        this.history.push({ type: 'filterCutoff', strokeId: id, oldFilterCutoff: oldValue, newFilterCutoff: newValue });
+        break;
+      case 'lofi':
+        this.history.push({ type: 'lofi', strokeId: id, oldLofi: oldValue, newLofi: newValue });
+        break;
+      case 'articulation':
+        this.history.push({ type: 'articulation', strokeId: id, oldArticulation: oldValue, newArticulation: newValue });
+        break;
+      case 'speedMultiplier':
+        this.history.push({ type: 'speed', strokeId: id, oldSpeed: oldValue, newSpeed: newValue });
+        break;
+      case 'duration':
+        this.history.push({ type: 'duration', strokeId: id, oldDuration: oldValue, newDuration: newValue });
+        break;
+    }
+  }
+
+  /**
+   * Commits a deferred wave-reshape operation to the undo history.
+   */
+  public commitStrokeReshapeUndo(
+    id: string,
+    oldPath: SplinePath,
+    newPath: SplinePath,
+    oldWaveParams?: WaveParams,
+    newWaveParams?: WaveParams
+  ): void {
+    const stroke = this.strokes.find((s) => s.id === id);
+    if (!stroke) return;
+    const oldLut = buildArcLengthLUT(oldPath, 64);
+    const newLut = stroke.path === newPath ? stroke.lut : buildArcLengthLUT(newPath, 64);
+    this.history.push({
+      type: 'reshape',
+      strokeId: id,
+      oldPath,
+      oldLut,
+      oldWaveParams,
+      newPath,
+      newLut,
+      newWaveParams,
+    });
+  }
+
+  /**
+   * Rescales stroke Y coordinates proportionally when octave view zoom changes,
+   * guaranteeing that musical pitch / vertical position remains invariant.
    */
   public scaleMelodicStrokesY(scaleFactor: number, originY: number = 0): void {
     if (scaleFactor === 1 || !isFinite(scaleFactor) || scaleFactor <= 0) return;
 
     const scaledStrokes = new Set<DrawnStroke>();
     const scaledPaths = new Set<SplinePath>();
+    const scaledWaveParams = new Set<WaveParams>();
 
     const scaleY = (y: number) => originY + (y - originY) * scaleFactor;
 
@@ -1385,8 +1741,15 @@ export class StrokeManager {
       }
     };
 
+    const scaleWaveParams = (wp?: WaveParams) => {
+      if (!wp || scaledWaveParams.has(wp)) return;
+      scaledWaveParams.add(wp);
+      wp.baseP0.y = scaleY(wp.baseP0.y);
+      wp.baseP1.y = scaleY(wp.baseP1.y);
+      wp.amplitude *= scaleFactor;
+    };
+
     for (const stroke of this.strokes) {
-      if (stroke.instrumentId === 'onyx') continue; // Drum zones are fixed to screen coordinates
       scaledStrokes.add(stroke);
       scalePathSegments(stroke.path);
 
@@ -1413,20 +1776,12 @@ export class StrokeManager {
         stroke.playhead.lastEval.point.y = scaleY(stroke.playhead.lastEval.point.y);
       }
 
-      if (stroke.waveParams) {
-        stroke.waveParams.baseP0.y = scaleY(stroke.waveParams.baseP0.y);
-        stroke.waveParams.baseP1.y = scaleY(stroke.waveParams.baseP1.y);
-        stroke.waveParams.amplitude *= scaleFactor;
-      }
+      scaleWaveParams(stroke.waveParams);
     }
 
-    if (this.clipboard && this.clipboard.instrumentId !== 'onyx') {
+    if (this.clipboard) {
       scalePathSegments(this.clipboard.path);
-      if (this.clipboard.waveParams) {
-        this.clipboard.waveParams.baseP0.y = scaleY(this.clipboard.waveParams.baseP0.y);
-        this.clipboard.waveParams.baseP1.y = scaleY(this.clipboard.waveParams.baseP1.y);
-        this.clipboard.waveParams.amplitude *= scaleFactor;
-      }
+      scaleWaveParams(this.clipboard.waveParams);
     }
 
     const scaleUndoAction = (action: UndoAction) => {
@@ -1437,34 +1792,22 @@ export class StrokeManager {
           m.dy *= scaleFactor;
         }
       } else if (action.type === 'add' || action.type === 'remove') {
-        if (action.stroke.instrumentId !== 'onyx' && !scaledStrokes.has(action.stroke)) {
+        if (!scaledStrokes.has(action.stroke)) {
           scaledStrokes.add(action.stroke);
           scalePathSegments(action.stroke.path);
           action.stroke.lut = buildArcLengthLUT(action.stroke.path);
-          if (action.stroke.waveParams) {
-            action.stroke.waveParams.baseP0.y = scaleY(action.stroke.waveParams.baseP0.y);
-            action.stroke.waveParams.baseP1.y = scaleY(action.stroke.waveParams.baseP1.y);
-            action.stroke.waveParams.amplitude *= scaleFactor;
-          }
+          scaleWaveParams(action.stroke.waveParams);
         }
       } else if (action.type === 'reshape') {
         if (!scaledPaths.has(action.oldPath)) {
           scalePathSegments(action.oldPath);
           action.oldLut = buildArcLengthLUT(action.oldPath);
-          if (action.oldWaveParams) {
-            action.oldWaveParams.baseP0.y = scaleY(action.oldWaveParams.baseP0.y);
-            action.oldWaveParams.baseP1.y = scaleY(action.oldWaveParams.baseP1.y);
-            action.oldWaveParams.amplitude *= scaleFactor;
-          }
+          scaleWaveParams(action.oldWaveParams);
         }
         if (!scaledPaths.has(action.newPath)) {
           scalePathSegments(action.newPath);
           action.newLut = buildArcLengthLUT(action.newPath);
-          if (action.newWaveParams) {
-            action.newWaveParams.baseP0.y = scaleY(action.newWaveParams.baseP0.y);
-            action.newWaveParams.baseP1.y = scaleY(action.newWaveParams.baseP1.y);
-            action.newWaveParams.amplitude *= scaleFactor;
-          }
+          scaleWaveParams(action.newWaveParams);
         }
       } else if (action.type === 'redraw') {
         if (!scaledPaths.has(action.oldPath)) {
@@ -1475,24 +1818,20 @@ export class StrokeManager {
           scalePathSegments(action.newPath);
           action.newLut = buildArcLengthLUT(action.newPath);
         }
-      } else if (action.type === 'batchAdd') {
+      } else if (action.type === 'batchAdd' || action.type === 'batchRemove') {
         for (const s of action.strokes) {
-          if (s.instrumentId !== 'onyx' && !scaledStrokes.has(s)) {
+          if (!scaledStrokes.has(s)) {
             scaledStrokes.add(s);
             scalePathSegments(s.path);
             s.lut = buildArcLengthLUT(s.path);
-            if (s.waveParams) {
-              s.waveParams.baseP0.y = scaleY(s.waveParams.baseP0.y);
-              s.waveParams.baseP1.y = scaleY(s.waveParams.baseP1.y);
-              s.waveParams.amplitude *= scaleFactor;
-            }
+            scaleWaveParams(s.waveParams);
           }
         }
       }
     };
 
-    for (const a of this.undoStack) scaleUndoAction(a);
-    for (const a of this.redoStack) scaleUndoAction(a);
+    this.history.forEachAction(scaleUndoAction);
+    this._sceneVersion++;
   }
 
   /**
@@ -1536,6 +1875,7 @@ export class StrokeManager {
       distortion: stroke.distortion ?? 0.0,
       filterCutoff: stroke.filterCutoff ?? 1.0,
       lofi: stroke.lofi ?? 0.0,
+      articulation: stroke.articulation ?? 1.0,
       waveParams: stroke.waveParams
         ? {
             ...stroke.waveParams,
@@ -1598,7 +1938,11 @@ export class StrokeManager {
       this.clipboard.isPoint ?? false,
       this.clipboard.distortion ?? 0.0,
       this.clipboard.filterCutoff ?? 1.0,
-      this.clipboard.lofi ?? 0.0
+      this.clipboard.lofi ?? 0.0,
+      false,
+      undefined,
+      undefined,
+      this.clipboard.articulation ?? 1.0
     );
 
     if (this.clipboard.waveParams) {
@@ -1625,6 +1969,130 @@ export class StrokeManager {
     const copied = this.copyStroke(strokeId);
     if (!copied) return null;
     return this.paste(quantizer, canvasHeight, offsetStep);
+  }
+
+  /**
+   * Returns all active strokes whose control points or sampled curve lie within the given rectangle.
+   */
+  public getStrokesInRect(rect: { x1: number; y1: number; x2: number; y2: number }): DrawnStroke[] {
+    const minX = Math.min(rect.x1, rect.x2);
+    const maxX = Math.max(rect.x1, rect.x2);
+    const minY = Math.min(rect.y1, rect.y2);
+    const maxY = Math.max(rect.y1, rect.y2);
+    const inRect = (pt: Point2D): boolean =>
+      pt.x >= minX && pt.x <= maxX && pt.y >= minY && pt.y <= maxY;
+
+    const matched: DrawnStroke[] = [];
+    for (const stroke of this.strokes) {
+      if (!stroke.active) continue;
+      if (stroke.isPoint) {
+        if (stroke.path.segments.length > 0 && inRect(stroke.path.segments[0].p0)) {
+          matched.push(stroke);
+        }
+        continue;
+      }
+
+      let hit = false;
+      for (const seg of stroke.path.segments) {
+        if (inRect(seg.p0) || inRect(seg.p1) || inRect(seg.p2) || inRect(seg.p3)) {
+          hit = true;
+          break;
+        }
+      }
+
+      if (!hit && stroke.lut.totalLength > 0) {
+        for (let i = 1; i <= 8; i++) {
+          const d = (i / 9) * stroke.lut.totalLength;
+          const pt = evaluateAtDistance(stroke.path, stroke.lut, d).point;
+          if (inRect(pt)) {
+            hit = true;
+            break;
+          }
+        }
+      }
+
+      if (hit) {
+        matched.push(stroke);
+      }
+    }
+    return matched;
+  }
+
+  /**
+   * Atomically duplicates multiple strokes shifted by (dx, dy), preserving all FX and recording a single batchAdd undo action.
+   */
+  public duplicateStrokes(
+    strokeIds: string[],
+    dx = 0,
+    dy = 0,
+    quantizer?: ScaleQuantizer,
+    canvasHeight?: number
+  ): DrawnStroke[] {
+    const seen = new Set<string>();
+    const sources: DrawnStroke[] = [];
+    for (const id of strokeIds) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const found = this.strokes.find((s) => s.id === id);
+      if (found) sources.push(found);
+    }
+    if (sources.length === 0) return [];
+
+    const created: DrawnStroke[] = [];
+    for (const src of sources) {
+      const shiftedPath: SplinePath = {
+        segments: src.path.segments.map((seg) => ({
+          p0: { x: seg.p0.x + dx, y: seg.p0.y + dy },
+          p1: { x: seg.p1.x + dx, y: seg.p1.y + dy },
+          p2: { x: seg.p2.x + dx, y: seg.p2.y + dy },
+          p3: { x: seg.p3.x + dx, y: seg.p3.y + dy },
+        })),
+        isClosed: src.path.isClosed,
+      };
+
+      const dup = this.addStroke(
+        shiftedPath,
+        src.style,
+        src.instrumentId,
+        src.playhead.velocity,
+        quantizer,
+        canvasHeight,
+        src.volume ?? 1.0,
+        src.loopQuantize,
+        src.traversal,
+        src.duration,
+        src.speedMultiplier,
+        src.speedMode,
+        src.reverb,
+        src.fluctuation,
+        src.timingMode,
+        src.harmonizer,
+        false,
+        src.isPoint ?? false,
+        src.distortion ?? 0.0,
+        src.filterCutoff ?? 1.0,
+        src.lofi ?? 0.0,
+        !!src.muted,
+        undefined,
+        undefined,
+        src.articulation ?? 1.0
+      );
+
+      if (src.waveParams) {
+        dup.waveParams = {
+          ...src.waveParams,
+          baseP0: { x: src.waveParams.baseP0.x + dx, y: src.waveParams.baseP0.y + dy },
+          baseP1: { x: src.waveParams.baseP1.x + dx, y: src.waveParams.baseP1.y + dy },
+        };
+      }
+
+      created.push(dup);
+    }
+
+    this.history.push({ type: 'batchAdd', strokes: [...created] });
+    this.selectMultipleStrokes(created.map((s) => s.id));
+    this.bumpSceneVersion();
+    return created;
   }
 
   /**
@@ -1687,8 +2155,10 @@ export class StrokeManager {
       stroke.playhead.currentDistance = newLut.totalLength > 1 ? stroke.playhead.currentDistance % newLut.totalLength : 0;
     }
 
+    this._sceneVersion++;
+
     if (recordUndo) {
-      this.undoStack.push({
+      this.history.push({
         type: 'reshape',
         strokeId,
         oldPath,
@@ -1698,7 +2168,6 @@ export class StrokeManager {
         newLut,
         newWaveParams,
       });
-      this.redoStack = [];
     }
 
     return true;
@@ -1725,8 +2194,10 @@ export class StrokeManager {
       stroke.playhead.currentDistance = newLut.totalLength > 1 ? stroke.playhead.currentDistance % newLut.totalLength : 0;
     }
 
+    this._sceneVersion++;
+
     if (recordUndo) {
-      this.undoStack.push({
+      this.history.push({
         type: 'redraw',
         strokeId,
         oldPath,
@@ -1734,7 +2205,6 @@ export class StrokeManager {
         newPath,
         newLut,
       });
-      this.redoStack = [];
     }
 
     return true;
@@ -1763,6 +2233,38 @@ export class StrokeManager {
       }
 
       const segments = stroke.path.segments;
+      if (segments.length === 0) continue;
+
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minY = Infinity;
+      let maxY = -Infinity;
+      for (const seg of segments) {
+        if (seg.p0.x < minX) minX = seg.p0.x;
+        if (seg.p0.x > maxX) maxX = seg.p0.x;
+        if (seg.p0.y < minY) minY = seg.p0.y;
+        if (seg.p0.y > maxY) maxY = seg.p0.y;
+        if (seg.p1.x < minX) minX = seg.p1.x;
+        if (seg.p1.x > maxX) maxX = seg.p1.x;
+        if (seg.p1.y < minY) minY = seg.p1.y;
+        if (seg.p1.y > maxY) maxY = seg.p1.y;
+        if (seg.p2.x < minX) minX = seg.p2.x;
+        if (seg.p2.x > maxX) maxX = seg.p2.x;
+        if (seg.p2.y < minY) minY = seg.p2.y;
+        if (seg.p2.y > maxY) maxY = seg.p2.y;
+        if (seg.p3.x < minX) minX = seg.p3.x;
+        if (seg.p3.x > maxX) maxX = seg.p3.x;
+        if (seg.p3.y < minY) minY = seg.p3.y;
+        if (seg.p3.y > maxY) maxY = seg.p3.y;
+      }
+      if (
+        testPt.x < minX - bestDist ||
+        testPt.x > maxX + bestDist ||
+        testPt.y < minY - bestDist ||
+        testPt.y > maxY + bestDist
+      ) {
+        continue;
+      }
 
       for (const seg of segments) {
         let prevPt = evaluateBezier(seg, 0);
@@ -1788,17 +2290,17 @@ export class StrokeManager {
 
     for (const stroke of this.strokes) {
       if (stroke.style === 'solid' && !stroke.droneVoice && stroke.playhead.lastPitch && this.isStrokeAudible(stroke)) {
-        const inst = getInstrument(stroke.instrumentId);
         const morphMultiplier = stroke.morphRole === 'outgoing'
           ? this.morphOutgoingGain
           : stroke.morphRole === 'incoming'
           ? this.morphIncomingGain
           : this.sceneMorphGain;
-        stroke.droneVoice = new DroneVoice(this.engine);
-        stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, (stroke.volume ?? 1.0) * morphMultiplier, stroke.reverb ?? this.defaultReverb);
-        if (stroke.playhead.lastEval) {
+        const effVol = (stroke.volume ?? 1.0) * morphMultiplier;
+        this.startStrokeDroneVoice(stroke, stroke.playhead.lastPitch.frequency, undefined, effVol);
+        const startedVoice = stroke.droneVoice as DroneVoice | null;
+        if (startedVoice && stroke.playhead.lastEval) {
           const cWidth = this.lastCanvasWidth > 0 ? this.lastCanvasWidth : 1200;
-          stroke.droneVoice.updateDual(
+          startedVoice.updateDual(
             stroke.playhead.lastPitch.freqA ?? stroke.playhead.lastPitch.freq1 ?? stroke.playhead.lastPitch.frequency,
             stroke.playhead.lastPitch.freqB ?? stroke.playhead.lastPitch.freq2 ?? stroke.playhead.lastPitch.frequency,
             stroke.playhead.lastPitch.gainA ?? 1.0,
@@ -1807,11 +2309,132 @@ export class StrokeManager {
             stroke.playhead.lastEval.point.x,
             cWidth,
             this.xModMode,
-            (stroke.volume ?? 1.0) * morphMultiplier
+            effVol
           );
         }
       }
     }
+  }
+
+  private triggerPulse(
+    freq: number,
+    isStriped: boolean,
+    velocity: number,
+    instrument: ReturnType<typeof getInstrument>,
+    x: number,
+    canvasWidth: number,
+    xModMode: XAxisModulationMode,
+    timeOffset: number,
+    reverb: number,
+    filterMultiplier: number,
+    volumeMultiplier: number,
+    baseTime: number | undefined,
+    distortion: number,
+    toneCutoff: number,
+    lofi: number,
+    articulation: number
+  ): void {
+    (PulseVoice as unknown as {
+      trigger: (
+        freq: number,
+        isStriped: boolean,
+        velocity: number,
+        instrument: ReturnType<typeof getInstrument>,
+        x: number,
+        canvasWidth: number,
+        xModMode: XAxisModulationMode,
+        timeOffset: number,
+        reverb: number,
+        filterMultiplier: number,
+        volumeMultiplier: number,
+        engine: SoundEngine,
+        baseTime: number | undefined,
+        distortion: number,
+        toneCutoff: number,
+        lofi: number,
+        articulation: number
+      ) => void;
+    }).trigger(
+      freq,
+      isStriped,
+      velocity,
+      instrument,
+      x,
+      canvasWidth,
+      xModMode,
+      timeOffset,
+      reverb,
+      filterMultiplier,
+      volumeMultiplier,
+      this.engine,
+      baseTime,
+      distortion,
+      toneCutoff,
+      lofi,
+      articulation
+    );
+  }
+
+  private triggerRatchet(
+    freq: number,
+    velocity: number,
+    instrument: ReturnType<typeof getInstrument>,
+    x: number,
+    canvasWidth: number,
+    xModMode: XAxisModulationMode,
+    reverb: number,
+    filterMultiplier: number,
+    volumeMultiplier: number,
+    baseTime: number | undefined,
+    distortion: number,
+    toneCutoff: number,
+    lofi: number,
+    articulation: number
+  ): void {
+    (PulseVoice as unknown as {
+      triggerRatchet: (
+        freq: number,
+        velocity: number,
+        instrument: ReturnType<typeof getInstrument>,
+        x: number,
+        canvasWidth: number,
+        xModMode: XAxisModulationMode,
+        reverb: number,
+        filterMultiplier: number,
+        volumeMultiplier: number,
+        engine: SoundEngine,
+        baseTime: number | undefined,
+        distortion: number,
+        toneCutoff: number,
+        lofi: number,
+        articulation: number
+      ) => void;
+    }).triggerRatchet(
+      freq,
+      velocity,
+      instrument,
+      x,
+      canvasWidth,
+      xModMode,
+      reverb,
+      filterMultiplier,
+      volumeMultiplier,
+      this.engine,
+      baseTime,
+      distortion,
+      toneCutoff,
+      lofi,
+      articulation
+    );
+  }
+
+  private computeSwingDelay(strokeId: string): number {
+    const parity = this.strokeSwingParity.get(strokeId) ?? 0;
+    this.strokeSwingParity.set(strokeId, parity === 0 ? 1 : 0);
+    if (parity === 1 && this._swing > 0.001) {
+      return this._swing * Math.min(0.18, (60 / Math.max(10, this.bpm)) * 0.25);
+    }
+    return 0;
   }
 
   /**
@@ -1823,10 +2446,24 @@ export class StrokeManager {
     }
     if (this.isPaused || dt <= 0) return;
 
+    const prevClock = this.masterClockTime;
     if (scheduledTime !== undefined) {
       this.masterClockTime = scheduledTime;
     } else {
       this.masterClockTime += dt;
+    }
+
+    const barSec = (60 / Math.max(10, this.bpm)) * 4;
+    const wrappedBar = Math.floor(prevClock / barSec) !== Math.floor(this.masterClockTime / barSec);
+    if (wrappedBar) {
+      if (this.pendingMuteIds.size > 0) {
+        const pending = Array.from(this.pendingMuteIds);
+        this.pendingMuteIds.clear();
+        for (const id of pending) {
+          this.toggleMute(id);
+        }
+      }
+      this.onBarBoundary?.();
     }
 
     // Explicit audio timestamp ONLY during offline simulation; undefined in live play so Web Audio uses live currentTime
@@ -2016,8 +2653,7 @@ export class StrokeManager {
         if (audible) {
           const chord = getHarmonizerFrequencies(stroke.harmonizer, pitch.frequency, pitch.scaleDegree, strokeQuantizer);
           if ((!stroke.droneVoice || !stroke.droneVoice.isPlaying) && this.engine.isReady) {
-            stroke.droneVoice = new DroneVoice(this.engine);
-            stroke.droneVoice.start(pitch.frequency, instrument, effectiveVol, strokeReverb, audioTime, stroke.distortion ?? 0.0, stroke.filterCutoff ?? 1.0, stroke.lofi ?? 0.0);
+            this.startStrokeDroneVoice(stroke, pitch.frequency, audioTime, effectiveVol);
           } else if (stroke.droneVoice) {
             stroke.droneVoice.updateDual(
               pitch.freqA ?? pitch.freq1 ?? pitch.frequency,
@@ -2035,9 +2671,22 @@ export class StrokeManager {
               audioTime
             );
           }
+          if (stroke.instrumentId !== 'onyx' && this.onMidiDroneUpdate) {
+            const normX = Math.max(0, Math.min(1, canvasWidth > 0 ? evalResult.point.x / canvasWidth : 0.5));
+            this.onMidiDroneUpdate({
+              strokeId: stroke.id,
+              instrumentId: stroke.instrumentId,
+              frequency: pitch.frequency,
+              velocity: effectiveVol * effBreathing.volumeMultiplier,
+              normX,
+              curvature: evalResult.curvature,
+              filterCutoff: stroke.filterCutoff ?? 1.0,
+            });
+          }
         } else if (stroke.droneVoice) {
           stroke.droneVoice.stop();
           stroke.droneVoice = null;
+          this.onMidiDroneStop?.(stroke.id);
         }
       } else if (stroke.style === 'dotted') {
         let isTriggerHit = false;
@@ -2070,22 +2719,44 @@ export class StrokeManager {
         ph.lastPitch = pitch;
 
         if (isTriggerHit) {
+          const swingDelaySec = this.computeSwingDelay(stroke.id);
+          const strokeArticulation = stroke.articulation ?? 1.0;
+
           if (this.onTriggerSpark) {
             this.onTriggerSpark(hitScreenX, triggerY, stroke.color, 6, stroke.instrumentId);
           }
           if (stroke.instrumentId === 'onyx') {
-            const drumFreq = pitch.frequency;
             const drumGain = stroke.isPoint ? 1.05 * strokeVol : strokeVol;
-            if (drumFreq < 260) {
-              DrumSynth.triggerKick(0.95 * drumGain, hitScreenX, canvasWidth, this.xModMode, 0, strokeReverb, this.engine, audioTime);
-            } else if (drumFreq < 650) {
-              DrumSynth.triggerSnare(0.9 * drumGain, hitScreenX, canvasWidth, this.xModMode, 0, strokeReverb, this.engine, audioTime);
-            } else if (drumFreq < 2200) {
-              const tomFreq = Math.max(100, Math.min(220, 100 + ((drumFreq - 650) / 1550) * 120));
-              DrumSynth.triggerTom(tomFreq, 0.85 * drumGain, hitScreenX, canvasWidth, this.xModMode, 0, strokeReverb, this.engine, audioTime);
-            } else {
-              DrumSynth.triggerHiHat(true, 0.85 * drumGain, hitScreenX, canvasWidth, this.xModMode, 0, strokeReverb, this.engine, audioTime);
+            const { zone, tomFreq } = resolveDrumZone(pitch.frequency, false);
+            const zoneVel = zone === 'kick' ? 0.95 : zone === 'snare' ? 0.9 : 0.85;
+            switch (zone) {
+              case 'kick':
+                DrumSynth.triggerKick(0.95 * drumGain, hitScreenX, canvasWidth, this.xModMode, swingDelaySec, strokeReverb, this.engine, audioTime);
+                break;
+              case 'snare':
+                DrumSynth.triggerSnare(0.9 * drumGain, hitScreenX, canvasWidth, this.xModMode, swingDelaySec, strokeReverb, this.engine, audioTime);
+                break;
+              case 'clap':
+                DrumSynth.triggerClap(0.85 * drumGain, hitScreenX, canvasWidth, this.xModMode, swingDelaySec, strokeReverb, this.engine, audioTime);
+                break;
+              case 'tom':
+                DrumSynth.triggerTom(tomFreq, 0.85 * drumGain, hitScreenX, canvasWidth, this.xModMode, swingDelaySec, strokeReverb, this.engine, audioTime);
+                break;
+              case 'hihat':
+                DrumSynth.triggerHiHat(true, 0.85 * drumGain, hitScreenX, canvasWidth, this.xModMode, swingDelaySec, strokeReverb, this.engine, audioTime);
+                break;
             }
+            this.onMidiPulse?.({
+              strokeId: stroke.id,
+              instrumentId: stroke.instrumentId,
+              frequency: pitch.frequency,
+              velocity: zoneVel * drumGain,
+              articulation: strokeArticulation,
+              isDrum: true,
+              drumZone: zone,
+              tomFreq,
+              isStriped: false,
+            });
           } else {
             // Apply subtle organic microtonal detune (+/- 35 cents) for vintage acoustic tone flutter
             const microCents = strokeFluctuation > 0
@@ -2097,7 +2768,7 @@ export class StrokeManager {
             chord.frequencies.forEach((f, idx) => {
               const strumDelay = idx * 0.016; // 16ms acoustic strum spread
               const noteVol = (stroke.isPoint ? 1.0 : 0.85) * strokeVol * (chord.gains[idx] ?? 0.8);
-              PulseVoice.trigger(
+              this.triggerPulse(
                 f,
                 false,
                 noteVol,
@@ -2105,16 +2776,25 @@ export class StrokeManager {
                 hitScreenX,
                 canvasWidth,
                 this.xModMode,
-                strumDelay,
+                strumDelay + swingDelaySec,
                 strokeReverb,
                 effBreathing.filterMultiplier,
                 effBreathing.volumeMultiplier,
-                this.engine,
                 audioTime,
                 stroke.distortion ?? 0.0,
                 stroke.filterCutoff ?? 1.0,
-                stroke.lofi ?? 0.0
+                stroke.lofi ?? 0.0,
+                strokeArticulation
               );
+              this.onMidiPulse?.({
+                strokeId: stroke.id,
+                instrumentId: stroke.instrumentId,
+                frequency: f,
+                velocity: noteVol,
+                articulation: strokeArticulation,
+                isDrum: false,
+                isStriped: false,
+              });
             });
           }
         }
@@ -2149,24 +2829,43 @@ export class StrokeManager {
         ph.lastPitch = pitch;
 
         if (isTriggerHit) {
+          const swingDelaySec = this.computeSwingDelay(stroke.id);
+          const strokeArticulation = stroke.articulation ?? 1.0;
+          const swungBaseTime = swingDelaySec > 0
+            ? (audioTime !== undefined
+                ? audioTime + swingDelaySec
+                : (this.engine.isReady && this.engine.context ? this.engine.context.currentTime + swingDelaySec : undefined))
+            : audioTime;
+
           if (this.onTriggerSpark) {
             this.onTriggerSpark(hitScreenX, triggerY, stroke.color, 4, stroke.instrumentId);
           }
           if (stroke.instrumentId === 'onyx') {
-            const drumFreq = pitch.frequency;
             const drumGain = stroke.isPoint ? 1.05 * strokeVol : strokeVol;
-            if (drumFreq < 260) {
-              DrumSynth.triggerRoll('kick', 0.95 * drumGain, hitScreenX, canvasWidth, this.xModMode, 120, strokeReverb, this.engine, audioTime);
-            } else if (drumFreq < 450) {
-              DrumSynth.triggerRoll('snare', 0.9 * drumGain, hitScreenX, canvasWidth, this.xModMode, 120, strokeReverb, this.engine, audioTime);
-            } else if (drumFreq < 650) {
-              DrumSynth.triggerRoll('clap', 0.85 * drumGain, hitScreenX, canvasWidth, this.xModMode, 120, strokeReverb, this.engine, audioTime);
-            } else if (drumFreq < 2200) {
-              const tomFreq = Math.max(100, Math.min(220, 100 + ((drumFreq - 650) / 1550) * 120));
-              DrumSynth.triggerRoll('tom', 0.85 * drumGain, hitScreenX, canvasWidth, this.xModMode, tomFreq, strokeReverb, this.engine, audioTime);
-            } else {
-              DrumSynth.triggerRoll('hihat', 0.85 * drumGain, hitScreenX, canvasWidth, this.xModMode, 120, strokeReverb, this.engine, audioTime);
-            }
+            const { zone, tomFreq } = resolveDrumZone(pitch.frequency, true);
+            const zoneVel = zone === 'kick' ? 0.95 : zone === 'snare' ? 0.9 : 0.85;
+            DrumSynth.triggerRoll(
+              zone,
+              zoneVel * drumGain,
+              hitScreenX,
+              canvasWidth,
+              this.xModMode,
+              zone === 'tom' ? tomFreq : 120,
+              strokeReverb,
+              this.engine,
+              swungBaseTime
+            );
+            this.onMidiPulse?.({
+              strokeId: stroke.id,
+              instrumentId: stroke.instrumentId,
+              frequency: pitch.frequency,
+              velocity: zoneVel * drumGain,
+              articulation: strokeArticulation,
+              isDrum: true,
+              drumZone: zone,
+              tomFreq: zone === 'tom' ? tomFreq : 120,
+              isStriped: true,
+            });
           } else {
             const microCents = strokeFluctuation > 0
               ? getHitJitter(stroke.id, Math.floor(this.masterClockTime * 10) + 59) * strokeFluctuation * 30
@@ -2176,7 +2875,7 @@ export class StrokeManager {
             const chord = getHarmonizerFrequencies(stroke.harmonizer, finalFreq, pitch.scaleDegree, strokeQuantizer);
             chord.frequencies.forEach((f, idx) => {
               const noteVol = (stroke.isPoint ? 1.0 : 0.8) * strokeVol * (chord.gains[idx] ?? 0.8);
-              PulseVoice.triggerRatchet(
+              this.triggerRatchet(
                 f,
                 noteVol,
                 instrument,
@@ -2186,12 +2885,21 @@ export class StrokeManager {
                 strokeReverb,
                 effBreathing.filterMultiplier,
                 effBreathing.volumeMultiplier,
-                this.engine,
-                audioTime,
+                swungBaseTime,
                 stroke.distortion ?? 0.0,
                 stroke.filterCutoff ?? 1.0,
-                stroke.lofi ?? 0.0
+                stroke.lofi ?? 0.0,
+                strokeArticulation
               );
+              this.onMidiPulse?.({
+                strokeId: stroke.id,
+                instrumentId: stroke.instrumentId,
+                frequency: f,
+                velocity: noteVol,
+                articulation: strokeArticulation,
+                isDrum: false,
+                isStriped: true,
+              });
             });
           }
         }
@@ -2199,104 +2907,118 @@ export class StrokeManager {
     }
   }
 
+  private cleanupRemovedStroke(stroke: DrawnStroke, releaseTime?: number): void {
+    const hadVoice = !!stroke.droneVoice;
+    if (stroke.droneVoice) {
+      if (releaseTime !== undefined) {
+        stroke.droneVoice.stop(releaseTime);
+      } else {
+        stroke.droneVoice.stop();
+      }
+      stroke.droneVoice = null;
+    }
+    if (hadVoice || stroke.style === 'solid') {
+      this.onMidiDroneStop?.(stroke.id);
+    }
+    this.strokeSwingParity.delete(stroke.id);
+    this.pendingMuteIds.delete(stroke.id);
+    if (this.hoveredId === stroke.id) {
+      this.hoveredId = null;
+    }
+  }
+
   public undo(): boolean {
-    const action = this.undoStack.pop();
+    const action = this.history.undo();
     if (!action) return false;
 
     if (action.type === 'add') {
       const idx = this.strokes.findIndex((s) => s.id === action.stroke.id);
       if (idx !== -1) {
         const [removed] = this.strokes.splice(idx, 1);
-        removed.droneVoice?.stop();
-        removed.droneVoice = null;
-        if (this.selectedId === removed.id) this.selectedId = null;
-        this.redoStack.push({ type: 'add', stroke: removed });
+        removed.selected = false;
+        this.cleanupRemovedStroke(removed);
+        this.removeFromSelection(removed.id);
       }
     } else if (action.type === 'batchAdd') {
-      const removedStrokes: DrawnStroke[] = [];
       for (const s of action.strokes) {
         const idx = this.strokes.findIndex((st) => st.id === s.id);
         if (idx !== -1) {
           const [removed] = this.strokes.splice(idx, 1);
-          removed.droneVoice?.stop();
-          removed.droneVoice = null;
-          if (this.selectedId === removed.id) this.selectedId = null;
-          this.selectedIds.delete(removed.id);
-          removedStrokes.push(removed);
+          removed.selected = false;
+          this.cleanupRemovedStroke(removed);
+          this.removeFromSelection(removed.id);
         }
       }
-      if (removedStrokes.length > 0) {
-        this.redoStack.push({ type: 'batchAdd', strokes: removedStrokes });
-      }
     } else if (action.type === 'remove') {
-      this.strokes.splice(action.index, 0, action.stroke);
-      if (action.stroke.style === 'solid' && this.engine.isReady && action.stroke.playhead.lastPitch && this.isStrokeAudible(action.stroke)) {
-        const inst = getInstrument(action.stroke.instrumentId);
-        action.stroke.droneVoice = new DroneVoice(this.engine);
-        action.stroke.droneVoice.start(action.stroke.playhead.lastPitch.frequency, inst, action.stroke.volume ?? 1.0, action.stroke.reverb ?? this.defaultReverb);
+      const idx = Math.max(0, Math.min(this.strokes.length, action.index));
+      this.strokes.splice(idx, 0, action.stroke);
+      if (action.stroke.playhead.lastPitch) {
+        this.startStrokeDroneVoice(action.stroke, action.stroke.playhead.lastPitch.frequency);
       }
-      this.redoStack.push({ type: 'remove', stroke: action.stroke, index: action.index });
+    } else if (action.type === 'batchRemove') {
+      for (const s of action.strokes) {
+        if (!this.strokes.some((existing) => existing.id === s.id)) {
+          this.strokes.push(s);
+          if (s.playhead.lastPitch) {
+            this.startStrokeDroneVoice(s, s.playhead.lastPitch.frequency);
+          }
+        }
+      }
     } else if (action.type === 'move') {
       this.translateStroke(action.strokeId, -action.dx, -action.dy, false);
-      this.redoStack.push(action);
     } else if (action.type === 'multiMove') {
       for (const m of action.moves) {
         this.translateStroke(m.strokeId, -m.dx, -m.dy, false);
       }
-      this.redoStack.push(action);
     } else if (action.type === 'revoice') {
       this.revoiceStroke(action.strokeId, action.oldInstrumentId, false);
-      this.redoStack.push(action);
     } else if (action.type === 'volume') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) {
         stroke.volume = action.oldVolume;
         stroke.droneVoice?.setVolume(action.oldVolume);
       }
-      this.redoStack.push(action);
     } else if (action.type === 'reverb') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) {
         stroke.reverb = action.oldReverb;
         stroke.droneVoice?.setReverb(action.oldReverb);
       }
-      this.redoStack.push(action);
     } else if (action.type === 'fluctuation') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) {
         stroke.fluctuation = action.oldFluctuation;
       }
-      this.redoStack.push(action);
     } else if (action.type === 'distortion') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) {
         stroke.distortion = action.oldDistortion;
         stroke.droneVoice?.setDistortion(action.oldDistortion);
       }
-      this.redoStack.push(action);
     } else if (action.type === 'filterCutoff') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) {
         stroke.filterCutoff = action.oldFilterCutoff;
         stroke.droneVoice?.setFilterCutoff(action.oldFilterCutoff);
       }
-      this.redoStack.push(action);
     } else if (action.type === 'lofi') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) {
         stroke.lofi = action.oldLofi;
         stroke.droneVoice?.setLofi(action.oldLofi);
       }
-      this.redoStack.push(action);
+    } else if (action.type === 'articulation') {
+      const stroke = this.strokes.find((s) => s.id === action.strokeId);
+      if (stroke) {
+        stroke.articulation = action.oldArticulation;
+        (stroke.droneVoice as (DroneVoice & { setArticulation?: (v: number) => void }) | null)?.setArticulation?.(action.oldArticulation);
+      }
     } else if (action.type === 'style') {
       this.setStrokeStyle(action.strokeId, action.oldStyle, false);
-      this.redoStack.push(action);
     } else if (action.type === 'loopQuantize') {
       this.setStrokeLoopQuantize(action.strokeId, action.oldLoopQuantize, false);
-      this.redoStack.push(action);
     } else if (action.type === 'traversal') {
       this.setStrokeTraversal(action.strokeId, action.oldTraversal, false);
-      this.redoStack.push(action);
     } else if (action.type === 'timingMode') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) {
@@ -2305,7 +3027,6 @@ export class StrokeManager {
         if (action.oldSpeed !== undefined) stroke.speedMultiplier = action.oldSpeed;
         if (action.oldDuration !== undefined) stroke.duration = action.oldDuration;
       }
-      this.redoStack.push(action);
     } else if (action.type === 'batchTimingMode') {
       for (const r of action.records) {
         const stroke = this.strokes.find((s) => s.id === r.strokeId);
@@ -2316,23 +3037,18 @@ export class StrokeManager {
           if (r.oldDuration !== undefined) stroke.duration = r.oldDuration;
         }
       }
-      this.redoStack.push(action);
     } else if (action.type === 'duration') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) stroke.duration = action.oldDuration;
-      this.redoStack.push(action);
     } else if (action.type === 'speed') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) stroke.speedMultiplier = action.oldSpeed;
-      this.redoStack.push(action);
     } else if (action.type === 'speedMode') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) stroke.speedMode = action.oldSpeedMode;
-      this.redoStack.push(action);
     } else if (action.type === 'harmonizer') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) stroke.harmonizer = action.oldHarmonizer;
-      this.redoStack.push(action);
     } else if (action.type === 'reshape') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) {
@@ -2343,7 +3059,6 @@ export class StrokeManager {
           stroke.playhead.currentDistance = stroke.lut.totalLength > 1 ? stroke.playhead.currentDistance % stroke.lut.totalLength : 0;
         }
       }
-      this.redoStack.push(action);
     } else if (action.type === 'redraw') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) {
@@ -2354,7 +3069,6 @@ export class StrokeManager {
           stroke.playhead.currentDistance = stroke.lut.totalLength > 1 ? stroke.playhead.currentDistance % stroke.lut.totalLength : 0;
         }
       }
-      this.redoStack.push(action);
     } else if (action.type === 'batchSpeed') {
       for (const r of action.records) {
         const stroke = this.strokes.find((s) => s.id === r.strokeId);
@@ -2363,7 +3077,6 @@ export class StrokeManager {
           stroke.duration = r.oldDuration;
         }
       }
-      this.redoStack.push(action);
     } else if (action.type === 'batchVolume') {
       for (const r of action.records) {
         const stroke = this.strokes.find((s) => s.id === r.strokeId);
@@ -2372,104 +3085,101 @@ export class StrokeManager {
           stroke.droneVoice?.setVolume(r.oldVolume);
         }
       }
-      this.redoStack.push(action);
     }
 
+    this._sceneVersion++;
     return true;
   }
 
   public redo(): boolean {
-    const action = this.redoStack.pop();
+    const action = this.history.redo();
     if (!action) return false;
 
     if (action.type === 'add') {
       this.strokes.push(action.stroke);
-      if (action.stroke.style === 'solid' && this.engine.isReady && action.stroke.playhead.lastPitch && this.isStrokeAudible(action.stroke)) {
-        const inst = getInstrument(action.stroke.instrumentId);
-        action.stroke.droneVoice = new DroneVoice(this.engine);
-        action.stroke.droneVoice.start(action.stroke.playhead.lastPitch.frequency, inst, action.stroke.volume ?? 1.0, action.stroke.reverb ?? this.defaultReverb);
+      if (action.stroke.playhead.lastPitch) {
+        this.startStrokeDroneVoice(action.stroke, action.stroke.playhead.lastPitch.frequency);
       }
-      this.undoStack.push(action);
     } else if (action.type === 'batchAdd') {
       for (const s of action.strokes) {
         this.strokes.push(s);
-        if (s.style === 'solid' && this.engine.isReady && s.playhead.lastPitch && this.isStrokeAudible(s) && !this.isPaused) {
-          const inst = getInstrument(s.instrumentId);
-          s.droneVoice = new DroneVoice(this.engine);
-          s.droneVoice.start(s.playhead.lastPitch.frequency, inst, s.volume ?? 1.0, s.reverb ?? this.defaultReverb);
+        if (s.playhead.lastPitch) {
+          this.startStrokeDroneVoice(s, s.playhead.lastPitch.frequency);
         }
       }
-      this.undoStack.push(action);
     } else if (action.type === 'remove') {
       const idx = this.strokes.findIndex((s) => s.id === action.stroke.id);
       if (idx !== -1) {
         const [removed] = this.strokes.splice(idx, 1);
-        removed.droneVoice?.stop();
-        removed.droneVoice = null;
-        if (this.selectedId === removed.id) this.selectedId = null;
-        this.undoStack.push(action);
+        removed.selected = false;
+        this.cleanupRemovedStroke(removed);
+        this.removeFromSelection(removed.id);
+      }
+    } else if (action.type === 'batchRemove') {
+      for (const s of action.strokes) {
+        const idx = this.strokes.findIndex((st) => st.id === s.id);
+        if (idx !== -1) {
+          const [removed] = this.strokes.splice(idx, 1);
+          removed.selected = false;
+          this.cleanupRemovedStroke(removed);
+          this.removeFromSelection(removed.id);
+        }
       }
     } else if (action.type === 'move') {
       this.translateStroke(action.strokeId, action.dx, action.dy, false);
-      this.undoStack.push(action);
     } else if (action.type === 'multiMove') {
       for (const m of action.moves) {
         this.translateStroke(m.strokeId, m.dx, m.dy, false);
       }
-      this.undoStack.push(action);
     } else if (action.type === 'revoice') {
       this.revoiceStroke(action.strokeId, action.newInstrumentId, false);
-      this.undoStack.push(action);
     } else if (action.type === 'volume') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) {
         stroke.volume = action.newVolume;
         stroke.droneVoice?.setVolume(action.newVolume);
       }
-      this.undoStack.push(action);
     } else if (action.type === 'reverb') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) {
         stroke.reverb = action.newReverb;
         stroke.droneVoice?.setReverb(action.newReverb);
       }
-      this.undoStack.push(action);
     } else if (action.type === 'fluctuation') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) {
         stroke.fluctuation = action.newFluctuation;
       }
-      this.undoStack.push(action);
     } else if (action.type === 'distortion') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) {
         stroke.distortion = action.newDistortion;
         stroke.droneVoice?.setDistortion(action.newDistortion);
       }
-      this.undoStack.push(action);
     } else if (action.type === 'filterCutoff') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) {
         stroke.filterCutoff = action.newFilterCutoff;
         stroke.droneVoice?.setFilterCutoff(action.newFilterCutoff);
       }
-      this.undoStack.push(action);
     } else if (action.type === 'lofi') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) {
         stroke.lofi = action.newLofi;
         stroke.droneVoice?.setLofi(action.newLofi);
       }
-      this.undoStack.push(action);
+    } else if (action.type === 'articulation') {
+      const stroke = this.strokes.find((s) => s.id === action.strokeId);
+      if (stroke) {
+        stroke.articulation = action.newArticulation;
+        (stroke.droneVoice as (DroneVoice & { setArticulation?: (v: number) => void }) | null)?.setArticulation?.(action.newArticulation);
+      }
     } else if (action.type === 'style') {
       this.setStrokeStyle(action.strokeId, action.newStyle, false);
-      this.undoStack.push(action);
     } else if (action.type === 'loopQuantize') {
       this.setStrokeLoopQuantize(action.strokeId, action.newLoopQuantize, false);
-      this.undoStack.push(action);
     } else if (action.type === 'traversal') {
       this.setStrokeTraversal(action.strokeId, action.newTraversal, false);
-      this.undoStack.push(action);
     } else if (action.type === 'timingMode') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) {
@@ -2478,7 +3188,6 @@ export class StrokeManager {
         if (action.newSpeed !== undefined) stroke.speedMultiplier = action.newSpeed;
         if (action.newDuration !== undefined) stroke.duration = action.newDuration;
       }
-      this.undoStack.push(action);
     } else if (action.type === 'batchTimingMode') {
       for (const r of action.records) {
         const stroke = this.strokes.find((s) => s.id === r.strokeId);
@@ -2489,23 +3198,18 @@ export class StrokeManager {
           if (r.newDuration !== undefined) stroke.duration = r.newDuration;
         }
       }
-      this.undoStack.push(action);
     } else if (action.type === 'duration') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) stroke.duration = action.newDuration;
-      this.undoStack.push(action);
     } else if (action.type === 'speed') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) stroke.speedMultiplier = action.newSpeed;
-      this.undoStack.push(action);
     } else if (action.type === 'speedMode') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) stroke.speedMode = action.newSpeedMode;
-      this.undoStack.push(action);
     } else if (action.type === 'harmonizer') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) stroke.harmonizer = action.newHarmonizer;
-      this.undoStack.push(action);
     } else if (action.type === 'reshape') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) {
@@ -2516,7 +3220,6 @@ export class StrokeManager {
           stroke.playhead.currentDistance = stroke.lut.totalLength > 1 ? stroke.playhead.currentDistance % stroke.lut.totalLength : 0;
         }
       }
-      this.undoStack.push(action);
     } else if (action.type === 'redraw') {
       const stroke = this.strokes.find((s) => s.id === action.strokeId);
       if (stroke) {
@@ -2527,7 +3230,6 @@ export class StrokeManager {
           stroke.playhead.currentDistance = stroke.lut.totalLength > 1 ? stroke.playhead.currentDistance % stroke.lut.totalLength : 0;
         }
       }
-      this.undoStack.push(action);
     } else if (action.type === 'batchSpeed') {
       for (const r of action.records) {
         const stroke = this.strokes.find((s) => s.id === r.strokeId);
@@ -2536,7 +3238,6 @@ export class StrokeManager {
           stroke.duration = r.newDuration;
         }
       }
-      this.undoStack.push(action);
     } else if (action.type === 'batchVolume') {
       for (const r of action.records) {
         const stroke = this.strokes.find((s) => s.id === r.strokeId);
@@ -2545,59 +3246,59 @@ export class StrokeManager {
           stroke.droneVoice?.setVolume(r.newVolume);
         }
       }
-      this.undoStack.push(action);
     }
 
+    this._sceneVersion++;
     return true;
   }
 
   public deleteSelected(): boolean {
     const ids = this.selectedIds.size > 0 ? Array.from(this.selectedIds) : (this.selectedId ? [this.selectedId] : []);
     if (ids.length === 0) return false;
-    let anyRemoved = false;
-    for (const id of ids) {
-      const idx = this.strokes.findIndex((s) => s.id === id);
-      if (idx !== -1) {
-        const [removed] = this.strokes.splice(idx, 1);
-        removed.droneVoice?.stop();
-        removed.droneVoice = null;
-        this.undoStack.push({ type: 'remove', stroke: removed, index: idx });
-        anyRemoved = true;
+    const idSet = new Set(ids);
+    const removedStrokes: DrawnStroke[] = [];
+    const remainingStrokes: DrawnStroke[] = [];
+    for (const stroke of this.strokes) {
+      if (idSet.has(stroke.id)) {
+        stroke.selected = false;
+        this.cleanupRemovedStroke(stroke);
+        removedStrokes.push(stroke);
+      } else {
+        remainingStrokes.push(stroke);
       }
     }
-    if (anyRemoved) {
-      this.redoStack = [];
-      this.selectedIds.clear();
-      this.selectedId = null;
-      return true;
-    }
-    return false;
+    if (removedStrokes.length === 0) return false;
+    this.strokes = remainingStrokes;
+    this.history.push({ type: 'batchRemove', strokes: removedStrokes });
+    this.selectedIds.clear();
+    this.selectedId = null;
+    this._sceneVersion++;
+    return true;
   }
 
   public removeStroke(id: string): void {
     const idx = this.strokes.findIndex((s) => s.id === id);
     if (idx !== -1) {
       const [stroke] = this.strokes.splice(idx, 1);
-      stroke.droneVoice?.stop();
-      stroke.droneVoice = null;
-      this.undoStack.push({ type: 'remove', stroke, index: idx });
-      this.redoStack = [];
-      this.selectedIds.delete(id);
-      if (this.selectedId === id) this.selectedId = this.selectedIds.size === 1 ? Array.from(this.selectedIds)[0] : null;
+      stroke.selected = false;
+      this.cleanupRemovedStroke(stroke);
+      this.history.push({ type: 'remove', stroke, index: idx });
+      this.removeFromSelection(id);
+      this._sceneVersion++;
     }
   }
 
   public clearAll(releaseTime: number = 0.2): void {
     for (const stroke of this.strokes) {
-      stroke.droneVoice?.stop(releaseTime);
-      stroke.droneVoice = null;
+      this.cleanupRemovedStroke(stroke, releaseTime);
     }
     this.strokes = [];
-    this.undoStack = [];
-    this.redoStack = [];
+    this.history.clear();
     this.selectedIds.clear();
     this.selectedId = null;
     this.hoveredId = null;
+    this.strokeSwingParity.clear();
+    this.pendingMuteIds.clear();
     this.masterClockTime = 0;
     this.isCrossfadingMorph = false;
     this.morphTargetSceneId = null;
@@ -2605,6 +3306,7 @@ export class StrokeManager {
     this.morphOutgoingGain = 1.0;
     this.morphIncomingGain = 0.0;
     this.sceneMorphGain = 1.0;
+    this._sceneVersion++;
   }
 
   /**
@@ -2612,6 +3314,7 @@ export class StrokeManager {
    */
   public resyncAllPlayheads(): void {
     this.masterClockTime = 0;
+    this.strokeSwingParity.clear();
     for (const stroke of this.strokes) {
       stroke.playhead.currentDistance = 0;
       stroke.playhead.direction = 1;
@@ -2619,15 +3322,18 @@ export class StrokeManager {
       stroke.playhead.triggerDistanceAccum = 0;
       stroke.playhead.finished = false;
       stroke.playhead.trail = [];
-      if (stroke.style === 'solid' && !stroke.droneVoice && this.engine.isReady && stroke.playhead.lastPitch && this.isStrokeAudible(stroke) && !this.isPaused) {
-        const inst = getInstrument(stroke.instrumentId);
+      if (stroke.style === 'solid' && !stroke.droneVoice && stroke.playhead.lastPitch) {
         const strokeMorphMult = stroke.morphRole === 'outgoing'
           ? this.morphOutgoingGain
           : stroke.morphRole === 'incoming'
           ? this.morphIncomingGain
           : this.sceneMorphGain;
-        stroke.droneVoice = new DroneVoice(this.engine);
-        stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, (stroke.volume ?? 1.0) * strokeMorphMult, stroke.reverb ?? this.defaultReverb);
+        this.startStrokeDroneVoice(
+          stroke,
+          stroke.playhead.lastPitch.frequency,
+          undefined,
+          (stroke.volume ?? 1.0) * strokeMorphMult
+        );
       }
     }
   }
@@ -2678,10 +3384,13 @@ export class StrokeManager {
           ? this.morphIncomingGain
           : this.sceneMorphGain;
 
-        if (stroke.style === 'solid' && !stroke.droneVoice && this.engine.isReady && stroke.playhead.lastPitch && this.isStrokeAudible(stroke) && !this.isPaused) {
-          const inst = getInstrument(stroke.instrumentId);
-          stroke.droneVoice = new DroneVoice(this.engine);
-          stroke.droneVoice.start(stroke.playhead.lastPitch.frequency, inst, (stroke.volume ?? 1.0) * strokeMorphMult, stroke.reverb ?? this.defaultReverb);
+        if (stroke.style === 'solid' && !stroke.droneVoice && stroke.playhead.lastPitch) {
+          this.startStrokeDroneVoice(
+            stroke,
+            stroke.playhead.lastPitch.frequency,
+            undefined,
+            (stroke.volume ?? 1.0) * strokeMorphMult
+          );
         }
 
         if (stroke.droneVoice && stroke.playhead.lastPitch) {
@@ -2821,8 +3530,7 @@ export class StrokeManager {
         if (audible) {
           const chord = getHarmonizerFrequencies(stroke.harmonizer, pitch.frequency, pitch.scaleDegree, strokeQuantizer);
           if ((!stroke.droneVoice || !stroke.droneVoice.isPlaying) && this.engine.isReady) {
-            stroke.droneVoice = new DroneVoice(this.engine);
-            stroke.droneVoice.start(pitch.frequency, instrument, strokeVol, strokeReverb);
+            this.startStrokeDroneVoice(stroke, pitch.frequency, undefined, strokeVol);
           } else if (stroke.droneVoice) {
             stroke.droneVoice.updateDual(
               pitch.freqA ?? pitch.freq1 ?? pitch.frequency,
@@ -2844,6 +3552,55 @@ export class StrokeManager {
         const triggerY = Math.max(0, Math.min(maxY, evalResult.point.y));
         const pitch = strokeQuantizer.quantizeDiscrete(triggerY, canvasHeight);
         ph.lastPitch = pitch;
+      } else if (stroke.style === 'striped') {
+        ph.triggerDistanceAccum = (ph.triggerDistanceAccum ?? 0) + Math.abs(scrubDist);
+        const triggerY = Math.max(0, Math.min(maxY, evalResult.point.y));
+        const pitch = strokeQuantizer.quantizeDiscrete(triggerY, canvasHeight);
+        ph.lastPitch = pitch;
+
+        const rollSpacing = Math.min(40, Math.max(12, L / 2));
+        if ((ph.triggerDistanceAccum ?? 0) >= rollSpacing) {
+          ph.triggerDistanceAccum = (ph.triggerDistanceAccum ?? 0) % rollSpacing;
+          ph.lastTriggerDistance = nextDist;
+          if (audible) {
+            if (stroke.instrumentId === 'onyx') {
+              const drumGain = stroke.isPoint ? 1.05 * strokeVol : strokeVol;
+              const { zone, tomFreq } = resolveDrumZone(pitch.frequency, true);
+              const zoneVel = zone === 'kick' ? 0.95 : zone === 'snare' ? 0.9 : 0.85;
+              DrumSynth.triggerRoll(
+                zone,
+                zoneVel * drumGain,
+                evalResult.point.x,
+                canvasWidth,
+                this.xModMode,
+                zone === 'tom' ? tomFreq : 120,
+                strokeReverb,
+                this.engine
+              );
+            } else {
+              const chord = getHarmonizerFrequencies(stroke.harmonizer, pitch.frequency, pitch.scaleDegree, strokeQuantizer);
+              chord.frequencies.forEach((f, idx) => {
+                const noteVol = (stroke.isPoint ? 1.0 : 0.8) * strokeVol * (chord.gains[idx] ?? 0.8);
+                this.triggerRatchet(
+                  f,
+                  noteVol,
+                  instrument,
+                  evalResult.point.x,
+                  canvasWidth,
+                  this.xModMode,
+                  strokeReverb,
+                  breathing.filterMultiplier,
+                  breathing.volumeMultiplier,
+                  undefined,
+                  stroke.distortion ?? 0.0,
+                  stroke.filterCutoff ?? 1.0,
+                  stroke.lofi ?? 0.0,
+                  stroke.articulation ?? 1.0
+                );
+              });
+            }
+          }
+        }
       }
     }
   }
@@ -2870,6 +3627,8 @@ export class StrokeManager {
       xAxisModulationMode: this.xModMode,
       breathingMode: this.breathingMode,
       defaultHarmonizer: this.defaultHarmonizer,
+      swing: this._swing,
+      quantizedTriggering: this._quantizedTriggering,
       strokes: this.strokes.filter((s) => s.morphRole !== 'incoming').map((s) => ({
         id: s.id,
         instrumentId: s.instrumentId,
@@ -2887,6 +3646,7 @@ export class StrokeManager {
         distortion: s.distortion ?? 0.0,
         filterCutoff: s.filterCutoff ?? 1.0,
         lofi: s.lofi ?? 0.0,
+        articulation: s.articulation ?? 1.0,
         isPoint: s.isPoint,
         muted: !!s.muted,
         path: JSON.parse(JSON.stringify(s.path)),
@@ -2920,8 +3680,18 @@ export class StrokeManager {
     quantizer?: ScaleQuantizer,
     canvasHeight?: number,
     canvasWidth?: number,
-    releaseOldVoicesTime: number = 0.2
+    releaseOldVoicesTimeOrOptions: number | ImportCompositionOptions = 0.2,
+    options?: ImportCompositionOptions
   ): void {
+    const resolvedOptions: ImportCompositionOptions =
+      typeof releaseOldVoicesTimeOrOptions === 'object' && releaseOldVoicesTimeOrOptions !== null
+        ? releaseOldVoicesTimeOrOptions
+        : (options ?? {});
+    const releaseOldVoicesTime =
+      typeof releaseOldVoicesTimeOrOptions === 'number'
+        ? releaseOldVoicesTimeOrOptions
+        : (resolvedOptions.releaseOldVoicesTime ?? 0.2);
+
     this.clearAll(releaseOldVoicesTime);
     this.setBpm(data.bpm);
     if (data.xAxisModulationMode) {
@@ -2932,6 +3702,12 @@ export class StrokeManager {
     }
     if (data.defaultHarmonizer) {
       this.setDefaultStrokeHarmonizer(data.defaultHarmonizer);
+    }
+    if (typeof data.swing === 'number') {
+      this.setSwing(data.swing);
+    }
+    if (typeof data.quantizedTriggering === 'boolean') {
+      this.setQuantizedTriggering(data.quantizedTriggering);
     }
 
     // Determine horizontal scale factor to prevent lines falling off the right window margin
@@ -2953,10 +3729,19 @@ export class StrokeManager {
       }
     }
 
-    for (const s of data.strokes) {
-      this.createStrokeFromSaved(s, scaleX, quantizer, canvasHeight);
+    let scaleY = 1.0;
+    if (canvasHeight && canvasHeight > 0 && typeof data.canvasHeight === 'number' && data.canvasHeight > 0 && data.canvasHeight !== canvasHeight) {
+      scaleY = canvasHeight / data.canvasHeight;
     }
-    this.randomizeAllPlayheads(quantizer, canvasHeight);
+
+    for (const s of data.strokes) {
+      const fixedId = resolvedOptions.preserveIds ? s.id : undefined;
+      this.createStrokeFromSaved(s, scaleX, quantizer, canvasHeight, scaleY, fixedId);
+    }
+    if (resolvedOptions.randomizePlayheads !== false) {
+      this.randomizeAllPlayheads(quantizer, canvasHeight);
+    }
+    this._sceneVersion++;
   }
 
   /**
@@ -2966,22 +3751,38 @@ export class StrokeManager {
     s: SavedStroke,
     scaleX: number = 1.0,
     quantizer?: ScaleQuantizer,
-    canvasHeight?: number
+    canvasHeight?: number,
+    scaleY: number = 1.0,
+    fixedId?: string,
+    startVolumeOverride?: number
   ): DrawnStroke {
+    const maxWorldY = quantizer && canvasHeight && canvasHeight > 0
+      ? (quantizer.isScrollEnabled ? quantizer.getWorldHeight(canvasHeight) : canvasHeight)
+      : undefined;
+    const scaleYCoord = (y: number): number => {
+      if (scaleY === 1.0) return y;
+      const scaled = y * scaleY;
+      if (maxWorldY !== undefined) {
+        return Math.max(0, Math.min(maxWorldY, scaled));
+      }
+      return Math.max(0, scaled);
+    };
+
     const clonedPath: SplinePath = {
       isClosed: s.path.isClosed,
       segments: s.path.segments.map((seg) => ({
-        p0: { x: seg.p0.x * scaleX, y: seg.p0.y },
-        p1: { x: seg.p1.x * scaleX, y: seg.p1.y },
-        p2: { x: seg.p2.x * scaleX, y: seg.p2.y },
-        p3: { x: seg.p3.x * scaleX, y: seg.p3.y },
+        p0: { x: seg.p0.x * scaleX, y: scaleYCoord(seg.p0.y) },
+        p1: { x: seg.p1.x * scaleX, y: scaleYCoord(seg.p1.y) },
+        p2: { x: seg.p2.x * scaleX, y: scaleYCoord(seg.p2.y) },
+        p3: { x: seg.p3.x * scaleX, y: scaleYCoord(seg.p3.y) },
       })),
     };
 
     const clonedWave = s.waveParams ? {
       ...s.waveParams,
-      baseP0: { x: s.waveParams.baseP0.x * scaleX, y: s.waveParams.baseP0.y },
-      baseP1: { x: s.waveParams.baseP1.x * scaleX, y: s.waveParams.baseP1.y },
+      amplitude: s.waveParams.amplitude * scaleY,
+      baseP0: { x: s.waveParams.baseP0.x * scaleX, y: scaleYCoord(s.waveParams.baseP0.y) },
+      baseP1: { x: s.waveParams.baseP1.x * scaleX, y: scaleYCoord(s.waveParams.baseP1.y) },
     } : undefined;
 
     const stroke = this.addStroke(
@@ -3005,9 +3806,12 @@ export class StrokeManager {
       s.isPoint ?? false,
       s.distortion ?? 0.0,
       s.filterCutoff ?? 1.0,
-      s.lofi ?? 0.0
+      s.lofi ?? 0.0,
+      !!s.muted,
+      fixedId,
+      startVolumeOverride,
+      s.articulation ?? 1.0
     );
-    if (s.muted) stroke.muted = true;
     if (clonedWave) stroke.waveParams = clonedWave;
     return stroke;
   }
@@ -3044,10 +3848,14 @@ export class StrokeManager {
       s.morphGain = 1.0;
     }
 
-    // 2. Compute horizontal scale factor for incoming strokes if needed
+    // 2. Compute scale factors for incoming strokes if needed
     let scaleX = 1.0;
     if (canvasWidth && canvasWidth > 0 && typeof incomingComp.canvasWidth === 'number' && incomingComp.canvasWidth > 0) {
       scaleX = canvasWidth / incomingComp.canvasWidth;
+    }
+    let scaleY = 1.0;
+    if (canvasHeight && canvasHeight > 0 && typeof incomingComp.canvasHeight === 'number' && incomingComp.canvasHeight > 0 && incomingComp.canvasHeight !== canvasHeight) {
+      scaleY = canvasHeight / incomingComp.canvasHeight;
     }
 
     // Initialize quantizer dedicated to incoming scene scale/root
@@ -3058,10 +3866,14 @@ export class StrokeManager {
       root: targetRoot,
       octaveSpan: quantizer ? quantizer.getConfig().octaveSpan : 4,
     });
+    if (quantizer) {
+      this.morphIncomingQuantizer.setScrollEnabled(quantizer.isScrollEnabled);
+      this.morphIncomingQuantizer.setScrollY(quantizer.scrollY);
+    }
 
     // 3. Instantiate incoming strokes, mark as incoming, and start at 0 gain
     for (const s of incomingComp.strokes) {
-      const stroke = this.createStrokeFromSaved(s, scaleX, this.morphIncomingQuantizer, canvasHeight);
+      const stroke = this.createStrokeFromSaved(s, scaleX, this.morphIncomingQuantizer, canvasHeight, scaleY, undefined, 0);
       stroke.morphRole = 'incoming';
       stroke.morphGain = 0.0;
       if (stroke.droneVoice) {
@@ -3071,6 +3883,7 @@ export class StrokeManager {
 
     // Activate voices for incoming strokes so their audio is live
     this.activateAudioVoices();
+    this._sceneVersion++;
   }
 
   /**
@@ -3107,6 +3920,7 @@ export class StrokeManager {
       }
     }
 
+    this._sceneVersion++;
     return { outgoingGain: outGain, incomingGain: inGain, reverbBoost };
   }
 
@@ -3120,8 +3934,7 @@ export class StrokeManager {
     // Release outgoing drone voices with gentle release
     for (const s of this.strokes) {
       if (s.morphRole === 'outgoing') {
-        s.droneVoice?.stop(0.35);
-        s.droneVoice = null;
+        this.cleanupRemovedStroke(s, 0.35);
       }
     }
 
@@ -3134,9 +3947,15 @@ export class StrokeManager {
       delete s.morphGain;
     }
 
-    // Deselect any removed stroke
-    if (this.selectedId && !this.strokes.some((s) => s.id === this.selectedId)) {
-      this.selectedId = null;
+    // Deselect any removed strokes
+    const survivingIds = new Set(this.strokes.map((s) => s.id));
+    for (const id of Array.from(this.selectedIds)) {
+      if (!survivingIds.has(id)) {
+        this.selectedIds.delete(id);
+      }
+    }
+    if (this.selectedId && !survivingIds.has(this.selectedId)) {
+      this.selectedId = this.selectedIds.size === 1 ? Array.from(this.selectedIds)[0] : null;
     }
 
     this.isCrossfadingMorph = false;
@@ -3145,6 +3964,7 @@ export class StrokeManager {
     this.morphOutgoingGain = 1.0;
     this.morphIncomingGain = 1.0;
     this.sceneMorphGain = 1.0;
+    this._sceneVersion++;
   }
 
   /**
@@ -3155,8 +3975,7 @@ export class StrokeManager {
 
     for (const s of this.strokes) {
       if (s.morphRole === 'incoming') {
-        s.droneVoice?.stop(0.2);
-        s.droneVoice = null;
+        this.cleanupRemovedStroke(s, 0.2);
       }
     }
 
@@ -3167,12 +3986,23 @@ export class StrokeManager {
       delete s.morphGain;
     }
 
+    const survivingIds = new Set(this.strokes.map((s) => s.id));
+    for (const id of Array.from(this.selectedIds)) {
+      if (!survivingIds.has(id)) {
+        this.selectedIds.delete(id);
+      }
+    }
+    if (this.selectedId && !survivingIds.has(this.selectedId)) {
+      this.selectedId = this.selectedIds.size === 1 ? Array.from(this.selectedIds)[0] : null;
+    }
+
     this.isCrossfadingMorph = false;
     this.morphTargetSceneId = null;
     this.morphIncomingQuantizer = null;
     this.morphOutgoingGain = 1.0;
     this.morphIncomingGain = 0.0;
     this.sceneMorphGain = 1.0;
+    this._sceneVersion++;
   }
 }
 

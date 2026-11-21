@@ -2,6 +2,8 @@ import { SplinePath, ArcLengthLUT, Point2D, CurveEvaluation } from '../math/type
 import { DroneVoice, XAxisModulationMode } from '../audio/synthVoice';
 import { PitchResult } from '../audio/scaleQuantizer';
 import { WaveParams, WaveShapeType } from '../math/waveShape';
+import type { SceneData } from './sceneManager';
+import type { ReverbType } from '../audio/audioContext';
 
 import { BreathingMode } from '../audio/breathing';
 
@@ -58,6 +60,7 @@ export interface DrawnStroke {
   distortion?: number; // 0.0 to 1.0 overdrive / saturation (default 0.0)
   filterCutoff?: number; // 0.0 (warm/dark) to 1.0 (open/bright, default 1.0)
   lofi?: number; // 0.0 (clean hi-fi) to 1.0 (lo-fi bitcrush & grit, default 0.0)
+  articulation?: number; // 0.2 (staccato) to 2.5 (legato), default 1.0
 }
 
 export interface SavedComposition {
@@ -81,6 +84,14 @@ export interface SavedComposition {
   autoSmooth?: boolean;
   snapPitch?: boolean;
   theme?: string;
+  reverbType?: ReverbType;
+  stereoWidth?: number;
+  tapeWarmth?: number;
+  duckingDepth?: number;
+  swing?: number;
+  beatGridVisible?: boolean;
+  quantizedTriggering?: boolean;
+  scenes?: SceneData[];
   strokes: Array<{
     id: string;
     instrumentId: string;
@@ -98,6 +109,7 @@ export interface SavedComposition {
     distortion?: number;
     filterCutoff?: number;
     lofi?: number;
+    articulation?: number; // 0.2 (staccato) to 2.5 (legato), default 1.0
     isPoint?: boolean;
     muted?: boolean;
     path: SplinePath;

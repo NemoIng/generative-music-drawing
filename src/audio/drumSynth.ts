@@ -41,6 +41,34 @@ export class DrumSynth {
   }
 
   /**
+   * Detaches completed drum voice nodes and send gains once playback finishes.
+   */
+  private static attachVoiceCleanup(
+    source: AudioScheduledSourceNode,
+    panner: StereoPannerNode,
+    sends?: { reverbSendGain?: GainNode; delaySendGain?: GainNode }
+  ): void {
+    try {
+      source.onended = () => {
+        try {
+          source.onended = null;
+        } catch {}
+        try {
+          panner.disconnect();
+        } catch {}
+        try {
+          sends?.reverbSendGain?.disconnect();
+        } catch {}
+        try {
+          sends?.delaySendGain?.disconnect();
+        } catch {}
+      };
+    } catch {
+      // Ignored on minimal mock AudioScheduledSourceNode objects
+    }
+  }
+
+  /**
    * Triggers a punchy 808-style analog bass drum.
    */
   public static triggerKick(
@@ -91,7 +119,8 @@ export class DrumSynth {
     gain.connect(panner);
 
     // Kicks are routed primarily dry with optional subtle sub-reverb
-    engine.connectVoice(panner, 0.0, Math.min(1, reverb * 0.25));
+    const sends = engine.connectVoice(panner, 0.0, Math.min(1, reverb * 0.25));
+    this.attachVoiceCleanup(osc, panner, sends);
 
     // Momentary sidechain ducking pulse on master bus if ducking dynamics is enabled
     engine.triggerDucking(velocity, 0.28, now);
@@ -163,7 +192,8 @@ export class DrumSynth {
     masterSnareGain.connect(panner);
 
     // Snares have subtle reverb send for acoustic space
-    engine.connectVoice(panner, 0.15, reverb);
+    const sends = engine.connectVoice(panner, 0.15, reverb);
+    this.attachVoiceCleanup(noiseSource, panner, sends);
 
     bodyOsc.start(now);
     noiseSource.start(now);
@@ -215,7 +245,8 @@ export class DrumSynth {
     filter.connect(gain);
     gain.connect(panner);
 
-    engine.connectVoice(panner, isClosed ? 0.08 : 0.25, isClosed ? Math.min(1, reverb * 0.6) : reverb);
+    const sends = engine.connectVoice(panner, isClosed ? 0.08 : 0.25, isClosed ? Math.min(1, reverb * 0.6) : reverb);
+    this.attachVoiceCleanup(noiseSource, panner, sends);
 
     noiseSource.start(now);
     noiseSource.stop(now + decayTime + 0.02);
@@ -255,7 +286,6 @@ export class DrumSynth {
     const gain = ctx.createGain();
 
     // 3 pre-bursts (11ms intervals) + main decay
-    gain.gain.setValueAtTime(0.001, now);
     gain.gain.setValueAtTime(0.55 * velocity, now);
     gain.gain.exponentialRampToValueAtTime(0.01, now + 0.01);
     gain.gain.setValueAtTime(0.65 * velocity, now + 0.012);
@@ -267,7 +297,8 @@ export class DrumSynth {
     filter.connect(gain);
     gain.connect(panner);
 
-    engine.connectVoice(panner, 0.2, reverb);
+    const sends = engine.connectVoice(panner, 0.2, reverb);
+    this.attachVoiceCleanup(noiseSource, panner, sends);
 
     noiseSource.start(now);
     noiseSource.stop(now + 0.26);
@@ -313,7 +344,8 @@ export class DrumSynth {
     osc.connect(gain);
     gain.connect(panner);
 
-    engine.connectVoice(panner, 0.18, reverb);
+    const sends = engine.connectVoice(panner, 0.18, reverb);
+    this.attachVoiceCleanup(osc, panner, sends);
 
     osc.start(now);
     osc.stop(now + 0.3);

@@ -277,5 +277,116 @@ describe('Coordinate-to-Pitch Scale Quantizer (Non-linear 110 Hz to 8000 Hz)', (
     expect(noteNamesMixo).toContain('A#3'); // or Bb
     expect(noteNamesMixo).not.toContain('B3');
   });
+
+  it('identifies perfect fifths (7 semitones) accurately via isFifth on pentatonic scales and negative scale degrees', () => {
+    for (const scale of [SCALES.minorPentatonic, SCALES.majorPentatonic]) {
+      const quantizer = new ScaleQuantizer({
+        scale,
+        root: ROOT_NOTES.A3, // 220 Hz -> negative degree -2 (E3 ≈ 164.81 Hz) stays above 110 Hz
+      });
+
+      const guidelines = quantizer.getAllGuidelines(canvasHeight);
+
+      // Degree -2 is -5 semitones from A3 = E3 (perfect fifth mod 12: (-5 % 12 + 12) % 12 === 7)
+      const negFifth = guidelines.find((g) => g.scaleDegree === -2);
+      expect(negFifth).toBeDefined();
+      expect(negFifth?.noteName).toBe('E3');
+      expect(negFifth?.isRoot).toBe(false);
+      expect(negFifth?.isFifth).toBe(true);
+
+      // Degree +3 on both minor [0,3,5,7,10] and major [0,2,4,7,9] pentatonic is +7 semitones = E4
+      const posFifth = guidelines.find((g) => g.scaleDegree === 3);
+      expect(posFifth).toBeDefined();
+      expect(posFifth?.noteName).toBe('E4');
+      expect(posFifth?.isRoot).toBe(false);
+      expect(posFifth?.isFifth).toBe(true);
+
+      // Non-fifth degrees must not be flagged as fifths
+      const degNeg1 = guidelines.find((g) => g.scaleDegree === -1);
+      const deg4 = guidelines.find((g) => g.scaleDegree === 4);
+      expect(degNeg1?.isFifth).toBe(false);
+      expect(deg4?.isFifth).toBe(false);
+
+      // Every fifth guideline must be non-root and exactly 7 semitones above root mod 12
+      const fifths = guidelines.filter((g) => g.isFifth);
+      expect(fifths.length).toBeGreaterThanOrEqual(3);
+      for (const g of fifths) {
+        expect(g.isRoot).toBe(false);
+        const semitones = quantizer.getSemitonesForDegree(g.scaleDegree);
+        expect(((semitones % 12) + 12) % 12).toBe(7);
+      }
+    }
+  });
+
+  it('getRootWorldY honors MARGIN_Y via normalizedUToWorldY', () => {
+    const quantizerA2 = new ScaleQuantizer({ root: ROOT_NOTES.A2 }); // 110 Hz -> u = 0
+    const worldH = quantizerA2.getWorldHeight(canvasHeight);
+    expect(quantizerA2.getRootWorldY(canvasHeight)).toBe(worldH - ScaleQuantizer.MARGIN_Y);
+    expect(quantizerA2.getRootWorldY(canvasHeight)).toBe(quantizerA2.normalizedUToWorldY(0, canvasHeight));
+
+    for (const root of [ROOT_NOTES.D3, ROOT_NOTES.A3]) {
+      const q = new ScaleQuantizer({ root });
+      const u = ScaleQuantizer.frequencyToNormalizedU(root.frequency);
+      const rootY = q.getRootWorldY(canvasHeight);
+      expect(rootY).toBe(q.normalizedUToWorldY(u, canvasHeight));
+      expect(q.quantizeContinuousWorld(rootY, canvasHeight).frequency).toBeCloseTo(root.frequency, 2);
+    }
+  });
+
+  it('getAllGuidelines memoizes identical inputs and invalidates cache on updateConfig()', () => {
+    const quantizer = new ScaleQuantizer({
+      scale: SCALES.dorian,
+      root: ROOT_NOTES.D2,
+      octaveSpan: 4,
+    });
+
+    const first = quantizer.getAllGuidelines(canvasHeight);
+    const second = quantizer.getAllGuidelines(canvasHeight);
+    expect(second).toBe(first);
+
+    // Changing config clears the memoization cache
+    quantizer.updateConfig({ scale: SCALES.lydian });
+    const third = quantizer.getAllGuidelines(canvasHeight);
+    expect(third).not.toBe(first);
+    expect(quantizer.getAllGuidelines(canvasHeight)).toBe(third);
+
+    // Restoring original config produces a freshly computed array rather than stale cached object
+    quantizer.updateConfig({ scale: SCALES.dorian });
+    const fourth = quantizer.getAllGuidelines(canvasHeight);
+    expect(fourth).not.toBe(first);
+  });
+
+  it('getGuidelines remaps to [0, canvasHeight] canvas coordinates when isScrollEnabled is false', () => {
+    const quantizer = new ScaleQuantizer({
+      scale: SCALES.dorian,
+      root: ROOT_NOTES.D2,
+      octaveSpan: 4,
+    });
+    expect(quantizer.isScrollEnabled).toBe(false);
+
+    const worldBefore = quantizer.getAllGuidelines(canvasHeight).map((g) => g.y);
+    const guidelines = quantizer.getGuidelines(canvasHeight);
+    expect(guidelines.length).toBeGreaterThan(20);
+
+    for (const g of guidelines) {
+      expect(g.y).toBeGreaterThanOrEqual(0);
+      expect(g.y).toBeLessThanOrEqual(canvasHeight);
+      expect(g.screenY).toBe(g.y);
+      const expectedY = quantizer.normalizedUToCanvasY(
+        ScaleQuantizer.frequencyToNormalizedU(g.frequency),
+        canvasHeight
+      );
+      expect(g.y).toBeCloseTo(expectedY, 6);
+    }
+
+    const bottomLine = guidelines.find((g) => Math.abs(g.frequency - ScaleQuantizer.MIN_FREQ) < 0.5);
+    const topLine = guidelines.find((g) => Math.abs(g.frequency - ScaleQuantizer.MAX_FREQ) < 0.5);
+    expect(bottomLine?.y).toBe(canvasHeight - ScaleQuantizer.MARGIN_Y);
+    expect(topLine?.y).toBe(ScaleQuantizer.MARGIN_Y);
+
+    // Remapping must not mutate cached world guidelines
+    const worldAfter = quantizer.getAllGuidelines(canvasHeight).map((g) => g.y);
+    expect(worldAfter).toEqual(worldBefore);
+  });
 });
 

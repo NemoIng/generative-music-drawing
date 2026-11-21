@@ -32,6 +32,8 @@ export class DroneVoice {
   private toneFilterNode: BiquadFilterNode | null = null;
   private pannerNode: StereoPannerNode | null = null;
   private reverbSendGain: GainNode | null = null;
+  private delaySendGain: GainNode | null = null;
+  private harmonyFilter: BiquadFilterNode | null = null;
   private harmonyVoices: Array<{ osc: OscillatorNode; gain: GainNode }> = [];
 
   private _isPlaying = false;
@@ -46,6 +48,17 @@ export class DroneVoice {
   private distortion: number = 0.0;
   private filterCutoff: number = 1.0;
   private currentMasterGain: number = 0.26;
+
+  // Stored modulation state so instrument swaps preserve spatial & timbral modulation
+  private lastCurvature = 0;
+  private lastX = 0;
+  private lastCanvasWidth = 1;
+  private lastXModMode: XAxisModulationMode = 'panAndTone';
+  private lastFilterMultiplier = 1.0;
+  private hasModulationUpdate = false;
+
+  private static readonly shaperCurveCache = new Map<string, Float32Array<ArrayBuffer>>();
+  private static readonly MAX_SHAPER_CACHE_SIZE = 128;
 
   constructor(engine: SoundEngine = soundEngine) {
     this.engine = engine;
@@ -88,6 +101,7 @@ export class DroneVoice {
   }
 
   private lofi: number = 0.0;
+  private articulation = 1.0;
 
   public get currentDistortion(): number {
     return this.distortion;
@@ -99,6 +113,14 @@ export class DroneVoice {
 
   public get currentLofi(): number {
     return this.lofi;
+  }
+
+  public get currentArticulation(): number {
+    return this.articulation;
+  }
+
+  public setArticulation(val: number): void {
+    this.articulation = Math.max(0.2, Math.min(2.5, val));
   }
 
   public setVolume(volume: number, scheduledTime?: number): void {
@@ -149,39 +171,51 @@ export class DroneVoice {
    * Generates a combined audio transfer curve supporting analog overdrive and lo-fi quantization grit.
    */
   public static createDriveAndLofiCurve(distortion: number, lofi: number, samples = 512): Float32Array<ArrayBuffer> {
+    const dist = Math.max(0, Math.min(1, distortion));
+    const cr = Math.max(0, Math.min(1, lofi));
+    const cacheKey = `${Math.round(dist * 100)}:${Math.round(cr * 100)}:${samples}`;
+    const cached = DroneVoice.shaperCurveCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const buffer = new ArrayBuffer(samples * 4);
     const curve = new Float32Array(buffer);
     const half = samples / 2;
-
-    const dist = Math.max(0, Math.min(1, distortion));
-    const cr = Math.max(0, Math.min(1, lofi));
 
     if (dist <= 0.001 && cr <= 0.001) {
       for (let i = 0; i < samples; i++) {
         curve[i] = (i - half) / half;
       }
-      return curve;
+    } else {
+      // 1. Warm hyperbolic drive saturation to hard clip
+      const k = 1.0 + dist * 9.0;
+      const norm = Math.tanh(k);
+
+      // 2. Stepped quantization levels (lofi: 1.0 -> ~5 steps, 0.5 -> ~12 steps, 0.0 -> continuous)
+      const steps = cr > 0.001 ? Math.max(4, Math.round(32 * (1.0 - cr * 0.85))) : 0;
+
+      for (let i = 0; i < samples; i++) {
+        const x = (i - half) / half;
+        let y = Math.tanh(x * k) / norm;
+
+        if (steps > 0) {
+          // Bit-depth quantization emulation
+          const quantized = Math.round(y * steps) / steps;
+          // Blend quantized step with original driven signal based on crunch depth
+          y = y * (1.0 - cr) + quantized * cr;
+        }
+
+        curve[i] = Math.max(-1, Math.min(1, y));
+      }
     }
 
-    // 1. Warm hyperbolic drive saturation to hard clip
-    const k = 1.0 + dist * 9.0;
-    const norm = Math.tanh(k);
-
-    // 2. Stepped quantization levels (lofi: 1.0 -> ~5 steps, 0.5 -> ~12 steps, 0.0 -> continuous)
-    const steps = cr > 0.001 ? Math.max(4, Math.round(32 * (1.0 - cr * 0.85))) : 0;
-
-    for (let i = 0; i < samples; i++) {
-      const x = (i - half) / half;
-      let y = Math.tanh(x * k) / norm;
-
-      if (steps > 0) {
-        // Bit-depth quantization emulation
-        const quantized = Math.round(y * steps) / steps;
-        // Blend quantized step with original driven signal based on crunch depth
-        y = y * (1.0 - cr) + quantized * cr;
+    DroneVoice.shaperCurveCache.set(cacheKey, curve);
+    if (DroneVoice.shaperCurveCache.size > DroneVoice.MAX_SHAPER_CACHE_SIZE) {
+      const oldestKey = DroneVoice.shaperCurveCache.keys().next().value;
+      if (oldestKey !== undefined) {
+        DroneVoice.shaperCurveCache.delete(oldestKey);
       }
-
-      curve[i] = Math.max(-1, Math.min(1, y));
     }
     return curve;
   }
@@ -208,6 +242,16 @@ export class DroneVoice {
     const ctx = this.engine.context;
     const now = startTime !== undefined ? startTime : ctx.currentTime;
     this.currentFreq = initialFreq;
+    this.currentFreqA = initialFreq;
+    this.currentFreqB = initialFreq;
+    this.currentGainA = 1.0;
+    this.currentGainB = 0.0;
+    this.hasModulationUpdate = false;
+    this.lastCurvature = 0;
+    this.lastX = 0;
+    this.lastCanvasWidth = 1;
+    this.lastXModMode = 'panAndTone';
+    this.lastFilterMultiplier = 1.0;
     this.volume = Math.max(0, Math.min(1, volume));
     this.reverb = Math.max(0, Math.min(1, reverb));
     this.distortion = Math.max(0, Math.min(1, distortion));
@@ -243,7 +287,18 @@ export class DroneVoice {
     this.distortionNode.connect(this.toneFilterNode);
     this.toneFilterNode.connect(this.pannerNode);
     const sends = this.engine.connectVoice(this.pannerNode, 0.35, this.reverb);
-    this.reverbSendGain = sends.reverbSendGain ?? null;
+    this.reverbSendGain = sends?.reverbSendGain ?? null;
+    this.delaySendGain = sends?.delaySendGain ?? null;
+
+    // Shared filter for chord harmony voices so they match the instrument's timbral contour
+    this.harmonyFilter = ctx.createBiquadFilter();
+    this.harmonyFilter.type = p.filterType;
+    this.harmonyFilter.frequency.setValueAtTime(
+      Math.max(120, Math.min(p.maxCutoff, initialFreq * p.baseCutoffMultiplier)),
+      now
+    );
+    this.harmonyFilter.Q.setValueAtTime(p.baseQ, now);
+    this.harmonyFilter.connect(this.masterGainNode);
 
     // --- Helper to build an oscillator bank ---
     const buildBank = (freq: number) => {
@@ -317,23 +372,73 @@ export class DroneVoice {
     if (this._isPlaying) {
       const now = this.engine.context.currentTime;
       const p = instrument.drone;
-      const updateBankTypes = (
+      const updateBank = (
         osc1: OscillatorNode | null,
         osc2: OscillatorNode | null,
         sub: OscillatorNode | null,
-        filter: BiquadFilterNode | null
+        filter: BiquadFilterNode | null,
+        freq: number
       ) => {
         if (osc1) osc1.type = p.osc1Type;
-        if (osc2) osc2.type = p.osc2Type;
-        if (sub) sub.type = p.subType;
+        if (osc2) {
+          osc2.type = p.osc2Type;
+          osc2.frequency.setTargetAtTime(freq * p.osc2IntervalRatio, now, 0.035);
+        }
+        if (sub) {
+          sub.type = p.subType;
+          sub.frequency.setTargetAtTime(freq * 0.5, now, 0.035);
+        }
         if (filter) {
           filter.type = p.filterType;
-          filter.Q.setTargetAtTime(p.baseQ, now, 0.05);
         }
       };
-      updateBankTypes(this.osc1A, this.osc2A, this.subOscA, this.filterA);
-      updateBankTypes(this.osc1B, this.osc2B, this.subOscB, this.filterB);
-      this.update(this.currentFreq, 0, 0, 100);
+      updateBank(this.osc1A, this.osc2A, this.subOscA, this.filterA, this.currentFreqA);
+      updateBank(this.osc1B, this.osc2B, this.subOscB, this.filterB, this.currentFreqB);
+
+      for (const h of this.harmonyVoices) {
+        h.osc.type = p.osc1Type;
+      }
+      if (this.harmonyFilter) {
+        this.harmonyFilter.type = p.filterType;
+      }
+
+      if (this.hasModulationUpdate) {
+        this.applyModulations(
+          this.lastX,
+          this.lastCanvasWidth,
+          this.lastXModMode,
+          this.lastCurvature,
+          this.currentFreqA,
+          this.currentFreqB,
+          this.lastFilterMultiplier,
+          now
+        );
+      } else {
+        if (this.filterA) {
+          this.filterA.frequency.setTargetAtTime(
+            Math.max(120, Math.min(p.maxCutoff, this.currentFreqA * p.baseCutoffMultiplier)),
+            now,
+            0.06
+          );
+          this.filterA.Q.setTargetAtTime(p.baseQ, now, 0.05);
+        }
+        if (this.filterB) {
+          this.filterB.frequency.setTargetAtTime(
+            Math.max(120, Math.min(p.maxCutoff, this.currentFreqB * p.baseCutoffMultiplier)),
+            now,
+            0.06
+          );
+          this.filterB.Q.setTargetAtTime(p.baseQ, now, 0.05);
+        }
+        if (this.harmonyFilter) {
+          this.harmonyFilter.frequency.setTargetAtTime(
+            Math.max(120, Math.min(p.maxCutoff, this.currentFreq * p.baseCutoffMultiplier)),
+            now,
+            0.06
+          );
+          this.harmonyFilter.Q.setTargetAtTime(p.baseQ, now, 0.05);
+        }
+      }
     }
   }
 
@@ -369,17 +474,16 @@ export class DroneVoice {
       return;
     }
 
-    if (volume !== undefined && Math.abs(this.volume - volume) > 0.005) {
-      this.setVolume(volume, scheduledTime);
+    if (volume !== undefined) {
+      this.volume = Math.max(0, Math.min(1, volume));
     }
     const ctx = this.engine.context;
     const now = scheduledTime !== undefined ? scheduledTime : ctx.currentTime;
-    const timeConstant = 0.035;
+    const glideTc = 0.03 * Math.max(0.4, Math.min(2.2, this.articulation));
     const p = this.instrument.drone;
 
     // Organic Breathing Volume Swell
-    const baseVol = volume !== undefined ? volume : this.volume;
-    const effVol = baseVol * (breathingMod ? breathingMod.volumeMultiplier : 1.0);
+    const effVol = this.volume * (breathingMod ? breathingMod.volumeMultiplier : 1.0);
     if (this.masterGainNode) {
       const targetGain = Math.max(0.0001, 0.26 * effVol);
       this.currentMasterGain = targetGain;
@@ -404,11 +508,11 @@ export class DroneVoice {
       this.osc2A.frequency.setValueAtTime(freqA * p.osc2IntervalRatio, now);
       this.subOscA.frequency.setValueAtTime(freqA * 0.5, now);
     } else {
-      this.osc1A.frequency.setTargetAtTime(freqA, now, timeConstant);
-      this.osc2A.frequency.setTargetAtTime(freqA * p.osc2IntervalRatio, now, timeConstant);
-      this.subOscA.frequency.setTargetAtTime(freqA * 0.5, now, timeConstant);
+      this.osc1A.frequency.setTargetAtTime(freqA, now, glideTc);
+      this.osc2A.frequency.setTargetAtTime(freqA * p.osc2IntervalRatio, now, glideTc);
+      this.subOscA.frequency.setTargetAtTime(freqA * 0.5, now, glideTc);
     }
-    this.bankGainA.gain.setTargetAtTime(targetGainA, now, 0.03);
+    this.bankGainA.gain.setTargetAtTime(targetGainA, now, glideTc);
     this.currentGainA = targetGainA;
     this.currentFreqA = freqA;
 
@@ -421,11 +525,11 @@ export class DroneVoice {
         this.osc2B.frequency.setValueAtTime(freqB * p.osc2IntervalRatio, now);
         this.subOscB.frequency.setValueAtTime(freqB * 0.5, now);
       } else {
-        this.osc1B.frequency.setTargetAtTime(freqB, now, timeConstant);
-        this.osc2B.frequency.setTargetAtTime(freqB * p.osc2IntervalRatio, now, timeConstant);
-        this.subOscB.frequency.setTargetAtTime(freqB * 0.5, now, timeConstant);
+        this.osc1B.frequency.setTargetAtTime(freqB, now, glideTc);
+        this.osc2B.frequency.setTargetAtTime(freqB * p.osc2IntervalRatio, now, glideTc);
+        this.subOscB.frequency.setTargetAtTime(freqB * 0.5, now, glideTc);
       }
-      this.bankGainB.gain.setTargetAtTime(targetGainB, now, 0.03);
+      this.bankGainB.gain.setTargetAtTime(targetGainB, now, glideTc);
       this.currentGainB = targetGainB;
       this.currentFreqB = freqB;
     }
@@ -437,7 +541,8 @@ export class DroneVoice {
     this.applyModulations(x, canvasWidth, xModMode, curvature, freqA, freqB, filterMultiplier, scheduledTime);
 
     // --- 4. Chord Harmony Voicing (Octave, Sub-Octave, Dual Octave) ---
-    if (this.masterGainNode && chordFrequencies && chordFrequencies.length > 1) {
+    const harmonyTarget = this.harmonyFilter ?? this.masterGainNode;
+    if (harmonyTarget && chordFrequencies && chordFrequencies.length > 1) {
       const extraFreqs = chordFrequencies.slice(1);
       const extraGains = chordGains ? chordGains.slice(1) : extraFreqs.map(() => 0.5);
 
@@ -456,14 +561,14 @@ export class DroneVoice {
           const targetVoiceGain = 0.3 * (extraGains[i] ?? 0.5);
           g.gain.setValueAtTime(targetVoiceGain, now);
           osc.connect(g);
-          g.connect(this.masterGainNode);
+          g.connect(harmonyTarget);
           osc.start(now);
           this.harmonyVoices.push({ osc, gain: g });
         }
       } else {
         for (let i = 0; i < extraFreqs.length; i++) {
           const h = this.harmonyVoices[i];
-          h.osc.frequency.setTargetAtTime(extraFreqs[i], now, timeConstant);
+          h.osc.frequency.setTargetAtTime(extraFreqs[i], now, glideTc);
           h.osc.detune.setTargetAtTime(detuneCents, now, 0.05);
           const targetVoiceGain = 0.3 * (extraGains[i] ?? 0.5);
           h.gain.gain.setTargetAtTime(targetVoiceGain, now, 0.05);
@@ -513,6 +618,13 @@ export class DroneVoice {
     scheduledTime?: number
   ): void {
     if (!this.pannerNode || !this.filterA) return;
+    this.lastX = x;
+    this.lastCanvasWidth = canvasWidth;
+    this.lastXModMode = xModMode;
+    this.lastCurvature = curvature;
+    this.lastFilterMultiplier = filterMultiplier;
+    this.hasModulationUpdate = true;
+
     const now = scheduledTime !== undefined ? scheduledTime : this.engine.context.currentTime;
     const p = this.instrument.drone;
 
@@ -549,6 +661,15 @@ export class DroneVoice {
       this.filterB.frequency.setTargetAtTime(targetCutoffB, now, 0.06);
       this.filterB.Q.setTargetAtTime(targetQ, now, 0.06);
     }
+
+    // Harmony Filter (tracks dominant bank frequency)
+    if (this.harmonyFilter) {
+      const refFreq = this.currentGainA >= this.currentGainB ? freqA : freqB;
+      const baseCutoffH = Math.max(120, Math.min(p.maxCutoff, refFreq * p.baseCutoffMultiplier * toneMultiplier * filterMultiplier));
+      const targetCutoffH = Math.min(p.maxCutoff, baseCutoffH + normalizedCurvature * p.curvatureBrightness);
+      this.harmonyFilter.frequency.setTargetAtTime(targetCutoffH, now, 0.06);
+      this.harmonyFilter.Q.setTargetAtTime(targetQ, now, 0.06);
+    }
   }
 
   public stop(releaseTime: number = 0.2, stopTime?: number): void {
@@ -556,6 +677,7 @@ export class DroneVoice {
     const ctx = this.engine.context;
     const now = stopTime !== undefined ? stopTime : ctx.currentTime;
     const actualRelease = Math.max(0.12, releaseTime);
+    const stopAt = now + actualRelease + 0.05;
 
     const startGain = Math.max(0.0001, this.currentMasterGain);
     this.masterGainNode.gain.cancelScheduledValues(now);
@@ -568,44 +690,83 @@ export class DroneVoice {
     const oldOsc1B = this.osc1B;
     const oldOsc2B = this.osc2B;
     const oldSubB = this.subOscB;
-
+    const oldFilterA = this.filterA;
+    const oldFilterB = this.filterB;
+    const oldBankGainA = this.bankGainA;
+    const oldBankGainB = this.bankGainB;
+    const oldHarmonyFilter = this.harmonyFilter;
+    const oldMasterGain = this.masterGainNode;
+    const oldDistortion = this.distortionNode;
+    const oldToneFilter = this.toneFilterNode;
+    const oldPanner = this.pannerNode;
+    const oldReverbSend = this.reverbSendGain;
+    const oldDelaySend = this.delaySendGain;
     const oldHarmony = this.harmonyVoices;
-    this.harmonyVoices = [];
 
-    // Schedule exact stop time on oscillators
-    try {
-      oldOsc1A?.stop(now + actualRelease + 0.05);
-      oldOsc2A?.stop(now + actualRelease + 0.05);
-      oldSubA?.stop(now + actualRelease + 0.05);
-      oldOsc1B?.stop(now + actualRelease + 0.05);
-      oldOsc2B?.stop(now + actualRelease + 0.05);
-      oldSubB?.stop(now + actualRelease + 0.05);
-      for (const h of oldHarmony) {
-        h.osc.stop(now + actualRelease + 0.05);
+    const safeDisconnect = (node: AudioNode | null | undefined): void => {
+      if (!node) return;
+      try {
+        node.disconnect();
+      } catch {
+        // Ignored on already-disconnected or mock nodes
       }
-    } catch {
-      // Ignored if already stopped
+    };
+
+    if (oldOsc1A) {
+      try {
+        oldOsc1A.onended = () => {
+          try {
+            oldOsc1A.onended = null;
+          } catch {}
+          safeDisconnect(oldOsc1A);
+          safeDisconnect(oldOsc2A);
+          safeDisconnect(oldSubA);
+          safeDisconnect(oldOsc1B);
+          safeDisconnect(oldOsc2B);
+          safeDisconnect(oldSubB);
+          safeDisconnect(oldFilterA);
+          safeDisconnect(oldFilterB);
+          safeDisconnect(oldBankGainA);
+          safeDisconnect(oldBankGainB);
+          safeDisconnect(oldHarmonyFilter);
+          safeDisconnect(oldMasterGain);
+          safeDisconnect(oldDistortion);
+          safeDisconnect(oldToneFilter);
+          safeDisconnect(oldPanner);
+          safeDisconnect(oldReverbSend);
+          safeDisconnect(oldDelaySend);
+          for (const h of oldHarmony) {
+            safeDisconnect(h.osc);
+            safeDisconnect(h.gain);
+          }
+        };
+      } catch {
+        // Ignored on minimal mock OscillatorNode objects
+      }
     }
 
-    setTimeout(() => {
+    const safeStop = (osc: OscillatorNode | null | undefined): void => {
+      if (!osc) return;
       try {
-        oldOsc1A?.stop();
-        oldOsc2A?.stop();
-        oldSubA?.stop();
-        oldOsc1B?.stop();
-        oldOsc2B?.stop();
-        oldSubB?.stop();
-        for (const h of oldHarmony) {
-          h.osc.stop();
-          h.osc.disconnect();
-          h.gain.disconnect();
-        }
+        osc.stop(stopAt);
       } catch {
-        // already stopped
+        // Ignored if already stopped
       }
-    }, Math.ceil(actualRelease * 1000) + 50);
+    };
+
+    safeStop(oldOsc1A);
+    safeStop(oldOsc2A);
+    safeStop(oldSubA);
+    safeStop(oldOsc1B);
+    safeStop(oldOsc2B);
+    safeStop(oldSubB);
+    for (const h of oldHarmony) {
+      safeStop(h.osc);
+    }
 
     this._isPlaying = false;
+    this.articulation = 1.0;
+    this.harmonyVoices = [];
     this.osc1A = null;
     this.osc2A = null;
     this.subOscA = null;
@@ -616,11 +777,13 @@ export class DroneVoice {
     this.subOscB = null;
     this.filterB = null;
     this.bankGainB = null;
+    this.harmonyFilter = null;
     this.pannerNode = null;
     this.distortionNode = null;
     this.toneFilterNode = null;
     this.masterGainNode = null;
     this.reverbSendGain = null;
+    this.delaySendGain = null;
   }
 }
 
@@ -648,7 +811,8 @@ export class PulseVoice {
     baseTime?: number,
     distortion: number = 0.0,
     toneCutoff: number = 1.0,
-    lofi: number = 0.0
+    lofi: number = 0.0,
+    articulation: number = 1.0
   ): void {
     if (!engine.isReady || velocity <= 0.001) return;
     const ctx = engine.context;
@@ -669,6 +833,9 @@ export class PulseVoice {
     const toneMultX = xModMode === 'panAndTone' ? 0.8 + 0.4 * normX : 1.0;
     const toneMultiplier = toneMultX * Math.max(0.2, toneCutoff);
     const effVel = Math.max(0.001, velocity * volumeMultiplier);
+    const art = Math.max(0.2, Math.min(2.5, articulation));
+    const decayDur = Math.max(0.03, Math.min(4.5, (isStriped ? p.stripedDecay : p.dottedDecay) * art));
+    const attackSec = Math.max(0.003, Math.min(0.018, 0.004 * Math.max(0.75, art)));
 
     if (distortion > 0.01 || lofi > 0.01) {
       const distNode = ctx.createWaveShaper();
@@ -689,15 +856,25 @@ export class PulseVoice {
       filter.Q.setValueAtTime(p.stripedBandpassQ, now);
 
       gain.gain.setValueAtTime(0.001, now);
-      gain.gain.linearRampToValueAtTime(0.35 * effVel, now + 0.004);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + p.stripedDecay);
+      gain.gain.linearRampToValueAtTime(0.35 * effVel, now + attackSec);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + decayDur);
 
       osc.connect(filter);
       filter.connect(gain);
-      engine.connectVoice(panner, 0.25, Math.min(1, reverb * 0.7));
+      const sends: { reverbSendGain?: GainNode; delaySendGain?: GainNode } | undefined =
+        engine.connectVoice(panner, 0.25, Math.min(1, reverb * 0.7));
+
+      try {
+        osc.onended = () => {
+          try { osc.onended = null; } catch {}
+          try { panner.disconnect(); } catch {}
+          try { sends?.reverbSendGain?.disconnect(); } catch {}
+          try { sends?.delaySendGain?.disconnect(); } catch {}
+        };
+      } catch {}
 
       osc.start(now);
-      osc.stop(now + p.stripedDecay + 0.02);
+      osc.stop(now + decayDur + 0.03);
     } else {
       // Dotted mode: Resonant melodic chime / pluck
       osc.type = p.dottedOscType;
@@ -706,19 +883,29 @@ export class PulseVoice {
 
       filter.type = 'lowpass';
       filter.frequency.setValueAtTime(freq * 3.5 * toneMultiplier * filterMultiplier, now);
-      filter.frequency.exponentialRampToValueAtTime(freq * 0.9, now + p.dottedDecay * 0.8);
+      filter.frequency.exponentialRampToValueAtTime(freq * 0.9, now + decayDur * 0.8);
       filter.Q.setValueAtTime(p.dottedFilterQ, now);
 
       gain.gain.setValueAtTime(0.001, now);
-      gain.gain.linearRampToValueAtTime(0.38 * effVel, now + 0.004);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + p.dottedDecay);
+      gain.gain.linearRampToValueAtTime(0.38 * effVel, now + attackSec);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + decayDur);
 
       osc.connect(filter);
       filter.connect(gain);
-      engine.connectVoice(panner, 0.35, reverb);
+      const sends: { reverbSendGain?: GainNode; delaySendGain?: GainNode } | undefined =
+        engine.connectVoice(panner, 0.35, reverb);
+
+      try {
+        osc.onended = () => {
+          try { osc.onended = null; } catch {}
+          try { panner.disconnect(); } catch {}
+          try { sends?.reverbSendGain?.disconnect(); } catch {}
+          try { sends?.delaySendGain?.disconnect(); } catch {}
+        };
+      } catch {}
 
       osc.start(now);
-      osc.stop(now + p.dottedDecay + 0.03);
+      osc.stop(now + decayDur + 0.03);
     }
   }
 
@@ -739,7 +926,8 @@ export class PulseVoice {
     baseTime?: number,
     distortion: number = 0.0,
     toneCutoff: number = 1.0,
-    lofi: number = 0.0
+    lofi: number = 0.0,
+    articulation: number = 1.0
   ): void {
     if (!engine.isReady || velocity <= 0.001) return;
     const count = 3;
@@ -763,7 +951,8 @@ export class PulseVoice {
         baseTime,
         distortion,
         toneCutoff,
-        lofi
+        lofi,
+        articulation
       );
     }
   }

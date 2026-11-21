@@ -1,9 +1,6 @@
 /**
  * Web Audio Context Manager with Master Bus, Reverb, and Delay FX
  */
-/**
- * Web Audio Context Manager with Master Bus, Reverb, and Delay FX
- */
 export type ReverbType = 'cathedral' | 'shimmer' | 'hall' | 'plate' | 'chamber';
 
 export class SoundEngine {
@@ -75,6 +72,7 @@ export class SoundEngine {
 
   private analyserNode: AnalyserNode | null = null;
   private analyserDataArray: Uint8Array | null = null;
+  private bandEnergies = { low: 0, mid: 0, high: 0, master: 0 };
 
   public setupAudioGraph(ctx: BaseAudioContext): void {
     // Master Output & Limiter
@@ -156,7 +154,7 @@ export class SoundEngine {
     const sideDiff = ctx.createGain();
     sideDiff.gain.setValueAtTime(0.5, 0);
     const sideInvert = ctx.createGain();
-    sideInvert.gain.setValueAtTime(-0.5, 0);
+    sideInvert.gain.setValueAtTime(-1.0, 0);
 
     this.widthSplitter.connect(midSum, 0);
     this.widthSplitter.connect(midSum, 1);
@@ -243,6 +241,45 @@ export class SoundEngine {
       sum += data[i];
     }
     return sum / (data.length * 255);
+  }
+
+  public getBandEnergies(): Readonly<{ low: number; mid: number; high: number; master: number }> {
+    const data = this.getFrequencyData();
+    if (!data || data.length === 0) {
+      this.bandEnergies.low = 0;
+      this.bandEnergies.mid = 0;
+      this.bandEnergies.high = 0;
+      this.bandEnergies.master = 0;
+      return this.bandEnergies;
+    }
+
+    const len = data.length;
+    const lowEnd = Math.min(5, len);
+    const midEnd = Math.min(16, len);
+    let lowSum = 0;
+    let midSum = 0;
+    let highSum = 0;
+    let totalSum = 0;
+
+    for (let i = 0; i < len; i++) {
+      const v = data[i];
+      totalSum += v;
+      if (i < lowEnd) {
+        lowSum += v;
+      } else if (i < midEnd) {
+        midSum += v;
+      } else {
+        highSum += v;
+      }
+    }
+
+    const midCount = midEnd - lowEnd;
+    const highCount = len - midEnd;
+    this.bandEnergies.low = lowEnd > 0 ? lowSum / (lowEnd * 255) : 0;
+    this.bandEnergies.mid = midCount > 0 ? midSum / (midCount * 255) : 0;
+    this.bandEnergies.high = highCount > 0 ? highSum / (highCount * 255) : 0;
+    this.bandEnergies.master = totalSum / (len * 255);
+    return this.bandEnergies;
   }
 
   public get isReady(): boolean {
