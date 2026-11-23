@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Harmonic Geometry • Generative Music Drawing</title>
     <link rel="stylesheet" href="./src/style.css" />
   </head>
@@ -797,8 +797,11 @@
         </footer>
       </main>
 
-      <!-- Option A: Studio Deck (Persistent Right-Hand Studio Rack) -->
+      <!-- Option A: Studio Deck (Horizontal Right Rail / Vertical Bottom Sheet) -->
       <aside id="studioDeck" class="studio-deck" style="display: none;">
+        <button type="button" id="studioSheetHandle" class="studio-sheet-handle" aria-label="Toggle Studio Deck height" title="Tap to expand or collapse Studio Deck">
+          <span class="studio-sheet-handle-bar"></span>
+        </button>
         <div class="studio-deck-header">
           <div class="studio-deck-title">
             <span class="studio-title-badge">Studio Deck</span>
@@ -834,13 +837,15 @@
               </div>
             </div>
 
-            <!-- Persistent Scrollable Cards List -->
-            <div id="studioMixerList" class="studio-mixer-list">
-              <!-- Populated dynamically with rich layer cards -->
-            </div>
+            <!-- Adaptive Mixer + Inspector Split (Vertical Stack in Rail, Side-by-Side on Wide Portrait) -->
+            <div class="studio-mixer-split">
+              <!-- Persistent Scrollable Cards List -->
+              <div id="studioMixerList" class="studio-mixer-list">
+                <!-- Populated dynamically with rich layer cards -->
+              </div>
 
-            <!-- Docked Inspector Section -->
-            <div id="studioDockedInspector" class="studio-docked-inspector is-empty">
+              <!-- Docked Inspector Section -->
+              <div id="studioDockedInspector" class="studio-docked-inspector is-empty">
               <div class="docked-inspector-header">
                 <div class="docked-inspector-title">
                   <span class="docked-dot" id="dockedBadgeDot"></span>
@@ -987,6 +992,7 @@
                   <button type="button" id="studioMultiDeselectBtn" class="docked-btn btn-subtle has-tooltip" title="Deselect All (Esc)" data-tooltip="Deselect All (Esc)">Done</button>
                 </div>
               </div>
+            </div>
             </div>
           </div>
 

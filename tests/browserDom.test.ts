@@ -1284,6 +1284,25 @@ describe('Browser DOM Structure & Speed Traversal Interface', () => {
     const css = fs.readFileSync(cssPath, 'utf-8');
     expect(css).toMatch(/@media\s*\(max-width:\s*1519px\)[\s\S]*?\.top-bar-tools\s*\{[^}]*order:\s*3;[^}]*flex:\s*1\s+0\s+100%/);
   });
+
+  it('supports dual-orientation horizontal right-rail and vertical bottom-sheet workspace with sheet handle and split mixer', () => {
+    const sheetHandle = doc.getElementById('studioSheetHandle');
+    expect(sheetHandle).not.toBeNull();
+    expect(doc.getElementById('studioDeck')?.contains(sheetHandle)).toBe(true);
+
+    const mixerSplit = doc.querySelector('#studioTabMixer .studio-mixer-split');
+    expect(mixerSplit).not.toBeNull();
+    expect(mixerSplit?.contains(doc.getElementById('studioMixerList'))).toBe(true);
+    expect(mixerSplit?.contains(doc.getElementById('studioDockedInspector'))).toBe(true);
+
+    const viewportMeta = doc.querySelector('meta[name="viewport"]');
+    expect(viewportMeta?.getAttribute('content')).toContain('viewport-fit=cover');
+
+    const cssPath = path.resolve(__dirname, '../src/style.css');
+    const css = fs.readFileSync(cssPath, 'utf-8');
+    expect(css).toMatch(/@media\s*\(max-aspect-ratio:\s*1\/1\),\s*\(max-width:\s*820px\)[\s\S]*?#app\.view-studio\s+\.workspace-layout\s*\{[^}]*flex-direction:\s*column/);
+    expect(css).toMatch(/#studioDeck\.is-rail-collapsed\s+\.studio-deck-tabs\s*\{[^}]*display:\s*flex\s*!important/);
+  });
 });
 
 

@@ -2345,6 +2345,8 @@ async function togglePlayPause(): Promise<void> {
   if (playPauseIcon) playPauseIcon.textContent = '';
   if (playPauseText) playPauseText.textContent = isPaused ? 'Play' : 'Pause';
   if (zenPlayPauseText) zenPlayPauseText.textContent = isPaused ? 'Play' : 'Pause';
+  playPauseBtn?.classList.toggle('is-paused', isPaused);
+  zenPlayPauseBtn?.classList.toggle('is-paused', isPaused);
 
   if (typeof document !== 'undefined' && document.hidden) {
     if (isPaused) {
@@ -2357,6 +2359,13 @@ async function togglePlayPause(): Promise<void> {
 
 playPauseBtn?.addEventListener('click', () => {
   void togglePlayPause();
+});
+
+const layersStatusChip = document.getElementById('layersStatusChip');
+layersStatusChip?.addEventListener('click', () => {
+  viewModeManager.setMode('studio');
+  studioDeckController.setDeckCollapsed(false);
+  studioDeckController.switchStudioDeckTab('mixer');
 });
 
 // Undo Action
