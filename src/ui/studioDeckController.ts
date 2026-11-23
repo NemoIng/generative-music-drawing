@@ -361,6 +361,7 @@ export class StudioDeckController {
     const inst = getInstrument(stroke.instrumentId);
     const instName = inst.name;
     const color = renderer.getStrokeColor(stroke);
+    card.style.setProperty('--layer-color', color);
     const volPct = Math.round((stroke.volume ?? 1.0) * 100);
     const revPct = Math.round((stroke.reverb ?? strokeManager.defaultStrokeReverb) * 100);
     const timingTag = this.formatStrokeTimingTag(stroke);
@@ -631,11 +632,12 @@ export class StudioDeckController {
 
     const { strokeManager, renderer, quantizer, soundEngine, inputHandler, midiController, abSnapshot } = this.deps;
 
-    // 1. Studio Deck Tab Switching & Rail Collapse
+    // 1. Studio Deck Tab Switching, Rail Collapse & Vertical Bottom-Sheet Handle
     const studioTabBtnMixer = this.root.getElementById('studioTabBtnMixer');
     const studioTabBtnMaster = this.root.getElementById('studioTabBtnMaster');
     const studioTabBtnScenes = this.root.getElementById('studioTabBtnScenes');
     const studioDeckCollapseBtn = this.root.getElementById('studioDeckCollapseBtn');
+    const studioSheetHandle = this.root.getElementById('studioSheetHandle');
 
     this.listen(studioTabBtnMixer, 'click', () => {
       if (this.isDeckCollapsed) this.setDeckCollapsed(false);
@@ -655,8 +657,13 @@ export class StudioDeckController {
       this.setDeckCollapsed(!this.isDeckCollapsed);
     });
 
+    this.listen(studioSheetHandle, 'click', (e) => {
+      e.stopPropagation();
+      this.setDeckCollapsed(!this.isDeckCollapsed);
+    });
+
     const win = this.root.defaultView;
-    if (win && win.innerWidth > 0 && win.innerWidth <= 1024) {
+    if (win && win.innerWidth > 0 && win.innerWidth <= 640) {
       this.setDeckCollapsed(true);
     }
 
